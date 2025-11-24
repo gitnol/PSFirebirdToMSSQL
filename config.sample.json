@@ -1,0 +1,22 @@
+{
+    "Firebird": {
+        "Server": "DEIN_SERVER_NAME",
+        "Password": "DEIN_PASSWORT",
+        "Database": "C:\\Pfad\\Zu\\Deiner\\Datenbank.FDB",
+        "Port": 3050,
+        "Charset": "UTF8",
+        "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
+    },
+    "MSSQL": {
+        "Server": "SVRSQL03",
+        "Integrated Security": true,
+        "Username": "satest",
+        "Password": "123456",
+        "Database": "STAGING"
+    },
+    "Tables": [
+        "BLIEF",
+        "BKUNDE",
+        "BSA"
+    ]
+}
