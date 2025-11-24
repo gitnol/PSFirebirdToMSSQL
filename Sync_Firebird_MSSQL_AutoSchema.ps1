@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 <#
 .SYNOPSIS
     Synchronisiert Daten inkrementell von Firebird nach MS SQL Server (Produktions-Version).
