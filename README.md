@@ -1,97 +1,446 @@
 # SQLSync: Firebird to MSSQL High-Performance Synchronizer
 
-Dieses Projekt stellt eine hochperformante, parallelisierte ETL-Lösung bereit, um Daten inkrementell aus einer Firebird-Datenbank (z.B. AvERP) in einen Microsoft SQL Server zu synchronisieren.
+Hochperformante, parallelisierte ETL-Lösung zur inkrementellen Synchronisation von Firebird-Datenbanken (z.B. AvERP) nach Microsoft SQL Server.
 
-Es ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz, der `SqlBulkCopy` und intelligentes Schema-Mapping nutzt.
+Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz mit `SqlBulkCopy` und intelligentem Schema-Mapping.
 
-## 🚀 Features
+---
 
-* **High-Speed Transfer:** Nutzt .NET `SqlBulkCopy` für maximale Schreibgeschwindigkeit (Staging-Ansatz).
-* **Inkrementeller Sync:** Lädt nur geänderte Daten (Delta) basierend auf der `GESPEICHERT`-Spalte ("High Watermark").
-* **Automatische Schema-Erstellung:** Erstellt Staging- und Zieltabellen im SQL Server automatisch basierend auf dem Firebird-Schema (inkl. Datentyp-Mapping).
-* **Self-Healing:** Erkennt fehlende Primärschlüssel oder Indizes auf der Zielseite und repariert diese automatisch.
-* **Parallelisierung:** Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`).
-* **GUI Config Manager:** Komfortables Tool (`Out-GridView`) zum Auswählen der zu synchronisierenden Tabellen.
+## Inhaltsverzeichnis
 
-## 📂 Dateistruktur
+- [SQLSync: Firebird to MSSQL High-Performance Synchronizer](#sqlsync-firebird-to-mssql-high-performance-synchronizer)
+  - [Inhaltsverzeichnis](#inhaltsverzeichnis)
+  - [Features](#features)
+  - [Dateistruktur](#dateistruktur)
+  - [Voraussetzungen](#voraussetzungen)
+  - [Installation](#installation)
+    - [Schritt 1: SQL Server vorbereiten](#schritt-1-sql-server-vorbereiten)
+    - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
+    - [Schritt 3: Verbindung testen](#schritt-3-verbindung-testen)
+    - [Schritt 4: Tabellen auswählen](#schritt-4-tabellen-auswählen)
+  - [Nutzung](#nutzung)
+    - [Sync starten](#sync-starten)
+    - [Ablauf des Sync-Prozesses](#ablauf-des-sync-prozesses)
+    - [Sync-Strategien](#sync-strategien)
+    - [Beispielausgabe](#beispielausgabe)
+  - [Logging](#logging)
+  - [Retry-Logik](#retry-logik)
+  - [Konfigurationsoptionen](#konfigurationsoptionen)
+  - [Datentyp-Mapping](#datentyp-mapping)
+  - [Fehlerbehebung](#fehlerbehebung)
+    - [Firebird-Treiber wird nicht gefunden](#firebird-treiber-wird-nicht-gefunden)
+    - [Timeout bei großen Tabellen](#timeout-bei-großen-tabellen)
+    - [Sanity Check zeigt Differenz](#sanity-check-zeigt-differenz)
+    - [PowerShell 7 nicht installiert](#powershell-7-nicht-installiert)
+    - [Alle Retries fehlgeschlagen](#alle-retries-fehlgeschlagen)
+  - [Wichtige Hinweise](#wichtige-hinweise)
+    - [Löschungen werden nicht synchronisiert](#löschungen-werden-nicht-synchronisiert)
+    - [Task Scheduler Integration](#task-scheduler-integration)
+    - [Performance-Tipps](#performance-tipps)
+  - [Architektur](#architektur)
+  - [Changelog](#changelog)
+    - [v2.0 (2025-11-24) - Production Release](#v20-2025-11-24---production-release)
+    - [v1.0 (2025-11-24) - Initial Release](#v10-2025-11-24---initial-release)
 
-| Datei | Beschreibung |
-| :--- | :--- |
-| **`Sync_Firebird_MSSQL_AutoSchema.ps1`** | **Das Hauptskript.** Führt den Synchronisationsprozess durch (Extrakt -> Staging -> Merge). |
-| **`Manage_Config_Tables.ps1`** | Interaktives GUI-Tool zum Verwalten der Tabellenliste in der `config.json`. Liest Metadaten aus Firebird. |
-| **`sql_server_setup.sql`** | SQL-Skript zur Initialisierung der Ziel-Datenbank (`STAGING`) und der generischen Merge-Prozedur. |
-| **`config.json`** | Enthält Zugangsdaten und die Liste der Tabellen (wird von Git ignoriert). |
-| **`config.sample.json`** | Vorlage für die Konfiguration. |
-| **`test_dotnet_firebird.ps1`** | Einfaches Diagnoseskript zum Testen der Firebird-Verbindung und des Treibers. |
-| **`.gitignore`** | Stellt sicher, dass `config.json` (mit Passwörtern) nicht ins Repository gelangt. |
+---
 
-## 🛠️ Voraussetzungen
+## Features
 
-1.  **PowerShell 7+**: Zwingend erforderlich für die Parallelverarbeitung (`-Parallel`).
-2.  **Firebird .NET Provider**: Das Skript versucht, diesen via NuGet automatisch zu installieren.
-3.  **Zugriff**:
-    * Leserechte auf der Firebird-Quelldatenbank.
-    * `db_owner` oder `ddl_admin` Rechte auf der MSSQL-Zieldatenbank (zum Erstellen von Tabellen/Prozeduren).
+- **High-Speed Transfer**: .NET `SqlBulkCopy` für maximale Schreibgeschwindigkeit (Staging-Ansatz mit Memory-Streaming)
+- **Inkrementeller Sync**: Lädt nur geänderte Daten (Delta) basierend auf der `GESPEICHERT`-Spalte (High Watermark Pattern)
+- **Automatische Schema-Erstellung**: Erstellt Staging- und Zieltabellen automatisch mit intelligentem Datentyp-Mapping
+- **Self-Healing**: Erkennt und repariert fehlende Primärschlüssel und Indizes automatisch
+- **Parallelisierung**: Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`)
+- **Drei Sync-Strategien**: Incremental, FullMerge oder Snapshot je nach Tabellenstruktur
+- **Datei-Logging**: Vollständiges Transcript aller Ausgaben in `Logs\Sync_*.log`
+- **Retry-Logik**: Automatische Wiederholung bei Verbindungsfehlern (konfigurierbar)
+- **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau
 
-## ⚙️ Installation & Einrichtung
+---
 
-### 1. Datenbank vorbereiten
-Führe das Skript `sql_server_setup.sql` auf deinem Microsoft SQL Server aus.
-* Erstellt die Datenbank `STAGING` (falls nicht vorhanden).
-* Erstellt die Stored Procedure `sp_Merge_Generic`, die für den intelligenten Datenabgleich (Merge) zuständig ist.
+## Dateistruktur
 
-### 2. Konfiguration anlegen
-Kopiere die `config.sample.json` zu `config.json` und trage deine Verbindungsdaten ein:
+```
+SQLSync/
+├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract → Staging → Merge)
+├── Manage_Config_Tables.ps1              # GUI-Tool zur Tabellenverwaltung
+├── sql_server_setup.sql                  # SQL Server Initialisierung
+├── test_dotnet_firebird.ps1              # Verbindungstest
+├── config.json                           # Zugangsdaten (git-ignoriert)
+├── config.sample.json                    # Konfigurationsvorlage
+├── .gitignore                            # Schützt config.json
+└── Logs/                                 # Log-Dateien (automatisch erstellt)
+    └── Sync_2025-11-24_1430.log
+```
+
+---
+
+## Voraussetzungen
+
+| Komponente | Anforderung |
+|:-----------|:------------|
+| PowerShell | Version 7.0 oder höher (zwingend für `-Parallel`) |
+| Firebird .NET Provider | Wird automatisch via NuGet installiert |
+| Firebird-Zugriff | Leserechte auf der Quelldatenbank |
+| MSSQL-Zugriff | `db_owner` oder `ddl_admin` auf der Zieldatenbank |
+
+---
+
+## Installation
+
+### Schritt 1: SQL Server vorbereiten
+
+Führe `sql_server_setup.sql` auf deinem Microsoft SQL Server aus:
+
+```sql
+-- Erstellt:
+-- - Datenbank "STAGING" (falls nicht vorhanden)
+-- - Stored Procedure "sp_Merge_Generic" für den intelligenten Datenabgleich
+```
+
+Die Stored Procedure nutzt **Smart Update**: Nur Zeilen mit geändertem `GESPEICHERT`-Zeitstempel werden aktualisiert, was das Transaction Log massiv entlastet.
+
+### Schritt 2: Konfiguration anlegen
+
+Kopiere `config.sample.json` nach `config.json` und trage deine Verbindungsdaten ein:
 
 ```json
 {
   "Firebird": {
     "Server": "svrerp01",
+    "Password": "dein_passwort",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
-    "User": "SYSDBA",
-    ...
+    "Port": 3050,
+    "Charset": "UTF8",
+    "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
   },
   "MSSQL": {
     "Server": "SVRSQL03",
-    "Database": "STAGING",
-    ...
+    "Integrated Security": true,
+    "Database": "STAGING"
   },
-  "Tables": [] 
+  "Tables": []
 }
 ```
 
-### 3. Tabellen auswählen
-Starte das Management-Skript, um festzulegen, welche Tabellen synchronisiert werden sollen:
+**Hinweis zur Authentifizierung:**  
+- `Integrated Security: true` → Windows-Authentifizierung (empfohlen)  
+- `Integrated Security: false` → SQL-Authentifizierung mit `Username` und `Password`
+
+### Schritt 3: Verbindung testen
+
+```powershell
+.\test_dotnet_firebird.ps1
+```
+
+Erwartete Ausgabe bei Erfolg:
+```
+Treiber geladen (C:\...\FirebirdSql.Data.FirebirdClient.dll)
+Verbindung zu svrerp01 erfolgreich hergestellt.
+Test erfolgreich! Gelesene ID aus BSA: 12345
+```
+
+### Schritt 4: Tabellen auswählen
 
 ```powershell
 .\Manage_Config_Tables.ps1
 ```
-* Das Skript lädt alle verfügbaren Tabellen aus Firebird.
-* **GUI-Bedienung:**
-    * Markiere Tabellen, die du **hinzufügen** oder **entfernen** willst.
-    * Logik: Ist eine Tabelle schon in der Config und du wählst sie aus -> **Löschen**. Ist sie neu -> **Hinzufügen**.
-* Es wird automatisch ein Backup der alten Config erstellt.
 
-## ▶️ Nutzung (Der Sync-Prozess)
+Das GUI zeigt alle verfügbaren Firebird-Tabellen mit Metadaten:
 
-Starte den Synchronisationslauf manuell oder per Task Scheduler:
+- **Hat ID**: Primärschlüssel vorhanden (ermöglicht Merge)
+- **Hat Datum**: GESPEICHERT-Spalte vorhanden (ermöglicht Delta-Sync)
+- **Status**: Bereits konfiguriert oder neu
+
+**Toggle-Logik**: Ausgewählte Tabellen werden hinzugefügt oder entfernt. Nicht ausgewählte bleiben unverändert.
+
+---
+
+## Nutzung
+
+### Sync starten
 
 ```powershell
 .\Sync_Firebird_MSSQL_AutoSchema.ps1
 ```
 
-**Ablauf des Skripts:**
-1.  **Analyse:** Prüft für jede Tabelle, ob `ID` (PK) und `GESPEICHERT` (Datum) vorhanden sind.
-    * *Mit ID & Datum:* **Inkrementeller Sync** (Schnell).
-    * *Ohne Datum:* **Full Merge** (Langsamer, lädt alles).
-    * *Ohne ID:* **Snapshot** (Truncate & Insert).
-2.  **Schema-Check:** Prüft, ob die Staging-Tabelle existiert. Falls nein (oder bei Schema-Änderungen), wird sie basierend auf Firebird-Metadaten neu erstellt.
-3.  **Bulk Load:** Lädt Daten via Firebird-Reader direkt in den SQL Server (Memory-to-Memory Streaming).
-4.  **Merge:** Ruft `sp_Merge_Generic` auf, um die Daten aus Staging in die finale Tabelle zu überführen.
-5.  **Index-Pflege:** Stellt sicher, dass auf der Zieltabelle immer ein Primary Key auf `[ID]` existiert (Performance-kritisch!).
+### Ablauf des Sync-Prozesses
 
-## ⚠️ Wichtige Hinweise
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. INITIALISIERUNG                                         │
+│     Config laden, Treiber prüfen, Logging starten           │
+├─────────────────────────────────────────────────────────────┤
+│  2. ANALYSE (pro Tabelle, parallel)                         │
+│     Prüft Quell-Schema auf ID und GESPEICHERT               │
+│     → Wählt Strategie: Incremental / FullMerge / Snapshot   │
+├─────────────────────────────────────────────────────────────┤
+│  3. SCHEMA-CHECK                                            │
+│     Erstellt STG_<Tabelle> falls nicht vorhanden            │
+│     Automatisches Firebird → SQL Server Type-Mapping        │
+├─────────────────────────────────────────────────────────────┤
+│  4. EXTRACT                                                 │
+│     Lädt Daten aus Firebird (Memory-Stream via IDataReader) │
+│     Bei Incremental: Nur Daten > MAX(GESPEICHERT) im Ziel   │
+├─────────────────────────────────────────────────────────────┤
+│  5. LOAD                                                    │
+│     Bulk Insert in Staging-Tabelle via SqlBulkCopy          │
+├─────────────────────────────────────────────────────────────┤
+│  6. MERGE                                                   │
+│     sp_Merge_Generic: Staging → Zieltabelle                 │
+│     Self-Healing: Erstellt fehlende Primary Keys            │
+├─────────────────────────────────────────────────────────────┤
+│  7. SANITY CHECK                                            │
+│     Vergleicht Row-Counts (Quelle vs. Ziel)                 │
+├─────────────────────────────────────────────────────────────┤
+│  ↻ RETRY bei Fehler (bis zu 3x mit 10s Pause)               │
+└─────────────────────────────────────────────────────────────┘
+```
 
-* **Timeout:** Für sehr große Tabellen ist im Skript ein `GlobalTimeout` von 7200 Sekunden (2 Stunden) vorkonfiguriert.
-* **Datentypen:** Das Skript mappt Firebird-Typen automatisch (z.B. `TimeSpan` -> `TIME`, `Blob-Text` -> `NVARCHAR(MAX)`).
-* **Löschungen:** Da der Sync inkrementell arbeitet (nur `> LetztesDatum`), werden **gelöschte** Datensätze in Firebird standardmäßig *nicht* im SQL Server gelöscht (außer im Snapshot-Modus). Für eine vollständige Bereinigung sollte gelegentlich ein Full-Sync (leeren der Zieltabellen) durchgeführt werden.
+### Sync-Strategien
+
+| Strategie | Bedingung | Verhalten |
+|:----------|:----------|:----------|
+| **Incremental** | ID + GESPEICHERT vorhanden | Lädt nur Delta (schnellste Option) |
+| **FullMerge** | ID vorhanden, kein GESPEICHERT | Lädt alles, merged per ID |
+| **Snapshot** | Keine ID | Truncate & vollständiger Insert |
+
+### Beispielausgabe
+
+```
+--------------------------------------------------------
+SQLSync STARTED at 24.11.2025 14:30:00
+--------------------------------------------------------
+Konfiguration geladen. Tabellen: 3. Retries: 3
+[BLIEF] Starte Verarbeitung...
+[BKUNDE] Starte Verarbeitung...
+[BSA] Starte Verarbeitung...
+[BLIEF] Abschluss: Erfolg (OK)
+[BKUNDE] Abschluss: Erfolg (OK)
+[BSA] Abschluss: Erfolg (OK)
+ZUSAMMENFASSUNG
+Tabelle  Status  Sync   FB      SQL     Sanity  Time   Try  Info
+-------  ------  ----   --      ---     ------  ----   ---  ----
+BLIEF    Erfolg  2847   125430  125430  OK      00:12  1
+BKUNDE   Erfolg  156    8924    8924    OK      00:02  1
+BSA      Erfolg  0      45123   45123   OK      00:00  1
+
+GESAMTLAUFZEIT: 00:00:15
+LOGDATEI: C:\Scripts\Logs\Sync_2025-11-24_1430.log
+```
+
+---
+
+## Logging
+
+Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
+
+| Aspekt | Details |
+|:-------|:--------|
+| **Speicherort** | `Logs\Sync_YYYY-MM-DD_HHmm.log` |
+| **Inhalt** | Komplettes Transcript (Konsole + Fehler) |
+| **Rotation** | Neue Datei pro Lauf (Datum/Uhrzeit im Namen) |
+| **Ordner** | Wird automatisch erstellt falls nicht vorhanden |
+
+**Beispiel-Log:**
+
+```
+**********************
+Windows PowerShell transcript start
+Start time: 20251124143000
+**********************
+Transcript started, output file is C:\Scripts\Logs\Sync_2025-11-24_1430.log
+--------------------------------------------------------
+SQLSync STARTED at 24.11.2025 14:30:00
+--------------------------------------------------------
+Konfiguration geladen. Tabellen: 3. Retries: 3
+[BLIEF] Starte Verarbeitung...
+...
+```
+
+**Tipp für Task Scheduler:** Das Logging funktioniert auch bei unbeaufsichtigter Ausführung. Fehler vom Vortag lassen sich so leicht nachvollziehen.
+
+---
+
+## Retry-Logik
+
+Bei Verbindungsfehlern (Netzwerk-Timeout, Server nicht erreichbar) versucht das Skript automatisch erneut:
+
+| Parameter | Standard | Beschreibung |
+|:----------|:---------|:-------------|
+| `$MaxRetries` | 3 | Maximale Anzahl Wiederholungen |
+| `$RetryDelaySeconds` | 10 | Wartezeit zwischen Versuchen |
+
+**Ablauf bei Fehler:**
+
+```
+[BLIEF] Starte Verarbeitung...
+[BLIEF] ERROR (Versuch 1): Connection timeout expired
+[BLIEF] Warnung: Versuch 2 von 4... (Warte 10s)
+[BLIEF] ERROR (Versuch 2): Connection timeout expired
+[BLIEF] Warnung: Versuch 3 von 4... (Warte 10s)
+[BLIEF] Abschluss: Erfolg (OK)   ← Beim 3. Versuch erfolgreich
+```
+
+**Bei dauerhaftem Fehler:**
+
+Nach Ausschöpfung aller Versuche wird der Status auf "Fehler" gesetzt und die nächste Tabelle verarbeitet. Die Spalte "Try" in der Zusammenfassung zeigt die Anzahl der benötigten Versuche.
+
+---
+
+## Konfigurationsoptionen
+
+Im Hauptskript können folgende Parameter angepasst werden:
+
+| Variable | Standard | Beschreibung |
+|:---------|:---------|:-------------|
+| `$GlobalTimeout` | 7200 | Timeout in Sekunden für SQL-Befehle und BulkCopy |
+| `$RecreateStagingTable` | `$false` | `$true` = Staging bei jedem Lauf neu erstellen |
+| `$RunSanityCheck` | `$true` | `$false` = Überspringt COUNT-Vergleich |
+| `$MaxRetries` | 3 | Wiederholungsversuche bei Fehler |
+| `$RetryDelaySeconds` | 10 | Wartezeit zwischen Retries |
+| `-ThrottleLimit` | 4 | Anzahl paralleler Threads (Zeile 372) |
+
+---
+
+## Datentyp-Mapping
+
+| Firebird (.NET Type) | SQL Server |
+|:---------------------|:-----------|
+| Int16 | SMALLINT |
+| Int32 | INT |
+| Int64 | BIGINT |
+| String (≤4000) | NVARCHAR(n) |
+| String (>4000) | NVARCHAR(MAX) |
+| DateTime | DATETIME2 |
+| TimeSpan | TIME |
+| Decimal | DECIMAL(18,4) |
+| Double | FLOAT |
+| Single | REAL |
+| Byte[] | VARBINARY(MAX) |
+| Boolean | BIT |
+| (Sonstige) | NVARCHAR(MAX) |
+
+---
+
+## Fehlerbehebung
+
+### Firebird-Treiber wird nicht gefunden
+
+```
+KRITISCH: Firebird Treiber DLL nicht gefunden.
+```
+
+**Lösung**: Prüfe den `DllPath` in `config.json` oder lasse das Skript die DLL automatisch suchen:
+```powershell
+Get-ChildItem -Path "C:\Program Files\PackageManagement\NuGet\Packages" `
+  -Filter "FirebirdSql.Data.FirebirdClient.dll" -Recurse
+```
+
+### Timeout bei großen Tabellen
+
+**Lösung**: Erhöhe `$GlobalTimeout` im Hauptskript (Standard: 7200 Sekunden = 2 Stunden)
+
+### Sanity Check zeigt Differenz
+
+- **WARNUNG (+n)**: SQL Server hat mehr Zeilen → Wahrscheinlich gelöschte Datensätze in Firebird
+- **FEHLER (-n)**: Firebird hat mehr Zeilen → Sync unvollständig, prüfe Log-Datei
+
+### PowerShell 7 nicht installiert
+
+```powershell
+# Installation über winget
+winget install Microsoft.PowerShell
+
+# Oder Download von:
+# https://github.com/PowerShell/PowerShell/releases
+```
+
+### Alle Retries fehlgeschlagen
+
+Prüfe die Log-Datei auf die genaue Fehlermeldung. Häufige Ursachen:
+
+- Firebird-Server nicht erreichbar
+- SQL Server Authentifizierungsproblem
+- Netzwerk-Firewall blockiert Verbindung
+- Datenbank exklusiv gesperrt (Backup läuft?)
+
+---
+
+## Wichtige Hinweise
+
+### Löschungen werden nicht synchronisiert
+
+Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten. Für eine vollständige Bereinigung:
+
+1. Zieltabelle truncaten
+2. Sync mit `$RecreateStagingTable = $true` ausführen
+
+### Task Scheduler Integration
+
+Für automatische Ausführung als geplante Aufgabe:
+
+```
+Programm: pwsh.exe
+Argumente: -ExecutionPolicy Bypass -File "C:\Scripts\Sync_Firebird_MSSQL_AutoSchema.ps1"
+Starten in: C:\Scripts
+```
+
+Die Log-Dateien ermöglichen die Fehleranalyse auch ohne Konsolenfenster.
+
+### Performance-Tipps
+
+- **ThrottleLimit anpassen**: Bei langsamer Quelle/Ziel auf 2 reduzieren, bei schnellem Netzwerk auf 6-8 erhöhen
+- **Sanity Check deaktivieren**: `$RunSanityCheck = $false` spart COUNT(*)-Abfragen
+- **Staging-Recreate vermeiden**: `$RecreateStagingTable = $false` nutzt schnelleres TRUNCATE
+
+---
+
+## Architektur
+
+```
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│    Firebird      │         │   PowerShell 7   │         │   SQL Server     │
+│   (Quelle)       │         │   ETL Engine     │         │   (Ziel)         │
+├──────────────────┤         ├──────────────────┤         ├──────────────────┤
+│                  │  Read   │                  │  Write  │                  │
+│  Tabelle A       │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
+│  Tabelle B       │         │  (ThrottleLimit) │         │  STG_B (Staging) │
+│  Tabelle C       │         │                  │         │  STG_C (Staging) │
+│                  │         │  ↻ Retry Loop    │         │                  │
+│                  │         │  📄 Transcript   │         │                  │
+└──────────────────┘         └────────┬─────────┘         ├──────────────────┤
+                                      │                   │                  │
+                                      │ EXEC              │  sp_Merge_Generic│
+                                      └─────────────────► │         ↓        │
+                                                          │  A (Final)       │
+                                                          │  B (Final)       │
+                                                          │  C (Final)       │
+                                                          └──────────────────┘
+```
+
+---
+
+## Changelog
+
+### v2.0 (2025-11-24) - Production Release
+
+**Neu:**
+- Datei-Logging mit `Start-Transcript` in `Logs\Sync_*.log`
+- Retry-Logik bei Verbindungsfehlern (konfigurierbar: `$MaxRetries`, `$RetryDelaySeconds`)
+- Saubere Verbindungsschließung vor Retry-Versuchen
+- Neue Spalte "Try" in der Zusammenfassung zeigt Anzahl der Versuche
+- Automatische Erstellung des Log-Ordners
+- Verbesserte Fehlerbehandlung mit JSON-Validierung
+
+**Verbessert:**
+- Übersichtlichere Konsolenausgabe
+- Robustere Treiber-Suche mit Fallback
+
+### v1.0 (2025-11-24) - Initial Release
+
+- Parallelisierte Verarbeitung
+- Automatisches Schema-Mapping
+- Self-Healing für Indizes
+- GUI Config Manager
+- Drei Sync-Strategien (Incremental, FullMerge, Snapshot)
