@@ -68,7 +68,7 @@ SQLSync/
 ├── test_dotnet_firebird.ps1              # Verbindungstest
 ├── config.json                           # Zugangsdaten (git-ignoriert)
 ├── config.sample.json                    # Konfigurationsvorlage
-├── .gitignore                            # Schützt config.json
+├── .gitignore                            # Schützt config.json und ignoriert den Log Ordner und grundsätzliche alle *.log Dateien
 └── Logs/                                 # Log-Dateien (automatisch erstellt)
     └── Sync_2025-11-24_1430.log
 ```
