@@ -11,6 +11,10 @@
     - NEU: Datei-Logging (Logs\...)
     - NEU: Retry-Logik bei Verbindungsfehlern
 
+    Empfehlung:
+    - Täglich: Inkrementeller Sync (schnell, Updates/Inserts).
+    - Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder $RecreateStagingTable=$true mit Datum-Reset). 
+
 .NOTES
     Version: 2.0 (Prod)
 #>

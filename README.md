@@ -26,6 +26,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Logging](#logging)
   - [Retry-Logik](#retry-logik)
   - [Konfigurationsoptionen](#konfigurationsoptionen)
+    - [Empfehlung:](#empfehlung)
   - [Datentyp-Mapping](#datentyp-mapping)
   - [Fehlerbehebung](#fehlerbehebung)
     - [Firebird-Treiber wird nicht gefunden](#firebird-treiber-wird-nicht-gefunden)
@@ -300,6 +301,10 @@ Im Hauptskript können folgende Parameter angepasst werden:
 | `$MaxRetries` | 3 | Wiederholungsversuche bei Fehler |
 | `$RetryDelaySeconds` | 10 | Wartezeit zwischen Retries |
 | `-ThrottleLimit` | 4 | Anzahl paralleler Threads (Zeile 372) |
+
+### Empfehlung:
+- Täglich: Inkrementeller Sync (schnell, Updates/Inserts). `$RecreateStagingTable=$false`
+- Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder `$RecreateStagingTable=$true` mit Datum-Reset). 
 
 ---
 

@@ -14,6 +14,26 @@ GO
                       2. Ermittelt Spalten für INSERT und UPDATE dynamisch aus sys.columns.
                       3. Baut dynamisches SQL für den MERGE Befehl.
                       4. Optimierung: Updates werden nur ausgeführt, wenn sich der Zeitstempel (GESPEICHERT) unterscheidet.
+
+Hinweis:
+Im inkrementellen Modus (Standard) enthält die Staging-Tabelle ja nur die neuen 50 Datensätze.
+Wenn wir jetzt sagen würden WHEN NOT MATCHED BY SOURCE THEN DELETE, würde der SQL Server sagen: 
+"Oh, in der Staging-Tabelle fehlen 1 Million Datensätze (die alten), also lösche ich die alle im Ziel!" -> Katastrophe!
+Deshalb verzichten wir hier auf das Löschen von nicht mehr vorhandenen Datensätzen im Ziel. Ehemals wurde das so gemacht:
+    WHEN NOT MATCHED BY SOURCE AND T.GESPEICHERT >= DATEADD(Day, @TAGE, GETDATE()) 
+    THEN DELETE
+
+Lösung (Soft Deletes vs. Hard Deletes): 
+Da wir uns für den performanten Weg (Staging mit Delta) entschieden haben, 
+können wir echte Löschungen (Hard Deletes) technisch nicht "live" erkennen, 
+ohne die gesamte Tabelle zu vergleichen.
+
+Empfehlung:
+Täglich: Inkrementeller Sync (schnell, Updates/Inserts).
+Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder $RecreateStagingTable=$true mit Datum-Reset). 
+Das bereinigt die Leichen. 
+ODER Du akzeptierst die Leichen im DWH (Data Warehouse), was oft sogar gewünscht ist (Historie).
+
 */
 CREATE OR ALTER PROCEDURE [dbo].[sp_Merge_Generic]
     @TableName NVARCHAR(128)
