@@ -1,3 +1,18 @@
+USE [master];
+GO
+
+-- 1. Datenbank erstellen (falls nicht vorhanden)
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'STAGING')
+BEGIN
+    CREATE DATABASE [STAGING];
+    PRINT 'Datenbank STAGING erstellt.';
+END
+GO
+
+ALTER DATABASE [STAGING] SET RECOVERY SIMPLE;
+GO
+
+
 USE [STAGING];
 GO
 
