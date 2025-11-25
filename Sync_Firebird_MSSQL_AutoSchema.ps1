@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+
 <#
 .SYNOPSIS
     Synchronisiert Daten inkrementell von Firebird nach MS SQL Server (Produktions-Version).
@@ -9,15 +10,20 @@
     - Inkrementeller Delta-Sync
     - Automatische Schema-Erstellung & Reparatur
     - Sanity Checks
-    - NEU: Datei-Logging (Logs\...)
-    - NEU: Retry-Logik bei Verbindungsfehlern
+    - Datei-Logging (Logs\...)
+    - Retry-Logik bei Verbindungsfehlern
+    - Sichere Credential-Verwaltung via Windows Credential Manager
 
     Empfehlung:
     - Täglich: Inkrementeller Sync (schnell, Updates/Inserts).
     - Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder $RecreateStagingTable=$true mit Datum-Reset). 
 
 .NOTES
-    Version: 2.0 (Prod)
+    Version: 2.1 (Prod)
+    
+    CREDENTIAL SETUP:
+    Führe einmalig Setup_Credentials.ps1 aus, um Passwörter sicher zu speichern.
+    Alternativ: Passwörter in config.json (unsicher, nur für Tests).
 #>
 
 # -----------------------------------------------------------------------------
@@ -45,6 +51,80 @@ Write-Host "--------------------------------------------------------" -Foregroun
 Write-Host "SQLSync STARTED at $(Get-Date)" -ForegroundColor White
 Write-Host "--------------------------------------------------------" -ForegroundColor Gray
 
+
+# -----------------------------------------------------------------------------
+# 2. CREDENTIAL MANAGER FUNKTION
+# -----------------------------------------------------------------------------
+
+function Get-StoredCredential {
+    <#
+    .SYNOPSIS
+        Liest Credentials aus dem Windows Credential Manager.
+    .PARAMETER Target
+        Name des gespeicherten Credentials (z.B. "SQLSync_Firebird")
+    .OUTPUTS
+        PSCustomObject mit Username und Password, oder $null wenn nicht gefunden.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Target
+    )
+    
+    # P/Invoke für Windows Credential API
+    Add-Type -Namespace "CredManager" -Name "Util" -MemberDefinition @'
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool CredRead(
+            string target,
+            int type,
+            int reserved,
+            out IntPtr credential);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern void CredFree(IntPtr credential);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct CREDENTIAL {
+            public int Flags;
+            public int Type;
+            public string TargetName;
+            public string Comment;
+            public long LastWritten;
+            public int CredentialBlobSize;
+            public IntPtr CredentialBlob;
+            public int Persist;
+            public int AttributeCount;
+            public IntPtr Attributes;
+            public string TargetAlias;
+            public string UserName;
+        }
+'@ -ErrorAction SilentlyContinue
+
+    $CredPtr = [IntPtr]::Zero
+    $Success = [CredManager.Util]::CredRead($Target, 1, 0, [ref]$CredPtr)
+    
+    if (-not $Success) {
+        return $null
+    }
+    
+    try {
+        $Cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure($CredPtr, [Type][CredManager.Util+CREDENTIAL])
+        
+        $Password = ""
+        if ($Cred.CredentialBlobSize -gt 0) {
+            $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($Cred.CredentialBlob, $Cred.CredentialBlobSize / 2)
+        }
+        
+        return [PSCustomObject]@{
+            Username = $Cred.UserName
+            Password = $Password
+        }
+    }
+    finally {
+        [CredManager.Util]::CredFree($CredPtr)
+    }
+}
+
+
 # Config laden
 $ConfigPath = Join-Path $ScriptDir "config.json"
 if (-not (Test-Path $ConfigPath)) { 
@@ -61,19 +141,87 @@ catch {
     exit 1
 }
 
-# Credentials
+# -----------------------------------------------------------------------------
+# 3. CONFIG & CREDENTIALS LADEN
+# -----------------------------------------------------------------------------
+
+$ConfigPath = Join-Path $ScriptDir "config.json"
+if (-not (Test-Path $ConfigPath)) { 
+    Write-Error "KRITISCH: config.json fehlt!"
+    Stop-Transcript
+    exit 1 
+}
+try {
+    $Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+}
+catch {
+    Write-Error "KRITISCH: config.json ist kein gültiges JSON."
+    Stop-Transcript
+    exit 1
+}
+
+# --- FIREBIRD CREDENTIALS ---
 $FBservername = $Config.Firebird.Server
-$FBpassword = $Config.Firebird.Password
 $FBdatabase = $Config.Firebird.Database
 $FBport = $Config.Firebird.Port
 $FBcharset = $Config.Firebird.Charset
 $DllPath = $Config.Firebird.DllPath
 
+# Versuche Credentials aus Credential Manager zu laden
+$FbCred = Get-StoredCredential -Target "SQLSync_Firebird"
+if ($FbCred) {
+    $FBuser = $FbCred.Username
+    $FBpassword = $FbCred.Password
+    Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green
+    if ($Config.Firebird.Password -or $Config.MSSQL.Password) {
+        Write-Host "WARNUNG: Passwörter in config.json werden ignoriert, da Credential Manager verwendet wird." -ForegroundColor Yellow
+        Write-Host "WARNUNG: Es wird empfohlen, die Passwörter in der config.json zu entfernen." -ForegroundColor Yellow
+    }
+}
+elseif ($Config.Firebird.Password) {
+    # Fallback auf config.json
+    $FBuser = if ($Config.Firebird.User) { $Config.Firebird.User } else { "SYSDBA" }
+    $FBpassword = $Config.Firebird.Password
+    Write-Host "[Credentials] Firebird: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow
+}
+else {
+    Write-Error "KRITISCH: Keine Firebird Credentials! Führe Setup_Credentials.ps1 aus."
+    Stop-Transcript
+    exit 1
+}
+
+# --- MSSQL CREDENTIALS ---
 $MSSQLservername = $Config.MSSQL.Server
 $MSSQLdatabase = $Config.MSSQL.Database
-$MSSQLUser = $Config.MSSQL.Username
-$MSSQLPass = $Config.MSSQL.Password
 $MSSQLIntSec = $Config.MSSQL."Integrated Security"
+
+if ($MSSQLIntSec) {
+    Write-Host "[Credentials] SQL Server: Windows Authentication" -ForegroundColor Green
+    $MSSQLUser = $null
+    $MSSQLPass = $null
+}
+else {
+    $SqlCred = Get-StoredCredential -Target "SQLSync_MSSQL"
+    if ($SqlCred) {
+        $MSSQLUser = $SqlCred.Username
+        $MSSQLPass = $SqlCred.Password
+        Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green
+    }
+    elseif ($Config.MSSQL.Password) {
+        $MSSQLUser = $Config.MSSQL.Username
+        $MSSQLPass = $Config.MSSQL.Password
+        Write-Host "[Credentials] SQL Server: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow
+    }
+    else {
+        Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."
+        Stop-Transcript
+        exit 1
+    }
+}
+
+# -----------------------------------------------------------------------------
+# 4. TREIBER & CONNECTION STRINGS
+# -----------------------------------------------------------------------------
 
 # Treiber laden
 if (-not (Get-Package FirebirdSql.Data.FirebirdClient -ErrorAction SilentlyContinue)) {
@@ -90,7 +238,7 @@ if (-not $DllPath) {
 Add-Type -Path $DllPath
 
 # Connection Strings
-$FirebirdConnString = "User=SYSDBA;Password=$($FBpassword);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);"
+$FirebirdConnString = "User=$($FBuser);Password=$($FBpassword);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);"
 if ($MSSQLIntSec) {
     $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;"
 }
@@ -108,7 +256,7 @@ if (-not $Tabellen -or $Tabellen.Count -eq 0) {
 Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRetries" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
-# 2. HAUPTSCHLEIFE (PARALLEL MIT RETRY)
+# 5. HAUPTSCHLEIFE (PARALLEL MIT RETRY)
 # -----------------------------------------------------------------------------
 
 $Results = $Tabellen | ForEach-Object -Parallel {
@@ -377,7 +525,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
 } -ThrottleLimit 4
 
 # -----------------------------------------------------------------------------
-# 3. ABSCHLUSS
+# 6. ABSCHLUSS
 # -----------------------------------------------------------------------------
 $TotalStopwatch.Stop()
 
@@ -396,3 +544,8 @@ Write-Host "GESAMTLAUFZEIT: $($TotalStopwatch.Elapsed.ToString("hh\:mm\:ss"))" -
 Write-Host "LOGDATEI: $LogFile" -ForegroundColor Gray
 
 Stop-Transcript
+
+if ($Config.Firebird.Password -or $Config.MSSQL.Password) {
+    Write-Host "WARNUNG: Passwörter in config.json werden ignoriert, da Credential Manager verwendet wird." -ForegroundColor Yellow
+    Write-Host "WARNUNG: Es wird empfohlen, die Passwörter in der config.json zu entfernen." -ForegroundColor Yellow
+}

@@ -16,30 +16,39 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Installation](#installation)
     - [Schritt 1: SQL Server vorbereiten](#schritt-1-sql-server-vorbereiten)
     - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
-    - [Schritt 3: Verbindung testen](#schritt-3-verbindung-testen)
-    - [Schritt 4: Tabellen auswählen](#schritt-4-tabellen-auswählen)
+    - [Schritt 3: Credentials sicher speichern](#schritt-3-credentials-sicher-speichern)
+    - [Schritt 4: Verbindung testen](#schritt-4-verbindung-testen)
+    - [Schritt 5: Tabellen auswählen](#schritt-5-tabellen-auswählen)
   - [Nutzung](#nutzung)
     - [Sync starten](#sync-starten)
     - [Ablauf des Sync-Prozesses](#ablauf-des-sync-prozesses)
     - [Sync-Strategien](#sync-strategien)
     - [Beispielausgabe](#beispielausgabe)
+  - [Credential Management](#credential-management)
+    - [Einrichtung](#einrichtung)
+    - [Funktionsweise](#funktionsweise)
+    - [Verwaltung](#verwaltung)
+    - [Fallback-Verhalten](#fallback-verhalten)
   - [Logging](#logging)
   - [Retry-Logik](#retry-logik)
   - [Konfigurationsoptionen](#konfigurationsoptionen)
     - [Empfehlung:](#empfehlung)
   - [Datentyp-Mapping](#datentyp-mapping)
   - [Fehlerbehebung](#fehlerbehebung)
+    - [Keine Credentials gefunden](#keine-credentials-gefunden)
     - [Firebird-Treiber wird nicht gefunden](#firebird-treiber-wird-nicht-gefunden)
     - [Timeout bei großen Tabellen](#timeout-bei-großen-tabellen)
     - [Sanity Check zeigt Differenz](#sanity-check-zeigt-differenz)
     - [PowerShell 7 nicht installiert](#powershell-7-nicht-installiert)
     - [Alle Retries fehlgeschlagen](#alle-retries-fehlgeschlagen)
+    - [Task Scheduler: Credentials nicht gefunden](#task-scheduler-credentials-nicht-gefunden)
   - [Wichtige Hinweise](#wichtige-hinweise)
     - [Löschungen werden nicht synchronisiert](#löschungen-werden-nicht-synchronisiert)
     - [Task Scheduler Integration](#task-scheduler-integration)
     - [Performance-Tipps](#performance-tipps)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
+    - [v2.1 (2025-11-25) - Secure Credentials](#v21-2025-11-25---secure-credentials)
     - [v2.0 (2025-11-24) - Production Release](#v20-2025-11-24---production-release)
     - [v1.0 (2025-11-24) - Initial Release](#v10-2025-11-24---initial-release)
 
@@ -53,6 +62,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 - **Self-Healing**: Erkennt und repariert fehlende Primärschlüssel und Indizes automatisch
 - **Parallelisierung**: Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`)
 - **Drei Sync-Strategien**: Incremental, FullMerge oder Snapshot je nach Tabellenstruktur
+- **Sichere Credentials**: Windows Credential Manager statt Klartext-Passwörter in Config-Dateien
 - **Datei-Logging**: Vollständiges Transcript aller Ausgaben in `Logs\Sync_*.log`
 - **Retry-Logik**: Automatische Wiederholung bei Verbindungsfehlern (konfigurierbar)
 - **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau
@@ -64,12 +74,13 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 ```
 SQLSync/
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract → Staging → Merge)
+├── Setup_Credentials.ps1                 # Einmalig: Passwörter sicher speichern
 ├── Manage_Config_Tables.ps1              # GUI-Tool zur Tabellenverwaltung
 ├── sql_server_setup.sql                  # SQL Server Initialisierung
 ├── test_dotnet_firebird.ps1              # Verbindungstest
-├── config.json                           # Zugangsdaten (git-ignoriert)
+├── config.json                           # Zugangsdaten ohne Passwörter (git-ignoriert)
 ├── config.sample.json                    # Konfigurationsvorlage
-├── .gitignore                            # Schützt config.json und ignoriert den Log Ordner und grundsätzliche alle *.log Dateien
+├── .gitignore                            # Schützt config.json
 └── Logs/                                 # Log-Dateien (automatisch erstellt)
     └── Sync_2025-11-24_1430.log
 ```
@@ -78,12 +89,12 @@ SQLSync/
 
 ## Voraussetzungen
 
-| Komponente | Anforderung |
-|:-----------|:------------|
-| PowerShell | Version 7.0 oder höher (zwingend für `-Parallel`) |
-| Firebird .NET Provider | Wird automatisch via NuGet installiert |
-| Firebird-Zugriff | Leserechte auf der Quelldatenbank |
-| MSSQL-Zugriff | `db_owner` oder `ddl_admin` auf der Zieldatenbank |
+| Komponente             | Anforderung                                       |
+| :--------------------- | :------------------------------------------------ |
+| PowerShell             | Version 7.0 oder höher (zwingend für `-Parallel`) |
+| Firebird .NET Provider | Wird automatisch via NuGet installiert            |
+| Firebird-Zugriff       | Leserechte auf der Quelldatenbank                 |
+| MSSQL-Zugriff          | `db_owner` oder `ddl_admin` auf der Zieldatenbank |
 
 ---
 
@@ -103,45 +114,70 @@ Die Stored Procedure nutzt **Smart Update**: Nur Zeilen mit geändertem `GESPEIC
 
 ### Schritt 2: Konfiguration anlegen
 
-Kopiere `config.sample.json` nach `config.json` und trage deine Verbindungsdaten ein:
+Kopiere `config.sample.json` nach `config.json` und trage deine Verbindungsdaten ein.
+
+**Empfohlen (ohne Passwörter – diese kommen in den Credential Manager):**
 
 ```json
 {
   "Firebird": {
     "Server": "svrerp01",
-    "Password": "dein_passwort",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
     "Port": 3050,
     "Charset": "UTF8",
-    "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
+    "DllPath": "C:\\Program Files\\PackageManagement\\NuGet\\Packages\\FirebirdSql.Data.FirebirdClient.10.3.1\\lib\\net6.0\\FirebirdSql.Data.FirebirdClient.dll"
   },
   "MSSQL": {
     "Server": "SVRSQL03",
-    "Integrated Security": true,
-    "Database": "STAGING"
+    "Database": "STAGING",
+    "Integrated Security": true
   },
   "Tables": []
 }
 ```
 
-**Hinweis zur Authentifizierung:**  
-- `Integrated Security: true` → Windows-Authentifizierung (empfohlen)  
-- `Integrated Security: false` → SQL-Authentifizierung mit `Username` und `Password`
+**Hinweis zur Authentifizierung:**
 
-### Schritt 3: Verbindung testen
+- `Integrated Security: true` → Windows-Authentifizierung (empfohlen für SQL Server)
+- `Integrated Security: false` → SQL-Authentifizierung (Credentials aus Credential Manager)
+
+### Schritt 3: Credentials sicher speichern
+
+Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential Manager zu speichern:
+
+```powershell
+.\Setup_Credentials.ps1
+```
+
+Das Skript fragt interaktiv nach:
+
+- Firebird Benutzername (z.B. `SYSDBA`)
+- Firebird Passwort
+- Optional: SQL Server Credentials (nur bei SQL-Authentifizierung)
+
+**Vorteile gegenüber Klartext in config.json:**
+
+| Aspekt      | config.json            | Credential Manager       |
+| :---------- | :--------------------- | :----------------------- |
+| Speicherung | Klartext               | AES-256 verschlüsselt    |
+| Zugriff     | Jeder mit Dateizugriff | Nur der Windows-Benutzer |
+| Git-Risiko  | Hoch                   | Keins                    |
+
+### Schritt 4: Verbindung testen
 
 ```powershell
 .\test_dotnet_firebird.ps1
 ```
 
 Erwartete Ausgabe bei Erfolg:
+
 ```
 Treiber geladen (C:\...\FirebirdSql.Data.FirebirdClient.dll)
 Verbindung zu svrerp01 erfolgreich hergestellt.
 Test erfolgreich! Gelesene ID aus BSA: 12345
 ```
 
-### Schritt 4: Tabellen auswählen
+### Schritt 5: Tabellen auswählen
 
 ```powershell
 .\Manage_Config_Tables.ps1
@@ -170,7 +206,7 @@ Das GUI zeigt alle verfügbaren Firebird-Tabellen mit Metadaten:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  1. INITIALISIERUNG                                         │
-│     Config laden, Treiber prüfen, Logging starten           │
+│     Config laden, Credentials aus Credential Manager holen  │
 ├─────────────────────────────────────────────────────────────┤
 │  2. ANALYSE (pro Tabelle, parallel)                         │
 │     Prüft Quell-Schema auf ID und GESPEICHERT               │
@@ -194,17 +230,17 @@ Das GUI zeigt alle verfügbaren Firebird-Tabellen mit Metadaten:
 │  7. SANITY CHECK                                            │
 │     Vergleicht Row-Counts (Quelle vs. Ziel)                 │
 ├─────────────────────────────────────────────────────────────┤
-│  ↻ RETRY bei Fehler (bis zu 3x mit 10s Pause)               │
+│  ↻ RETRY bei Fehler (bis zu 3x mit 10s Pause)              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Sync-Strategien
 
-| Strategie | Bedingung | Verhalten |
-|:----------|:----------|:----------|
-| **Incremental** | ID + GESPEICHERT vorhanden | Lädt nur Delta (schnellste Option) |
-| **FullMerge** | ID vorhanden, kein GESPEICHERT | Lädt alles, merged per ID |
-| **Snapshot** | Keine ID | Truncate & vollständiger Insert |
+| Strategie       | Bedingung                      | Verhalten                          |
+| :-------------- | :----------------------------- | :--------------------------------- |
+| **Incremental** | ID + GESPEICHERT vorhanden     | Lädt nur Delta (schnellste Option) |
+| **FullMerge**   | ID vorhanden, kein GESPEICHERT | Lädt alles, merged per ID          |
+| **Snapshot**    | Keine ID                       | Truncate & vollständiger Insert    |
 
 ### Beispielausgabe
 
@@ -212,6 +248,8 @@ Das GUI zeigt alle verfügbaren Firebird-Tabellen mit Metadaten:
 --------------------------------------------------------
 SQLSync STARTED at 24.11.2025 14:30:00
 --------------------------------------------------------
+[Credentials] Firebird: Credential Manager
+[Credentials] SQL Server: Windows Authentication
 Konfiguration geladen. Tabellen: 3. Retries: 3
 [BLIEF] Starte Verarbeitung...
 [BKUNDE] Starte Verarbeitung...
@@ -232,32 +270,82 @@ LOGDATEI: C:\Scripts\Logs\Sync_2025-11-24_1430.log
 
 ---
 
+## Credential Management
+
+### Einrichtung
+
+Das Setup-Skript speichert Passwörter sicher im Windows Credential Manager:
+
+```powershell
+.\Setup_Credentials.ps1
+```
+
+**Ablauf:**
+
+1. Firebird Benutzername eingeben (z.B. `SYSDBA`)
+2. Firebird Passwort eingeben (verdeckte Eingabe)
+3. Optional: SQL Server Credentials (nur bei SQL-Auth)
+
+### Funktionsweise
+
+Die Credentials werden unter folgenden Namen gespeichert:
+
+| Target             | Verwendung                    |
+| :----------------- | :---------------------------- |
+| `SQLSync_Firebird` | Firebird Datenbankzugriff     |
+| `SQLSync_MSSQL`    | SQL Server (nur bei SQL-Auth) |
+
+Das Hauptskript lädt die Credentials automatisch beim Start:
+
+```
+[Credentials] Firebird: Credential Manager        ← Sicher
+[Credentials] SQL Server: Windows Authentication  ← Empfohlen
+```
+
+### Verwaltung
+
+**Gespeicherte Credentials anzeigen:**
+
+```powershell
+cmdkey /list:SQLSync*
+```
+
+**Credential löschen:**
+
+```powershell
+cmdkey /delete:SQLSync_Firebird
+cmdkey /delete:SQLSync_MSSQL
+```
+
+**Über Windows GUI:**
+Systemsteuerung → Benutzerkonten → Anmeldeinformationsverwaltung → Windows-Anmeldeinformationen
+
+### Fallback-Verhalten
+
+Falls keine Credentials im Credential Manager gefunden werden:
+
+1. Das Skript prüft ob `Password` in `config.json` vorhanden ist
+2. Falls ja: Verwendet dieses mit **Warnung**
+3. Falls nein: Bricht mit Fehler ab
+
+```
+[Credentials] Firebird: config.json (WARNUNG: unsicher!)
+```
+
+**Empfehlung:** Nach dem Setup die Passwörter aus `config.json` entfernen.
+
+---
+
 ## Logging
 
 Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 
-| Aspekt | Details |
-|:-------|:--------|
-| **Speicherort** | `Logs\Sync_YYYY-MM-DD_HHmm.log` |
-| **Inhalt** | Komplettes Transcript (Konsole + Fehler) |
-| **Rotation** | Neue Datei pro Lauf (Datum/Uhrzeit im Namen) |
-| **Ordner** | Wird automatisch erstellt falls nicht vorhanden |
-
-**Beispiel-Log:**
-
-```
-**********************
-Windows PowerShell transcript start
-Start time: 20251124143000
-**********************
-Transcript started, output file is C:\Scripts\Logs\Sync_2025-11-24_1430.log
---------------------------------------------------------
-SQLSync STARTED at 24.11.2025 14:30:00
---------------------------------------------------------
-Konfiguration geladen. Tabellen: 3. Retries: 3
-[BLIEF] Starte Verarbeitung...
-...
-```
+| Aspekt          | Details                                         |
+| :-------------- | :---------------------------------------------- |
+| **Speicherort** | `Logs\Sync_YYYY-MM-DD_HHmm.log`                 |
+| **Inhalt**      | Komplettes Transcript (Konsole + Fehler)        |
+| **Rotation**    | Neue Datei pro Lauf (Datum/Uhrzeit im Namen)    |
+| **Ordner**      | Wird automatisch erstellt falls nicht vorhanden |
 
 **Tipp für Task Scheduler:** Das Logging funktioniert auch bei unbeaufsichtigter Ausführung. Fehler vom Vortag lassen sich so leicht nachvollziehen.
 
@@ -267,10 +355,10 @@ Konfiguration geladen. Tabellen: 3. Retries: 3
 
 Bei Verbindungsfehlern (Netzwerk-Timeout, Server nicht erreichbar) versucht das Skript automatisch erneut:
 
-| Parameter | Standard | Beschreibung |
-|:----------|:---------|:-------------|
-| `$MaxRetries` | 3 | Maximale Anzahl Wiederholungen |
-| `$RetryDelaySeconds` | 10 | Wartezeit zwischen Versuchen |
+| Parameter            | Standard | Beschreibung                   |
+| :------------------- | :------- | :----------------------------- |
+| `$MaxRetries`        | 3        | Maximale Anzahl Wiederholungen |
+| `$RetryDelaySeconds` | 10       | Wartezeit zwischen Versuchen   |
 
 **Ablauf bei Fehler:**
 
@@ -293,14 +381,14 @@ Nach Ausschöpfung aller Versuche wird der Status auf "Fehler" gesetzt und die n
 
 Im Hauptskript können folgende Parameter angepasst werden:
 
-| Variable | Standard | Beschreibung |
-|:---------|:---------|:-------------|
-| `$GlobalTimeout` | 7200 | Timeout in Sekunden für SQL-Befehle und BulkCopy |
-| `$RecreateStagingTable` | `$false` | `$true` = Staging bei jedem Lauf neu erstellen |
-| `$RunSanityCheck` | `$true` | `$false` = Überspringt COUNT-Vergleich |
-| `$MaxRetries` | 3 | Wiederholungsversuche bei Fehler |
-| `$RetryDelaySeconds` | 10 | Wartezeit zwischen Retries |
-| `-ThrottleLimit` | 4 | Anzahl paralleler Threads (Zeile 372) |
+| Variable                | Standard | Beschreibung                                     |
+| :---------------------- | :------- | :----------------------------------------------- |
+| `$GlobalTimeout`        | 7200     | Timeout in Sekunden für SQL-Befehle und BulkCopy |
+| `$RecreateStagingTable` | `$false` | `$true` = Staging bei jedem Lauf neu erstellen   |
+| `$RunSanityCheck`       | `$true`  | `$false` = Überspringt COUNT-Vergleich           |
+| `$MaxRetries`           | 3        | Wiederholungsversuche bei Fehler                 |
+| `$RetryDelaySeconds`    | 10       | Wartezeit zwischen Retries                       |
+| `-ThrottleLimit`        | 4        | Anzahl paralleler Threads                        |
 
 ### Empfehlung:
 - Täglich: Inkrementeller Sync (schnell, Updates/Inserts). `$RecreateStagingTable=$false`
@@ -310,31 +398,41 @@ Im Hauptskript können folgende Parameter angepasst werden:
 
 ## Datentyp-Mapping
 
-| Firebird (.NET Type) | SQL Server |
-|:---------------------|:-----------|
-| Int16 | SMALLINT |
-| Int32 | INT |
-| Int64 | BIGINT |
-| String (≤4000) | NVARCHAR(n) |
-| String (>4000) | NVARCHAR(MAX) |
-| DateTime | DATETIME2 |
-| TimeSpan | TIME |
-| Decimal | DECIMAL(18,4) |
-| Double | FLOAT |
-| Single | REAL |
-| Byte[] | VARBINARY(MAX) |
-| Boolean | BIT |
-| (Sonstige) | NVARCHAR(MAX) |
+| Firebird (.NET Type) | SQL Server     |
+| :------------------- | :------------- |
+| Int16                | SMALLINT       |
+| Int32                | INT            |
+| Int64                | BIGINT         |
+| String (≤4000)       | NVARCHAR(n)    |
+| String (>4000)       | NVARCHAR(MAX)  |
+| DateTime             | DATETIME2      |
+| TimeSpan             | TIME           |
+| Decimal              | DECIMAL(18,4)  |
+| Double               | FLOAT          |
+| Single               | REAL           |
+| Byte[]               | VARBINARY(MAX) |
+| Boolean              | BIT            |
+| (Sonstige)           | NVARCHAR(MAX)  |
 
 ---
 
 ## Fehlerbehebung
+
+### Keine Credentials gefunden
+
+```
+KRITISCH: Keine Firebird Credentials! Führe Setup_Credentials.ps1 aus.
+```
+
+**Lösung:** `.\Setup_Credentials.ps1` ausführen und Passwörter eingeben.
 
 ### Firebird-Treiber wird nicht gefunden
 
 ```
 KRITISCH: Firebird Treiber DLL nicht gefunden.
 ```
+
+**Lösung**: Prüfe den `DllPath` in `config.json` oder lasse das Skript die DLL automatisch suchen.
 
 **Lösung**: Prüfe den `DllPath` in `config.json` oder lasse das Skript die DLL automatisch suchen:
 ```powershell
@@ -348,8 +446,8 @@ Get-ChildItem -Path "C:\Program Files\PackageManagement\NuGet\Packages" `
 
 ### Sanity Check zeigt Differenz
 
-- **WARNUNG (+n)**: SQL Server hat mehr Zeilen → Wahrscheinlich gelöschte Datensätze in Firebird
-- **FEHLER (-n)**: Firebird hat mehr Zeilen → Sync unvollständig, prüfe Log-Datei
+- **WARNUNG (+n)**: SQL Server hat mehr Zeilen → Gelöschte Datensätze in Firebird
+- **FEHLER (-n)**: Firebird hat mehr Zeilen → Sync unvollständig
 
 ### PowerShell 7 nicht installiert
 
@@ -370,6 +468,10 @@ Prüfe die Log-Datei auf die genaue Fehlermeldung. Häufige Ursachen:
 - Netzwerk-Firewall blockiert Verbindung
 - Datenbank exklusiv gesperrt (Backup läuft?)
 
+### Task Scheduler: Credentials nicht gefunden
+
+Die Credentials sind an den Windows-Benutzer gebunden. Der Task muss unter **demselben Benutzer** laufen, der `Setup_Credentials.ps1` ausgeführt hat.
+
 ---
 
 ## Wichtige Hinweise
@@ -389,9 +491,8 @@ Für automatische Ausführung als geplante Aufgabe:
 Programm: pwsh.exe
 Argumente: -ExecutionPolicy Bypass -File "C:\Scripts\Sync_Firebird_MSSQL_AutoSchema.ps1"
 Starten in: C:\Scripts
+Ausführen als: [Benutzer der Setup_Credentials.ps1 ausgeführt hat]
 ```
-
-Die Log-Dateien ermöglichen die Fehleranalyse auch ohne Konsolenfenster.
 
 ### Performance-Tipps
 
@@ -412,6 +513,7 @@ Die Log-Dateien ermöglichen die Fehleranalyse auch ohne Konsolenfenster.
 │  Tabelle A       │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
 │  Tabelle B       │         │  (ThrottleLimit) │         │  STG_B (Staging) │
 │  Tabelle C       │         │                  │         │  STG_C (Staging) │
+│                  │         │  🔐 Cred Manager │         │                  │
 │                  │         │  ↻ Retry Loop    │         │                  │
 │                  │         │  📄 Transcript   │         │                  │
 └──────────────────┘         └────────┬─────────┘         ├──────────────────┤
@@ -427,6 +529,15 @@ Die Log-Dateien ermöglichen die Fehleranalyse auch ohne Konsolenfenster.
 ---
 
 ## Changelog
+
+### v2.1 (2025-11-25) - Secure Credentials
+
+**Neu:**
+
+- Windows Credential Manager Integration (kein Klartext mehr in config.json)
+- `Setup_Credentials.ps1` für sichere Passwort-Speicherung
+- Fallback auf config.json mit Warnung für Übergangszeit
+- Credential-Status wird beim Start angezeigt
 
 ### v2.0 (2025-11-24) - Production Release
 
