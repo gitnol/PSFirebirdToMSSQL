@@ -1,3 +1,5 @@
+#Requires -Version 7.0
+
 <#
 .SYNOPSIS
     Synchronisiert Daten inkrementell von Firebird nach MS SQL Server (Produktions-Version).
@@ -11,32 +13,69 @@
     - Datei-Logging (Logs\...)
     - Retry-Logik bei Verbindungsfehlern
     - Sichere Credential-Verwaltung via Windows Credential Manager
-    - NEU: ForceFullSync Option
+    - NEU: Config-Datei per Parameter wählbar (für getrennte Task-Scheduler Jobs)
 
-    Empfehlung:
-    - Täglich: Inkrementeller Sync (schnell, Updates/Inserts).
-    - Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder $RecreateStagingTable=$true mit Datum-Reset). 
+.PARAMETER ConfigFile
+    Optional. Der Pfad zur JSON-Konfigurationsdatei.
+    Beispiele: 
+    - "config_full.json" (sucht im Skript-Verzeichnis)
+    - "C:\Configs\WeeklySync.json"
+    Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.2 (Prod + FullSync)
+    Version: 2.3 (Prod + Param)
+    
+    CREDENTIAL SETUP:
+    Führe einmalig Setup_Credentials.ps1 aus, um Passwörter sicher zu speichern.
+    Alternativ: Passwörter in config.json (unsicher, nur für Tests).
 #>
 
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$ConfigFile
+)
 # -----------------------------------------------------------------------------
-# 1. INITIALISIERUNG & LOGGING
+# 1. INITIALISIERUNG & LOGGING & PFADE
 # -----------------------------------------------------------------------------
 $TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-# Pfade
+
 $ScriptDir = $PSScriptRoot
+
+# 1a. Konfigurationsdatei ermitteln
+if ([string]::IsNullOrWhiteSpace($ConfigFile)) {
+    # Standard: config.json im Skript-Ordner
+    $ConfigPath = Join-Path $ScriptDir "config.json"
+}
+else {
+    # Prüfung: Ist es ein absoluter Pfad oder existiert er relativ zum Current Dir?
+    if (Test-Path $ConfigFile) {
+        $ConfigPath = Convert-Path $ConfigFile
+    }
+    # Prüfung: Existiert er relativ zum Skript-Ordner? (Wichtig für Task Scheduler)
+    elseif (Test-Path (Join-Path $ScriptDir $ConfigFile)) {
+        $ConfigPath = Join-Path $ScriptDir $ConfigFile
+    }
+    else {
+        # Fallback: Wir nehmen den Pfad so an und lassen den Fehler unten werfen, wenn er fehlt
+        $ConfigPath = $ConfigFile
+    }
+}
+
+# 1b. Logging starten
 $LogDir = Join-Path $ScriptDir "Logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
 
+# Name der Config im Log-Dateinamen integrieren zur besseren Unterscheidung
 # Logging starten (Schreibt Konsole UND Datei)
-$LogFile = Join-Path $LogDir "Sync_$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
+$ConfigName = [System.IO.Path]::GetFileNameWithoutExtension($ConfigPath)
+$LogFile = Join-Path $LogDir "Sync_${ConfigName}_$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
+
 Start-Transcript -Path $LogFile -Append
 
 Write-Host "--------------------------------------------------------" -ForegroundColor Gray
 Write-Host "SQLSync STARTED at $(Get-Date)" -ForegroundColor White
+Write-Host "Config File: $ConfigPath" -ForegroundColor Cyan
 Write-Host "--------------------------------------------------------" -ForegroundColor Gray
 
 
@@ -140,7 +179,7 @@ $RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck"
 $MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 } # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
 $RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 } # Wartezeit zwischen Versuchen (Standard: 10)
 
-if($GlobalTimeout -le 0) {
+if ($GlobalTimeout -le 0) {
     Write-Error "KRITISCH: GlobalTimeout muss größer als 0 sein."
     Stop-Transcript
     exit 99
@@ -151,7 +190,8 @@ if ($RecreateStagingTable) {
 }
 if ($RunSanityCheck) {
     Write-Host "INFO: Sanity Check ist AKTIViert. Nach dem Sync wird die Datenkonsistenz geprüft." -ForegroundColor Cyan
-} else {
+}
+else {
     Write-Host "INFO: Sanity Check ist DEAKTIViert." -ForegroundColor Yellow
 }
 
