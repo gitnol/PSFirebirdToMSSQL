@@ -31,13 +31,6 @@
 # -----------------------------------------------------------------------------
 $TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-# Konfiguration
-$GlobalTimeout = 7200 
-$RecreateStagingTable = $false 
-$RunSanityCheck = $true
-$MaxRetries = 3          # Wie oft soll bei Fehler wiederholt werden?
-$RetryDelaySeconds = 10  # Wartezeit zwischen Versuchen
-
 # Pfade
 $ScriptDir = $PSScriptRoot
 $LogDir = Join-Path $ScriptDir "Logs"
@@ -138,7 +131,7 @@ try {
 catch {
     Write-Error "KRITISCH: config.json ist kein gültiges JSON."
     Stop-Transcript
-    exit 1
+    exit 2
 }
 
 # -----------------------------------------------------------------------------
@@ -149,7 +142,7 @@ $ConfigPath = Join-Path $ScriptDir "config.json"
 if (-not (Test-Path $ConfigPath)) { 
     Write-Error "KRITISCH: config.json fehlt!"
     Stop-Transcript
-    exit 1 
+    exit 3
 }
 try {
     $Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
@@ -157,8 +150,15 @@ try {
 catch {
     Write-Error "KRITISCH: config.json ist kein gültiges JSON."
     Stop-Transcript
-    exit 1
+    exit 4
 }
+
+# Generelle Konfiguration
+$GlobalTimeout = $Config.General.$GlobalTimeout # Standard: 7200 
+$RecreateStagingTable = $Config.General.$RecreateStagingTable # Standard: $false
+$RunSanityCheck = $Config.General.$RunSanityCheck # Standard: $true
+$MaxRetries = $Config.General.$MaxRetries         # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
+$RetryDelaySeconds = $Config.General.$RetryDelaySeconds  # Wartezeit zwischen Versuchen (Standard: 10)
 
 # --- FIREBIRD CREDENTIALS ---
 $FBservername = $Config.Firebird.Server
@@ -187,7 +187,7 @@ elseif ($Config.Firebird.Password) {
 else {
     Write-Error "KRITISCH: Keine Firebird Credentials! Führe Setup_Credentials.ps1 aus."
     Stop-Transcript
-    exit 1
+    exit 5
 }
 
 # --- MSSQL CREDENTIALS ---
@@ -215,7 +215,7 @@ else {
     else {
         Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."
         Stop-Transcript
-        exit 1
+        exit 6
     }
 }
 
@@ -233,7 +233,7 @@ if (-not (Test-Path $DllPath)) {
 if (-not $DllPath) {
     Write-Error "KRITISCH: Firebird Treiber DLL nicht gefunden."
     Stop-Transcript
-    exit 1
+    exit 7
 }
 Add-Type -Path $DllPath
 
@@ -250,7 +250,7 @@ $Tabellen = $Config.Tables
 if (-not $Tabellen -or $Tabellen.Count -eq 0) { 
     Write-Error "Keine Tabellen definiert."
     Stop-Transcript
-    exit 
+    exit 8
 }
 
 Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRetries" -ForegroundColor Cyan
