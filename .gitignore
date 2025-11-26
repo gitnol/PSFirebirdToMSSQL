@@ -1,4 +1,4 @@
-config.json
-config.json*
+config*
+!config.sample.json
 Logs
 **/*.log
