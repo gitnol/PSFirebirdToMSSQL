@@ -154,11 +154,11 @@ catch {
 }
 
 # Generelle Konfiguration
-$GlobalTimeout = $Config.General.$GlobalTimeout # Standard: 7200 
-$RecreateStagingTable = $Config.General.$RecreateStagingTable # Standard: $false
-$RunSanityCheck = $Config.General.$RunSanityCheck # Standard: $true
-$MaxRetries = $Config.General.$MaxRetries         # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
-$RetryDelaySeconds = $Config.General.$RetryDelaySeconds  # Wartezeit zwischen Versuchen (Standard: 10)
+$GlobalTimeout = $Config.General.GlobalTimeout # Standard: 7200 
+$RecreateStagingTable = $Config.General.RecreateStagingTable # Standard: $false
+$RunSanityCheck = $Config.General.RunSanityCheck # Standard: $true
+$MaxRetries = $Config.General.MaxRetries         # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
+$RetryDelaySeconds = $Config.General.RetryDelaySeconds  # Wartezeit zwischen Versuchen (Standard: 10)
 
 # --- FIREBIRD CREDENTIALS ---
 $FBservername = $Config.Firebird.Server
