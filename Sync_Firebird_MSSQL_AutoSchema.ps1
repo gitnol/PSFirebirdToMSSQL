@@ -1,5 +1,3 @@
-#Requires -Version 7.0
-
 <#
 .SYNOPSIS
     Synchronisiert Daten inkrementell von Firebird nach MS SQL Server (Produktions-Version).
@@ -13,17 +11,14 @@
     - Datei-Logging (Logs\...)
     - Retry-Logik bei Verbindungsfehlern
     - Sichere Credential-Verwaltung via Windows Credential Manager
+    - NEU: ForceFullSync Option
 
     Empfehlung:
     - Täglich: Inkrementeller Sync (schnell, Updates/Inserts).
     - Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal voll lädt (Snapshot oder $RecreateStagingTable=$true mit Datum-Reset). 
 
 .NOTES
-    Version: 2.1 (Prod)
-    
-    CREDENTIAL SETUP:
-    Führe einmalig Setup_Credentials.ps1 aus, um Passwörter sicher zu speichern.
-    Alternativ: Passwörter in config.json (unsicher, nur für Tests).
+    Version: 2.2 (Prod + FullSync)
 #>
 
 # -----------------------------------------------------------------------------
@@ -138,27 +133,48 @@ catch {
 # 3. CONFIG & CREDENTIALS LADEN
 # -----------------------------------------------------------------------------
 
-$ConfigPath = Join-Path $ScriptDir "config.json"
-if (-not (Test-Path $ConfigPath)) { 
-    Write-Error "KRITISCH: config.json fehlt!"
+# Generelle Konfiguration
+$GlobalTimeout = if ($Config.General.PSObject.Properties.Match("GlobalTimeout").Count) { $Config.General.GlobalTimeout } else { 7200 } # Standard: 7200 Sekunden (2 Stunden)
+$RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateStagingTable").Count) { $Config.General.RecreateStagingTable } else { $false } # Standard: $false
+$RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true } # Standard: $true
+$MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 } # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
+$RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 } # Wartezeit zwischen Versuchen (Standard: 10)
+
+if($GlobalTimeout -le 0) {
+    Write-Error "KRITISCH: GlobalTimeout muss größer als 0 sein."
     Stop-Transcript
-    exit 3
-}
-try {
-    $Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
-}
-catch {
-    Write-Error "KRITISCH: config.json ist kein gültiges JSON."
-    Stop-Transcript
-    exit 4
+    exit 99
 }
 
-# Generelle Konfiguration
-$GlobalTimeout = $Config.General.GlobalTimeout # Standard: 7200 
-$RecreateStagingTable = $Config.General.RecreateStagingTable # Standard: $false
-$RunSanityCheck = $Config.General.RunSanityCheck # Standard: $true
-$MaxRetries = $Config.General.MaxRetries         # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
-$RetryDelaySeconds = $Config.General.RetryDelaySeconds  # Wartezeit zwischen Versuchen (Standard: 10)
+if ($RecreateStagingTable) {
+    Write-Host "WARNUNG: RecreateStagingTable ist AKTIViert. Staging-Tabellen werden vor jedem Sync neu erstellt!" -ForegroundColor Yellow
+}
+if ($RunSanityCheck) {
+    Write-Host "INFO: Sanity Check ist AKTIViert. Nach dem Sync wird die Datenkonsistenz geprüft." -ForegroundColor Cyan
+} else {
+    Write-Host "INFO: Sanity Check ist DEAKTIViert." -ForegroundColor Yellow
+}
+
+if ($MaxRetries -lt 0) {
+    Write-Error "KRITISCH: MaxRetries muss 0 oder größer sein."
+    Stop-Transcript
+    exit 98
+}
+
+if ($RetryDelaySeconds -lt 0) {
+    Write-Error "KRITISCH: RetryDelaySeconds muss 0 oder größer sein."
+    Stop-Transcript
+    exit 97
+}
+
+
+# NEU: Erzwinge Full Sync ( ignoriert Zeitstempel )
+# Prüfen ob Eigenschaft existiert, sonst false
+$ForceFullSync = if ($Config.General.PSObject.Properties.Match("ForceFullSync").Count) { $Config.General.ForceFullSync } else { $false }
+
+if ($ForceFullSync) {
+    Write-Host "WARNUNG: ForceFullSync ist AKTIViert. Es werden ALLE Daten neu geladen!" -ForegroundColor Magenta
+}
 
 # --- FIREBIRD CREDENTIALS ---
 $FBservername = $Config.Firebird.Server
@@ -173,10 +189,6 @@ if ($FbCred) {
     $FBuser = $FbCred.Username
     $FBpassword = $FbCred.Password
     Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green
-    if ($Config.Firebird.Password -or $Config.MSSQL.Password) {
-        Write-Host "WARNUNG: Passwörter in config.json werden ignoriert, da Credential Manager verwendet wird." -ForegroundColor Yellow
-        Write-Host "WARNUNG: Es wird empfohlen, die Passwörter in der config.json zu entfernen." -ForegroundColor Yellow
-    }
 }
 elseif ($Config.Firebird.Password) {
     # Fallback auf config.json
@@ -265,6 +277,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     $FbCS = $using:FirebirdConnString
     $SqlCS = $using:SqlConnString
     $ForceRecreate = $using:RecreateStagingTable
+    $ForceFull = $using:ForceFullSync
     $Timeout = $using:GlobalTimeout
     $DoSanity = $using:RunSanityCheck
     $Retries = $using:MaxRetries
@@ -315,6 +328,12 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             $SyncStrategy = "Incremental"
             if (-not $HasID) { $SyncStrategy = "Snapshot" }
             elseif (-not $HasDate) { $SyncStrategy = "FullMerge" }
+            
+            # FORCE FULL SYNC LOGIK
+            if ($ForceFull -and $SyncStrategy -eq "Incremental") {
+                $SyncStrategy = "FullMerge (Forced)"
+            }
+            
             $Strategy = $SyncStrategy
 
             # B: STAGING
@@ -363,10 +382,12 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 $CmdMax.CommandTimeout = $Timeout
                 $CmdMax.CommandText = "SELECT ISNULL(MAX(GESPEICHERT), '1900-01-01') FROM $Tabelle" 
                 try { $LastSyncDate = [DateTime]$CmdMax.ExecuteScalar() } catch { $LastSyncDate = [DateTime]"1900-01-01" }
+                
                 $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"" WHERE ""GESPEICHERT"" > @LastDate"
                 $FbCmdData.Parameters.Add("@LastDate", $LastSyncDate) | Out-Null
             }
             else {
+                # FullMerge, FullMerge (Forced), Snapshot -> Alles holen
                 $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"""
             }
             $ReaderData = $FbCmdData.ExecuteReader()
@@ -459,10 +480,39 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                     [void]$FinalCmd.ExecuteNonQuery()
                 }
                 else {
-                    $MergeCmd = $SqlConn.CreateCommand()
-                    $MergeCmd.CommandTimeout = $Timeout
-                    $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TableName = '$Tabelle'"
-                    [void]$MergeCmd.ExecuteNonQuery()
+                    # HIER: Normaler Merge ODER Forced Full Merge
+                    # Wenn FullMerge (Forced), dann müssen wir aufpassen:
+                    # Das Standard-Merge macht KEIN DELETE von Datensätzen, die in Source fehlen (standardmäßig).
+                    # Wenn wir "ForceFull" wollen, um alles glattzuziehen inkl. Löschungen, müssten wir eigentlich
+                    # TRUNCATE + INSERT machen oder DELETE WHEN NOT MATCHED.
+                    # Aber: Deine Anforderung war "Abgleich machen, dass Sanity OK gibt".
+                    # Wenn wir einfach nur alle Daten nochmal drüberbügeln (UPDATE/INSERT), bleiben Leichen bestehen.
+                    
+                    # Entscheidung: Bei ForceFullSync machen wir TRUNCATE + FULL INSERT
+                    # Das ist die sicherste Methode für "exakt gleich".
+                    
+                    if ($ForceFull) {
+                        $FinalCmd = $SqlConn.CreateCommand()
+                        $FinalCmd.CommandTimeout = $Timeout
+                        # Wichtig: TRUNCATE ist schnell und sauber.
+                        $FinalCmd.CommandText = "TRUNCATE TABLE $Tabelle;" 
+                        [void]$FinalCmd.ExecuteNonQuery()
+                        
+                        # Dann generischer Merge (der jetzt nur INSERTS macht, weil Tabelle leer)
+                        $MergeCmd = $SqlConn.CreateCommand()
+                        $MergeCmd.CommandTimeout = $Timeout
+                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TableName = '$Tabelle'"
+                        [void]$MergeCmd.ExecuteNonQuery()
+                        
+                        $Message += "(Reset & Reload) "
+                    }
+                    else {
+                        # Standard Inkrementell
+                        $MergeCmd = $SqlConn.CreateCommand()
+                        $MergeCmd.CommandTimeout = $Timeout
+                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TableName = '$Tabelle'"
+                        [void]$MergeCmd.ExecuteNonQuery()
+                    }
                 }
             }
 

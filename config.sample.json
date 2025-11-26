@@ -2,6 +2,7 @@
     "General": {
         "GlobalTimeout": 7200,
         "RecreateStagingTable": false,
+        "ForceFullLoad": false,
         "RunSanityCheck": true,
         "MaxRetries": 3,
         "RetryDelaySeconds": 10
