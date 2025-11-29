@@ -21,7 +21,7 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.5 (Prod + Fixes)
+    Version: 2.6 (Prod + Fixes + Clean Code)
 #>
 
 param(
@@ -48,7 +48,7 @@ else {
         $ConfigPath = Join-Path $ScriptDir $ConfigFile
     }
     else {
-        $ConfigPath = $ConfigFile # Fallback für Fehler unten
+        $ConfigPath = $ConfigFile
     }
 }
 
@@ -68,7 +68,7 @@ Write-Host "--------------------------------------------------------" -Foregroun
 
 
 # -----------------------------------------------------------------------------
-# 2. CREDENTIAL MANAGER FUNKTION (ROBUST & KORRIGIERT)
+# 2. CREDENTIAL MANAGER FUNKTION (ROBUST)
 # -----------------------------------------------------------------------------
 function Get-StoredCredential {
     param([Parameter(Mandatory)][string]$Target)
@@ -189,7 +189,6 @@ else {
 # -----------------------------------------------------------------------------
 # 4. TREIBER & CONNECTION STRINGS
 # -----------------------------------------------------------------------------
-# ... (Treiber Logik) ...
 if (-not (Get-Package FirebirdSql.Data.FirebirdClient -ErrorAction SilentlyContinue)) { Install-Package FirebirdSql.Data.FirebirdClient -Force -Confirm:$false | Out-Null }
 if (-not (Test-Path $DllPath)) {
     $PotentialDll = Join-Path $ScriptDir $DllPath
@@ -286,18 +285,38 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 $CreateSql = "IF OBJECT_ID('$StagingTableName') IS NOT NULL DROP TABLE $StagingTableName; CREATE TABLE $StagingTableName ("
                 $Cols = @()
                 foreach ($Row in $SchemaTable) {
-                    $ColName = $Row.ColumnName; $DotNetType = $Row.DataType; $Size = $Row.ColumnSize
+                    $ColName = $Row.ColumnName
+                    $DotNetType = $Row.DataType
+                    $Size = $Row.ColumnSize
+                    $AllowDBNull = $Row.AllowDBNull
+                    
+                    # Sauber formatierter Switch
                     $SqlType = switch ($DotNetType.Name) {
-                        "Int16" { "SMALLINT" } "Int32" { "INT" } "Int64" { "BIGINT" }
+                        "Int16" { "SMALLINT" }
+                        "Int32" { "INT" }
+                        "Int64" { "BIGINT" }
                         "String" { if ($Size -gt 0 -and $Size -le 4000) { "NVARCHAR($Size)" } else { "NVARCHAR(MAX)" } }
-                        "DateTime" { "DATETIME2" } "TimeSpan" { "TIME" } "Decimal" { "DECIMAL(18,4)" }
-                        "Double" { "FLOAT" } "Single" { "REAL" } "Byte[]" { "VARBINARY(MAX)" } "Boolean" { "BIT" }
+                        "DateTime" { "DATETIME2" }
+                        "TimeSpan" { "TIME" }
+                        "Decimal" { "DECIMAL(18,4)" }
+                        "Double" { "FLOAT" }
+                        "Single" { "REAL" }
+                        "Byte[]" { "VARBINARY(MAX)" }
+                        "Boolean" { "BIT" }
                         Default { "NVARCHAR(MAX)" }
                     }
-                    if ($ColName -eq "ID") { $SqlType += " NOT NULL" }
+                    
+                    # WICHTIG: NOT NULL Prüfung
+                    # 1. Wenn Quelle NOT NULL ist, übernehmen wir das.
+                    # 2. Wenn es die ID Spalte ist, erzwingen wir NOT NULL (für PK).
+                    if (-not $AllowDBNull -or $ColName -eq "ID") {
+                        $SqlType += " NOT NULL"
+                    }
+                    
                     $Cols += "[$ColName] $SqlType"
                 }
                 $CreateSql += [string]::Join(", ", $Cols) + ");"
+                
                 $CmdCreate = $SqlConn.CreateCommand(); $CmdCreate.CommandTimeout = $Timeout; $CmdCreate.CommandText = $CreateSql
                 [void]$CmdCreate.ExecuteNonQuery()
             }
@@ -402,7 +421,6 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                         $FinalCmd.CommandText = "TRUNCATE TABLE $TargetTableName;" 
                         [void]$FinalCmd.ExecuteNonQuery()
                         
-                        # NEU: Aufruf der SP mit expliziten Tabellennamen
                         $MergeCmd = $SqlConn.CreateCommand(); $MergeCmd.CommandTimeout = $Timeout
                         $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TargetTableName = '$TargetTableName', @StagingTableName = '$StagingTableName'"
                         [void]$MergeCmd.ExecuteNonQuery()
