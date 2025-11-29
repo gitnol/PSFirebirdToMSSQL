@@ -20,7 +20,9 @@
         "Integrated Security": true,
         "Username": "satest",
         "Password": "123456",
-        "Database": "STAGING"
+        "Database": "STAGING",
+        "Prefix": "FB_",
+        "Suffix": ""
     },
     "Tables": [
         "BLIEF",

@@ -13,52 +13,42 @@
     - Datei-Logging (Logs\...)
     - Retry-Logik bei Verbindungsfehlern
     - Sichere Credential-Verwaltung via Windows Credential Manager
-    - NEU: Config-Datei per Parameter wählbar (für getrennte Task-Scheduler Jobs)
+    - NEU: Config-Datei per Parameter wählbar
+    - NEU: Unterstützung für Prefix/Suffix bei Zieltabellen
 
 .PARAMETER ConfigFile
     Optional. Der Pfad zur JSON-Konfigurationsdatei.
-    Beispiele: 
-    - "config_full.json" (sucht im Skript-Verzeichnis)
-    - "C:\Configs\WeeklySync.json"
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.3 (Prod + Param)
-    
-    CREDENTIAL SETUP:
-    Führe einmalig Setup_Credentials.ps1 aus, um Passwörter sicher zu speichern.
-    Alternativ: Passwörter in config.json (unsicher, nur für Tests).
+    Version: 2.5 (Prod + Fixes)
 #>
 
 param(
     [Parameter(Mandatory = $false)]
     [string]$ConfigFile
 )
+
 # -----------------------------------------------------------------------------
 # 1. INITIALISIERUNG & LOGGING & PFADE
 # -----------------------------------------------------------------------------
 $TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-
 $ScriptDir = $PSScriptRoot
 
 # 1a. Konfigurationsdatei ermitteln
 if ([string]::IsNullOrWhiteSpace($ConfigFile)) {
-    # Standard: config.json im Skript-Ordner
     $ConfigPath = Join-Path $ScriptDir "config.json"
 }
 else {
-    # Prüfung: Ist es ein absoluter Pfad oder existiert er relativ zum Current Dir?
     if (Test-Path $ConfigFile) {
         $ConfigPath = Convert-Path $ConfigFile
     }
-    # Prüfung: Existiert er relativ zum Skript-Ordner? (Wichtig für Task Scheduler)
     elseif (Test-Path (Join-Path $ScriptDir $ConfigFile)) {
         $ConfigPath = Join-Path $ScriptDir $ConfigFile
     }
     else {
-        # Fallback: Wir nehmen den Pfad so an und lassen den Fehler unten werfen, wenn er fehlt
-        $ConfigPath = $ConfigFile
+        $ConfigPath = $ConfigFile # Fallback für Fehler unten
     }
 }
 
@@ -66,8 +56,6 @@ else {
 $LogDir = Join-Path $ScriptDir "Logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
 
-# Name der Config im Log-Dateinamen integrieren zur besseren Unterscheidung
-# Logging starten (Schreibt Konsole UND Datei)
 $ConfigName = [System.IO.Path]::GetFileNameWithoutExtension($ConfigPath)
 $LogFile = Join-Path $LogDir "Sync_${ConfigName}_$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
 
@@ -80,31 +68,22 @@ Write-Host "--------------------------------------------------------" -Foregroun
 
 
 # -----------------------------------------------------------------------------
-# 2. CREDENTIAL MANAGER FUNKTION
+# 2. CREDENTIAL MANAGER FUNKTION (ROBUST & KORRIGIERT)
 # -----------------------------------------------------------------------------
-
 function Get-StoredCredential {
-    <#
-    .SYNOPSIS
-        Liest Credentials aus dem Windows Credential Manager.
-    .PARAMETER Target
-        Name des gespeicherten Credentials (z.B. "SQLSync_Firebird")
-    .OUTPUTS
-        PSCustomObject mit Username und Password, oder $null wenn nicht gefunden.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$Target
-    )
+    param([Parameter(Mandatory)][string]$Target)
     
-    # P/Invoke für Windows Credential API
-    Add-Type -Namespace "CredManager" -Name "Util" -MemberDefinition @'
+    # Prüfen ob Typ schon existiert (verhindert Fehler bei erneutem Laden)
+    if (-not ('CredManager.Util' -as [type])) {
+        $Source = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace CredManager {
+    public static class Util {
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        public static extern bool CredRead(
-            string target,
-            int type,
-            int reserved,
-            out IntPtr credential);
+        public static extern bool CredRead(string target, int type, int reserved, out IntPtr credential);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         public static extern void CredFree(IntPtr credential);
@@ -124,186 +103,107 @@ function Get-StoredCredential {
             public string TargetAlias;
             public string UserName;
         }
-'@ -ErrorAction SilentlyContinue
+    }
+}
+'@
+        Add-Type -TypeDefinition $Source -Language CSharp
+    }
 
     $CredPtr = [IntPtr]::Zero
     $Success = [CredManager.Util]::CredRead($Target, 1, 0, [ref]$CredPtr)
     
-    if (-not $Success) {
-        return $null
-    }
+    if (-not $Success) { return $null }
     
     try {
         $Cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure($CredPtr, [Type][CredManager.Util+CREDENTIAL])
-        
         $Password = ""
         if ($Cred.CredentialBlobSize -gt 0) {
             $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($Cred.CredentialBlob, $Cred.CredentialBlobSize / 2)
         }
-        
-        return [PSCustomObject]@{
-            Username = $Cred.UserName
-            Password = $Password
-        }
+        return [PSCustomObject]@{ Username = $Cred.UserName; Password = $Password }
     }
-    finally {
-        [CredManager.Util]::CredFree($CredPtr)
-    }
-}
-
-
-# Config laden
-$ConfigPath = Join-Path $ScriptDir "config.json"
-if (-not (Test-Path $ConfigPath)) { 
-    Write-Error "KRITISCH: config.json fehlt!"
-    Stop-Transcript
-    exit 1 
-}
-try {
-    $Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
-}
-catch {
-    Write-Error "KRITISCH: config.json ist kein gültiges JSON."
-    Stop-Transcript
-    exit 2
+    finally { [CredManager.Util]::CredFree($CredPtr) }
 }
 
 # -----------------------------------------------------------------------------
 # 3. CONFIG & CREDENTIALS LADEN
 # -----------------------------------------------------------------------------
 
+if (-not (Test-Path $ConfigPath)) { 
+    Write-Error "KRITISCH: Konfigurationsdatei '$ConfigPath' nicht gefunden!"
+    Stop-Transcript; exit 1 
+}
+try {
+    $Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+}
+catch {
+    Write-Error "KRITISCH: '$ConfigPath' ist kein gültiges JSON."
+    Stop-Transcript; exit 2
+}
+
 # Generelle Konfiguration
-$GlobalTimeout = if ($Config.General.PSObject.Properties.Match("GlobalTimeout").Count) { $Config.General.GlobalTimeout } else { 7200 } # Standard: 7200 Sekunden (2 Stunden)
-$RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateStagingTable").Count) { $Config.General.RecreateStagingTable } else { $false } # Standard: $false
-$RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true } # Standard: $true
-$MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 } # Wie oft soll bei Fehler wiederholt werden? (Standard: 3)
-$RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 } # Wartezeit zwischen Versuchen (Standard: 10)
+$GlobalTimeout = if ($Config.General.PSObject.Properties.Match("GlobalTimeout").Count) { $Config.General.GlobalTimeout } else { 7200 }
+$RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateStagingTable").Count) { $Config.General.RecreateStagingTable } else { $false }
+$RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true }
+$MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 }
+$RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 }
 
-if ($GlobalTimeout -le 0) {
-    Write-Error "KRITISCH: GlobalTimeout muss größer als 0 sein."
-    Stop-Transcript
-    exit 99
+# --- NEU: Prefix und Suffix auslesen ---
+$MSSQLPrefix = if ($Config.MSSQL.PSObject.Properties.Match("Prefix").Count) { $Config.MSSQL.Prefix } else { "" }
+$MSSQLSuffix = if ($Config.MSSQL.PSObject.Properties.Match("Suffix").Count) { $Config.MSSQL.Suffix } else { "" }
+
+# Validierung
+if ($GlobalTimeout -le 0) { Write-Error "KRITISCH: GlobalTimeout muss > 0 sein."; Stop-Transcript; exit 99 }
+if ($MSSQLPrefix -ne "" -or $MSSQLSuffix -ne "") {
+    Write-Host "INFO: MSSQL Zieltabellen werden angepasst: '$MSSQLPrefix' + [Name] + '$MSSQLSuffix'" -ForegroundColor Cyan
 }
 
-if ($RecreateStagingTable) {
-    Write-Host "WARNUNG: RecreateStagingTable ist AKTIViert. Staging-Tabellen werden vor jedem Sync neu erstellt!" -ForegroundColor Yellow
-}
-if ($RunSanityCheck) {
-    Write-Host "INFO: Sanity Check ist AKTIViert. Nach dem Sync wird die Datenkonsistenz geprüft." -ForegroundColor Cyan
-}
-else {
-    Write-Host "INFO: Sanity Check ist DEAKTIViert." -ForegroundColor Yellow
-}
-
-if ($MaxRetries -lt 0) {
-    Write-Error "KRITISCH: MaxRetries muss 0 oder größer sein."
-    Stop-Transcript
-    exit 98
-}
-
-if ($RetryDelaySeconds -lt 0) {
-    Write-Error "KRITISCH: RetryDelaySeconds muss 0 oder größer sein."
-    Stop-Transcript
-    exit 97
-}
-
-
-# NEU: Erzwinge Full Sync ( ignoriert Zeitstempel )
-# Prüfen ob Eigenschaft existiert, sonst false
+# Force Full Sync Check
 $ForceFullSync = if ($Config.General.PSObject.Properties.Match("ForceFullSync").Count) { $Config.General.ForceFullSync } else { $false }
+if ($ForceFullSync) { Write-Host "WARNUNG: ForceFullSync ist AKTIViert. Es werden ALLE Daten neu geladen!" -ForegroundColor Magenta }
 
-if ($ForceFullSync) {
-    Write-Host "WARNUNG: ForceFullSync ist AKTIViert. Es werden ALLE Daten neu geladen!" -ForegroundColor Magenta
-}
-
-# --- FIREBIRD CREDENTIALS ---
+# --- CREDENTIALS (FIREBIRD & MSSQL) ---
 $FBservername = $Config.Firebird.Server
 $FBdatabase = $Config.Firebird.Database
 $FBport = $Config.Firebird.Port
 $FBcharset = $Config.Firebird.Charset
 $DllPath = $Config.Firebird.DllPath
 
-# Versuche Credentials aus Credential Manager zu laden
 $FbCred = Get-StoredCredential -Target "SQLSync_Firebird"
-if ($FbCred) {
-    $FBuser = $FbCred.Username
-    $FBpassword = $FbCred.Password
-    Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green
-}
-elseif ($Config.Firebird.Password) {
-    # Fallback auf config.json
-    $FBuser = if ($Config.Firebird.User) { $Config.Firebird.User } else { "SYSDBA" }
-    $FBpassword = $Config.Firebird.Password
-    Write-Host "[Credentials] Firebird: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow
-}
-else {
-    Write-Error "KRITISCH: Keine Firebird Credentials! Führe Setup_Credentials.ps1 aus."
-    Stop-Transcript
-    exit 5
-}
+if ($FbCred) { $FBuser = $FbCred.Username; $FBpassword = $FbCred.Password; Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green }
+elseif ($Config.Firebird.Password) { $FBuser = if ($Config.Firebird.User) { $Config.Firebird.User } else { "SYSDBA" }; $FBpassword = $Config.Firebird.Password; Write-Host "[Credentials] Firebird: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow }
+else { Write-Error "KRITISCH: Keine Firebird Credentials! Führe Setup_Credentials.ps1 aus."; Stop-Transcript; exit 5 }
 
-# --- MSSQL CREDENTIALS ---
 $MSSQLservername = $Config.MSSQL.Server
 $MSSQLdatabase = $Config.MSSQL.Database
 $MSSQLIntSec = $Config.MSSQL."Integrated Security"
 
-if ($MSSQLIntSec) {
-    Write-Host "[Credentials] SQL Server: Windows Authentication" -ForegroundColor Green
-    $MSSQLUser = $null
-    $MSSQLPass = $null
-}
+if ($MSSQLIntSec) { Write-Host "[Credentials] SQL Server: Windows Authentication" -ForegroundColor Green; $MSSQLUser = $null; $MSSQLPass = $null }
 else {
     $SqlCred = Get-StoredCredential -Target "SQLSync_MSSQL"
-    if ($SqlCred) {
-        $MSSQLUser = $SqlCred.Username
-        $MSSQLPass = $SqlCred.Password
-        Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green
-    }
-    elseif ($Config.MSSQL.Password) {
-        $MSSQLUser = $Config.MSSQL.Username
-        $MSSQLPass = $Config.MSSQL.Password
-        Write-Host "[Credentials] SQL Server: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow
-    }
-    else {
-        Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."
-        Stop-Transcript
-        exit 6
-    }
+    if ($SqlCred) { $MSSQLUser = $SqlCred.Username; $MSSQLPass = $SqlCred.Password; Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green }
+    elseif ($Config.MSSQL.Password) { $MSSQLUser = $Config.MSSQL.Username; $MSSQLPass = $Config.MSSQL.Password; Write-Host "[Credentials] SQL Server: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow }
+    else { Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."; Stop-Transcript; exit 6 }
 }
 
 # -----------------------------------------------------------------------------
 # 4. TREIBER & CONNECTION STRINGS
 # -----------------------------------------------------------------------------
-
-# Treiber laden
-if (-not (Get-Package FirebirdSql.Data.FirebirdClient -ErrorAction SilentlyContinue)) {
-    Install-Package FirebirdSql.Data.FirebirdClient -Force -Confirm:$false | Out-Null
-}
+# ... (Treiber Logik) ...
+if (-not (Get-Package FirebirdSql.Data.FirebirdClient -ErrorAction SilentlyContinue)) { Install-Package FirebirdSql.Data.FirebirdClient -Force -Confirm:$false | Out-Null }
 if (-not (Test-Path $DllPath)) {
-    $DllPath = (Get-ChildItem -Path "C:\Program Files\PackageManagement\NuGet\Packages" -Filter "FirebirdSql.Data.FirebirdClient.dll" -Recurse | Select-Object -First 1).FullName
+    $PotentialDll = Join-Path $ScriptDir $DllPath
+    if (Test-Path $PotentialDll) { $DllPath = $PotentialDll } else { $DllPath = (Get-ChildItem -Path "C:\Program Files\PackageManagement\NuGet\Packages" -Filter "FirebirdSql.Data.FirebirdClient.dll" -Recurse | Select-Object -First 1).FullName }
 }
-if (-not $DllPath) {
-    Write-Error "KRITISCH: Firebird Treiber DLL nicht gefunden."
-    Stop-Transcript
-    exit 7
-}
+if (-not $DllPath -or -not (Test-Path $DllPath)) { Write-Error "KRITISCH: Firebird Treiber DLL nicht gefunden."; Stop-Transcript; exit 7 }
 Add-Type -Path $DllPath
 
-# Connection Strings
 $FirebirdConnString = "User=$($FBuser);Password=$($FBpassword);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);"
-if ($MSSQLIntSec) {
-    $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;"
-}
-else {
-    $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id=$MSSQLUser;Password=$MSSQLPass;"
-}
+if ($MSSQLIntSec) { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;" }
+else { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id=$MSSQLUser;Password=$MSSQLPass;" }
 
 $Tabellen = $Config.Tables
-if (-not $Tabellen -or $Tabellen.Count -eq 0) { 
-    Write-Error "Keine Tabellen definiert."
-    Stop-Transcript
-    exit 8
-}
+if (-not $Tabellen -or $Tabellen.Count -eq 0) { Write-Error "Keine Tabellen definiert."; Stop-Transcript; exit 8 }
 
 Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRetries" -ForegroundColor Cyan
 
@@ -313,6 +213,7 @@ Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRe
 
 $Results = $Tabellen | ForEach-Object -Parallel {
     $Tabelle = $_
+    
     # Variablen in Scope holen
     $FbCS = $using:FirebirdConnString
     $SqlCS = $using:SqlConnString
@@ -322,6 +223,13 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     $DoSanity = $using:RunSanityCheck
     $Retries = $using:MaxRetries
     $Delay = $using:RetryDelaySeconds
+    
+    # NEU: Prefix/Suffix in den Scope holen
+    $Prefix = $using:MSSQLPrefix
+    $Suffix = $using:MSSQLSuffix
+    
+    # NEU: Zieltabelle berechnen (Firebird-Name + Prefix/Suffix)
+    $TargetTableName = "${Prefix}${Tabelle}${Suffix}"
     
     $TableStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $Status = "Offen"
@@ -343,18 +251,14 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             Start-Sleep -Seconds $Delay
         }
         else {
-            Write-Host "[$Tabelle] Starte Verarbeitung..." -ForegroundColor DarkGray
+            Write-Host "[$Tabelle] Starte Verarbeitung -> Ziel: $TargetTableName" -ForegroundColor DarkGray
         }
 
         try {
-            # VERBINDUNGEN AUFBAUEN
-            $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($FbCS)
-            $FbConn.Open()
-            
-            $SqlConn = New-Object System.Data.SqlClient.SqlConnection($SqlCS)
-            $SqlConn.Open()
+            $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($FbCS); $FbConn.Open()
+            $SqlConn = New-Object System.Data.SqlClient.SqlConnection($SqlCS); $SqlConn.Open()
 
-            # A: ANALYSE
+            # A: ANALYSE (Quelle = $Tabelle)
             $FbCmdSchema = $FbConn.CreateCommand()
             $FbCmdSchema.CommandText = "SELECT FIRST 1 * FROM ""$Tabelle"""
             $ReaderSchema = $FbCmdSchema.ExecuteReader([System.Data.CommandBehavior]::SchemaOnly)
@@ -369,17 +273,12 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             if (-not $HasID) { $SyncStrategy = "Snapshot" }
             elseif (-not $HasDate) { $SyncStrategy = "FullMerge" }
             
-            # FORCE FULL SYNC LOGIK
-            if ($ForceFull -and $SyncStrategy -eq "Incremental") {
-                $SyncStrategy = "FullMerge (Forced)"
-            }
-            
+            if ($ForceFull -and $SyncStrategy -eq "Incremental") { $SyncStrategy = "FullMerge (Forced)" }
             $Strategy = $SyncStrategy
 
-            # B: STAGING
+            # B: STAGING (Bleibt STG_ + OriginalName)
             $StagingTableName = "STG_$Tabelle"
-            $CmdCheck = $SqlConn.CreateCommand()
-            $CmdCheck.CommandTimeout = $Timeout
+            $CmdCheck = $SqlConn.CreateCommand(); $CmdCheck.CommandTimeout = $Timeout
             $CmdCheck.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '$StagingTableName'"
             $TableExists = $CmdCheck.ExecuteScalar() -gt 0
 
@@ -387,52 +286,39 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 $CreateSql = "IF OBJECT_ID('$StagingTableName') IS NOT NULL DROP TABLE $StagingTableName; CREATE TABLE $StagingTableName ("
                 $Cols = @()
                 foreach ($Row in $SchemaTable) {
-                    $ColName = $Row.ColumnName
-                    $DotNetType = $Row.DataType
-                    $Size = $Row.ColumnSize
+                    $ColName = $Row.ColumnName; $DotNetType = $Row.DataType; $Size = $Row.ColumnSize
                     $SqlType = switch ($DotNetType.Name) {
-                        "Int16" { "SMALLINT" }
-                        "Int32" { "INT" }
-                        "Int64" { "BIGINT" }
+                        "Int16" { "SMALLINT" } "Int32" { "INT" } "Int64" { "BIGINT" }
                         "String" { if ($Size -gt 0 -and $Size -le 4000) { "NVARCHAR($Size)" } else { "NVARCHAR(MAX)" } }
-                        "DateTime" { "DATETIME2" }
-                        "TimeSpan" { "TIME" }
-                        "Decimal" { "DECIMAL(18,4)" }
-                        "Double" { "FLOAT" }
-                        "Single" { "REAL" }
-                        "Byte[]" { "VARBINARY(MAX)" }
-                        "Boolean" { "BIT" }
+                        "DateTime" { "DATETIME2" } "TimeSpan" { "TIME" } "Decimal" { "DECIMAL(18,4)" }
+                        "Double" { "FLOAT" } "Single" { "REAL" } "Byte[]" { "VARBINARY(MAX)" } "Boolean" { "BIT" }
                         Default { "NVARCHAR(MAX)" }
                     }
                     if ($ColName -eq "ID") { $SqlType += " NOT NULL" }
                     $Cols += "[$ColName] $SqlType"
                 }
                 $CreateSql += [string]::Join(", ", $Cols) + ");"
-                
-                $CmdCreate = $SqlConn.CreateCommand()
-                $CmdCreate.CommandTimeout = $Timeout
-                $CmdCreate.CommandText = $CreateSql
+                $CmdCreate = $SqlConn.CreateCommand(); $CmdCreate.CommandTimeout = $Timeout; $CmdCreate.CommandText = $CreateSql
                 [void]$CmdCreate.ExecuteNonQuery()
             }
 
-            # C: EXTRAKT
+            # C: EXTRAKT (Quelle = $Tabelle)
             $FbCmdData = $FbConn.CreateCommand()
             if ($SyncStrategy -eq "Incremental") {
-                $CmdMax = $SqlConn.CreateCommand()
-                $CmdMax.CommandTimeout = $Timeout
-                $CmdMax.CommandText = "SELECT ISNULL(MAX(GESPEICHERT), '1900-01-01') FROM $Tabelle" 
+                $CmdMax = $SqlConn.CreateCommand(); $CmdMax.CommandTimeout = $Timeout
+                # NEU: Hole MaxDatum von Zieltabelle ($TargetTableName)
+                $CmdMax.CommandText = "SELECT ISNULL(MAX(GESPEICHERT), '1900-01-01') FROM $TargetTableName" 
                 try { $LastSyncDate = [DateTime]$CmdMax.ExecuteScalar() } catch { $LastSyncDate = [DateTime]"1900-01-01" }
                 
                 $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"" WHERE ""GESPEICHERT"" > @LastDate"
                 $FbCmdData.Parameters.Add("@LastDate", $LastSyncDate) | Out-Null
             }
             else {
-                # FullMerge, FullMerge (Forced), Snapshot -> Alles holen
                 $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"""
             }
             $ReaderData = $FbCmdData.ExecuteReader()
             
-            # D: LOAD (BULK)
+            # D: LOAD (BULK -> Staging)
             $BulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($SqlConn)
             $BulkCopy.DestinationTableName = $StagingTableName
             $BulkCopy.BulkCopyTimeout = $Timeout
@@ -442,54 +328,46 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             }
 
             if (-not $ForceRecreate) {
-                $TruncCmd = $SqlConn.CreateCommand()
-                $TruncCmd.CommandTimeout = $Timeout
+                $TruncCmd = $SqlConn.CreateCommand(); $TruncCmd.CommandTimeout = $Timeout
                 $TruncCmd.CommandText = "TRUNCATE TABLE $StagingTableName"
                 [void]$TruncCmd.ExecuteNonQuery()
             }
-            
-            $BulkCopy.WriteToServer($ReaderData)
-            $ReaderData.Close() # Wichtig: Reader schließen bevor weitere SQL Befehle kommen
+            $BulkCopy.WriteToServer($ReaderData); $ReaderData.Close()
 
-            # E: MERGE / STRUKTUR
-            $RowsCopied = $SqlConn.CreateCommand()
-            $RowsCopied.CommandTimeout = $Timeout
+            # E: MERGE / STRUKTUR (Ziel = $TargetTableName)
+            $RowsCopied = $SqlConn.CreateCommand(); $RowsCopied.CommandTimeout = $Timeout
             $RowsCopied.CommandText = "SELECT COUNT(*) FROM $StagingTableName"
             $Count = $RowsCopied.ExecuteScalar()
             $RowsLoaded = $Count
             
-            # Zieltabelle anlegen?
-            $CheckFinal = $SqlConn.CreateCommand()
-            $CheckFinal.CommandTimeout = $Timeout
-            $CheckFinal.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '$Tabelle'"
+            # Zieltabelle anlegen? (Check auf $TargetTableName)
+            $CheckFinal = $SqlConn.CreateCommand(); $CheckFinal.CommandTimeout = $Timeout
+            $CheckFinal.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '$TargetTableName'"
             $FinalTableExists = $CheckFinal.ExecuteScalar() -gt 0
             if (-not $FinalTableExists) {
-                $InitCmd = $SqlConn.CreateCommand()
-                $InitCmd.CommandTimeout = $Timeout
-                $InitCmd.CommandText = "SELECT * INTO $Tabelle FROM $StagingTableName WHERE 1=0;" 
+                $InitCmd = $SqlConn.CreateCommand(); $InitCmd.CommandTimeout = $Timeout
+                $InitCmd.CommandText = "SELECT * INTO $TargetTableName FROM $StagingTableName WHERE 1=0;" 
                 [void]$InitCmd.ExecuteNonQuery()
             }
 
-            # Index Pflege
+            # Index Pflege ($TargetTableName)
             if ($HasID) {
                 try {
-                    $IdxCheckCmd = $SqlConn.CreateCommand()
-                    $IdxCheckCmd.CommandTimeout = $Timeout
-                    $IdxCheckCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('$Tabelle') AND is_primary_key = 1"
+                    $IdxCheckCmd = $SqlConn.CreateCommand(); $IdxCheckCmd.CommandTimeout = $Timeout
+                    $IdxCheckCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('$TargetTableName') AND is_primary_key = 1"
                     if (($IdxCheckCmd.ExecuteScalar()) -eq 0) {
                         # Repair Nullable ID
-                        $AlterColCmd = $SqlConn.CreateCommand()
-                        $AlterColCmd.CommandTimeout = $Timeout
+                        $AlterColCmd = $SqlConn.CreateCommand(); $AlterColCmd.CommandTimeout = $Timeout
                         $GetTypeCmd = $SqlConn.CreateCommand()
-                        $GetTypeCmd.CommandText = "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '$Tabelle' AND COLUMN_NAME = 'ID'"
+                        $GetTypeCmd.CommandText = "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '$TargetTableName' AND COLUMN_NAME = 'ID'"
                         $IdType = $GetTypeCmd.ExecuteScalar()
                         if ($IdType) {
-                            $AlterColCmd.CommandText = "ALTER TABLE [$Tabelle] ALTER COLUMN [ID] $IdType NOT NULL;"
+                            $AlterColCmd.CommandText = "ALTER TABLE [$TargetTableName] ALTER COLUMN [ID] $IdType NOT NULL;"
                             try { [void]$AlterColCmd.ExecuteNonQuery() } catch { }
                         }
-                        $IdxCmd = $SqlConn.CreateCommand()
-                        $IdxCmd.CommandTimeout = $Timeout
-                        $IdxCmd.CommandText = "ALTER TABLE [$Tabelle] ADD CONSTRAINT [PK_$Tabelle] PRIMARY KEY CLUSTERED ([ID] ASC);"
+                        $IdxCmd = $SqlConn.CreateCommand(); $IdxCmd.CommandTimeout = $Timeout
+                        # Constraint Name mit TargetTableName um Konflikte zu vermeiden
+                        $IdxCmd.CommandText = "ALTER TABLE [$TargetTableName] ADD CONSTRAINT [PK_$TargetTableName] PRIMARY KEY CLUSTERED ([ID] ASC);"
                         [void]$IdxCmd.ExecuteNonQuery()
                         $Message += "(PK created) "
                     }
@@ -499,11 +377,10 @@ $Results = $Tabellen | ForEach-Object -Parallel {
 
             # Merge Ausführen
             if ($Count -gt 0) {
-                # Staging Index (Speedup)
+                # Staging Index
                 if ($HasID) {
                     try {
-                        $StgIdxCmd = $SqlConn.CreateCommand()
-                        $StgIdxCmd.CommandTimeout = $Timeout
+                        $StgIdxCmd = $SqlConn.CreateCommand(); $StgIdxCmd.CommandTimeout = $Timeout
                         $StgIdxCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('$StagingTableName') AND name = 'PK_$StagingTableName'"
                         if (($StgIdxCmd.ExecuteScalar()) -eq 0) {
                             $StgIdxCmd.CommandText = "ALTER TABLE [$StagingTableName] ADD CONSTRAINT [PK_$StagingTableName] PRIMARY KEY CLUSTERED ([ID] ASC);"
@@ -514,57 +391,41 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 }
 
                 if ($SyncStrategy -eq "Snapshot") {
-                    $FinalCmd = $SqlConn.CreateCommand()
-                    $FinalCmd.CommandTimeout = $Timeout
-                    $FinalCmd.CommandText = "TRUNCATE TABLE $Tabelle; INSERT INTO $Tabelle SELECT * FROM $StagingTableName;"
+                    $FinalCmd = $SqlConn.CreateCommand(); $FinalCmd.CommandTimeout = $Timeout
+                    # Snapshot auf $TargetTableName
+                    $FinalCmd.CommandText = "TRUNCATE TABLE $TargetTableName; INSERT INTO $TargetTableName SELECT * FROM $StagingTableName;"
                     [void]$FinalCmd.ExecuteNonQuery()
                 }
                 else {
-                    # HIER: Normaler Merge ODER Forced Full Merge
-                    # Wenn FullMerge (Forced), dann müssen wir aufpassen:
-                    # Das Standard-Merge macht KEIN DELETE von Datensätzen, die in Source fehlen (standardmäßig).
-                    # Wenn wir "ForceFull" wollen, um alles glattzuziehen inkl. Löschungen, müssten wir eigentlich
-                    # TRUNCATE + INSERT machen oder DELETE WHEN NOT MATCHED.
-                    # Aber: Deine Anforderung war "Abgleich machen, dass Sanity OK gibt".
-                    # Wenn wir einfach nur alle Daten nochmal drüberbügeln (UPDATE/INSERT), bleiben Leichen bestehen.
-                    
-                    # Entscheidung: Bei ForceFullSync machen wir TRUNCATE + FULL INSERT
-                    # Das ist die sicherste Methode für "exakt gleich".
-                    
                     if ($ForceFull) {
-                        $FinalCmd = $SqlConn.CreateCommand()
-                        $FinalCmd.CommandTimeout = $Timeout
-                        # Wichtig: TRUNCATE ist schnell und sauber.
-                        $FinalCmd.CommandText = "TRUNCATE TABLE $Tabelle;" 
+                        $FinalCmd = $SqlConn.CreateCommand(); $FinalCmd.CommandTimeout = $Timeout
+                        $FinalCmd.CommandText = "TRUNCATE TABLE $TargetTableName;" 
                         [void]$FinalCmd.ExecuteNonQuery()
                         
-                        # Dann generischer Merge (der jetzt nur INSERTS macht, weil Tabelle leer)
-                        $MergeCmd = $SqlConn.CreateCommand()
-                        $MergeCmd.CommandTimeout = $Timeout
-                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TableName = '$Tabelle'"
+                        # NEU: Aufruf der SP mit expliziten Tabellennamen
+                        $MergeCmd = $SqlConn.CreateCommand(); $MergeCmd.CommandTimeout = $Timeout
+                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TargetTableName = '$TargetTableName', @StagingTableName = '$StagingTableName'"
                         [void]$MergeCmd.ExecuteNonQuery()
                         
                         $Message += "(Reset & Reload) "
                     }
                     else {
                         # Standard Inkrementell
-                        $MergeCmd = $SqlConn.CreateCommand()
-                        $MergeCmd.CommandTimeout = $Timeout
-                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TableName = '$Tabelle'"
+                        $MergeCmd = $SqlConn.CreateCommand(); $MergeCmd.CommandTimeout = $Timeout
+                        # NEU: Aufruf der SP mit expliziten Tabellennamen
+                        $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TargetTableName = '$TargetTableName', @StagingTableName = '$StagingTableName'"
                         [void]$MergeCmd.ExecuteNonQuery()
                     }
                 }
             }
 
-            # F: SANITY
+            # F: SANITY ($TargetTableName prüfen)
             if ($DoSanity) {
-                $FbCountCmd = $FbConn.CreateCommand()
-                $FbCountCmd.CommandText = "SELECT COUNT(*) FROM ""$Tabelle"""
+                $FbCountCmd = $FbConn.CreateCommand(); $FbCountCmd.CommandText = "SELECT COUNT(*) FROM ""$Tabelle"""
                 $FbCount = [int64]$FbCountCmd.ExecuteScalar()
                 
-                $SqlCountCmd = $SqlConn.CreateCommand()
-                $SqlCountCmd.CommandTimeout = $Timeout
-                $SqlCountCmd.CommandText = "SELECT COUNT(*) FROM $Tabelle"
+                $SqlCountCmd = $SqlConn.CreateCommand(); $SqlCountCmd.CommandTimeout = $Timeout
+                $SqlCountCmd.CommandText = "SELECT COUNT(*) FROM $TargetTableName"
                 $SqlCount = [int64]$SqlCountCmd.ExecuteScalar()
                 
                 $CountDiff = $SqlCount - $FbCount
@@ -574,32 +435,27 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             }
 
             $Status = "Erfolg"
-            $Success = $true # Schleife beenden
+            $Success = $true
 
         }
         catch {
             $Status = "Fehler"
             $Message = $_.Exception.Message
             Write-Host "[$Tabelle] ERROR (Versuch $Attempt): $Message" -ForegroundColor Red
-            
-            # Connections sauber schließen vor Retry
             if ($FbConn) { $FbConn.Close(); $FbConn.Dispose() }
             if ($SqlConn) { $SqlConn.Close(); $SqlConn.Dispose() }
         }
         finally {
-            # Sicherstellen, dass am Ende geschlossen wird
-            if ($Success) {
-                if ($FbConn) { $FbConn.Close() }
-                if ($SqlConn) { $SqlConn.Close() }
-            }
+            if ($Success) { if ($FbConn) { $FbConn.Close() }; if ($SqlConn) { $SqlConn.Close() } }
         }
-    } # End While Retry
+    } 
 
     $TableStopwatch.Stop()
     Write-Host "[$Tabelle] Abschluss: $Status ($SanityStatus)" -ForegroundColor ($Status -eq "Erfolg" ? "Green" : "Red")
 
     [PSCustomObject]@{
         Tabelle     = $Tabelle
+        Target      = $TargetTableName # Info spalte für den Bericht
         Status      = $Status
         Strategie   = $Strategy
         RowsLoaded  = $RowsLoaded
@@ -620,22 +476,17 @@ $Results = $Tabellen | ForEach-Object -Parallel {
 $TotalStopwatch.Stop()
 
 Write-Host "ZUSAMMENFASSUNG" -ForegroundColor White
-$Results | Format-Table -AutoSize @{Label = "Tabelle"; Expression = { $_.Tabelle } },
+$Results | Format-Table -AutoSize @{Label = "Quelle"; Expression = { $_.Tabelle } },
+@{Label = "Ziel"; Expression = { $_.Target } },
 @{Label = "Status"; Expression = { $_.Status } },
 @{Label = "Sync"; Expression = { $_.RowsLoaded }; Align = "Right" },
 @{Label = "FB"; Expression = { $_.FbTotal }; Align = "Right" },
 @{Label = "SQL"; Expression = { $_.SqlTotal }; Align = "Right" },
 @{Label = "Sanity"; Expression = { $_.SanityCheck } },
 @{Label = "Time"; Expression = { $_.Duration.ToString("mm\:ss") } },
-@{Label = "Try"; Expression = { $_.Versuche } },
 @{Label = "Info"; Expression = { $_.Info } }
 
 Write-Host "GESAMTLAUFZEIT: $($TotalStopwatch.Elapsed.ToString("hh\:mm\:ss"))" -ForegroundColor Green
 Write-Host "LOGDATEI: $LogFile" -ForegroundColor Gray
 
 Stop-Transcript
-
-if ($Config.Firebird.Password -or $Config.MSSQL.Password) {
-    Write-Host "WARNUNG: Passwörter in config.json werden ignoriert, da Credential Manager verwendet wird." -ForegroundColor Yellow
-    Write-Host "WARNUNG: Es wird empfohlen, die Passwörter in der config.json zu entfernen." -ForegroundColor Yellow
-}

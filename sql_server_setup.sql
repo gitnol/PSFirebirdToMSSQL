@@ -50,67 +50,60 @@ Das bereinigt die Leichen.
 ODER Du akzeptierst die Leichen im DWH (Data Warehouse), was oft sogar gewünscht ist (Historie).
 
 */
+
+/*
+    Stored Procedure: sp_Merge_Generic (Version 2 - Flexibel)
+    Beschreibung:     Führt einen generischen MERGE durch.
+    
+    Änderung V2:      Akzeptiert nun separate Namen für Target und Staging.
+                      Das ermöglicht Prefixe/Suffixe auf der Zieltabelle.
+*/
 CREATE OR ALTER PROCEDURE [dbo].[sp_Merge_Generic]
-    @TableName NVARCHAR(128)
+    @TargetTableName NVARCHAR(128),
+    @StagingTableName NVARCHAR(128)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @StagingTable NVARCHAR(128) = 'STG_' + @TableName;
     DECLARE @SQL NVARCHAR(MAX);
     DECLARE @ColumnList NVARCHAR(MAX);
     DECLARE @UpdateList NVARCHAR(MAX);
     DECLARE @HasGespeichert BIT = 0;
 
-    -- ---------------------------------------------------------
-    -- 1. Validierung: Existieren Quelle und Ziel?
-    -- ---------------------------------------------------------
-    IF OBJECT_ID(@TableName) IS NULL OR OBJECT_ID(@StagingTable) IS NULL
+    -- 1. Validierung
+    IF OBJECT_ID(@TargetTableName) IS NULL OR OBJECT_ID(@StagingTableName) IS NULL
     BEGIN
-        PRINT 'Fehler: Tabelle ' + @TableName + ' oder ' + @StagingTable + ' existiert nicht.';
+        PRINT 'Fehler: Tabelle ' + @TargetTableName + ' oder ' + @StagingTableName + ' existiert nicht.';
         RETURN;
     END
 
-    -- ---------------------------------------------------------
-    -- 2. Metadaten-Analyse
-    -- ---------------------------------------------------------
-
-    -- Prüfen, ob 'GESPEICHERT' Spalte existiert (für Performance-Optimierung beim Update)
-    IF EXISTS (SELECT 1
-    FROM sys.columns
-    WHERE object_id = OBJECT_ID(@TableName) AND name = 'GESPEICHERT')
+    -- 2. Metadaten-Analyse (Auf Basis der Zieltabelle)
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@TargetTableName) AND name = 'GESPEICHERT')
     BEGIN
         SET @HasGespeichert = 1;
     END
 
-    -- Spaltenliste für INSERT bauen (Alle Spalten außer ID)
-    -- Hinweis: CAST(... AS NVARCHAR(MAX)) verhindert Fehler bei Tabellen mit sehr vielen Spalten (> 8000 Zeichen String)
+    -- Spaltenliste (ohne ID)
     SELECT @ColumnList = STRING_AGG(CAST(QUOTENAME(c.name) AS NVARCHAR(MAX)), ', ')
     FROM sys.columns c
-    WHERE c.object_id = OBJECT_ID(@TableName)
-        AND c.name NOT IN ('ID') -- ID wird explizit behandelt
-        AND c.is_computed = 0;
-    -- Keine berechneten Spalten übernehmen
+    WHERE c.object_id = OBJECT_ID(@TargetTableName)
+      AND c.name NOT IN ('ID')
+      AND c.is_computed = 0;
 
-    -- Spaltenliste für UPDATE bauen (Zuwelsung Target.Col = Source.Col)
+    -- Update Liste
     SELECT @UpdateList = STRING_AGG(CAST(QUOTENAME(c.name) + ' = Source.' + QUOTENAME(c.name) AS NVARCHAR(MAX)), ', ')
     FROM sys.columns c
-    WHERE c.object_id = OBJECT_ID(@TableName)
-        AND c.name NOT IN ('ID')
-        AND c.is_computed = 0;
+    WHERE c.object_id = OBJECT_ID(@TargetTableName)
+      AND c.name NOT IN ('ID')
+      AND c.is_computed = 0;
 
-    -- ---------------------------------------------------------
-    -- 3. MERGE Statement zusammenbauen
-    -- ---------------------------------------------------------
-    SET @SQL = 'MERGE ' + QUOTENAME(@TableName) + ' AS Target ' +
-               'USING ' + QUOTENAME(@StagingTable) + ' AS Source ' +
+    -- 3. MERGE SQL
+    SET @SQL = 'MERGE ' + QUOTENAME(@TargetTableName) + ' AS Target ' +
+               'USING ' + QUOTENAME(@StagingTableName) + ' AS Source ' +
                'ON (Target.ID = Source.ID) ' +
                
                'WHEN MATCHED ';
 
-    -- OPTIMIERUNG: "Smart Update"
-    -- Wir updaten nur, wenn sich der Zeitstempel unterscheidet. 
-    -- Das reduziert Transaction-Log-Writes massiv, da identische Zeilen ignoriert werden.
     IF @HasGespeichert = 1
     BEGIN
         SET @SQL = @SQL + 'AND (Target.GESPEICHERT <> Source.GESPEICHERT OR Target.GESPEICHERT IS NULL) ';
@@ -123,15 +116,6 @@ BEGIN
                'INSERT (ID, ' + @ColumnList + ') ' +
                'VALUES (Source.ID, ' + @ColumnList + ');';
 
-    -- Debugging: Einkommentieren, um das generierte SQL zu sehen
-    -- PRINT CAST(@SQL AS NTEXT);
-
-    -- ---------------------------------------------------------
-    -- 4. Ausführung
-    -- ---------------------------------------------------------
     EXEC sp_executesql @SQL;
-
--- Optional: Erfolgsmeldung (kann bei vielen Aufrufen das Log fluten, daher auskommentiert)
--- PRINT 'Smart-Merge für ' + @TableName + ' abgeschlossen.';
 END
 GO
