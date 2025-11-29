@@ -32,6 +32,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Wichtige Hinweise](#wichtige-hinweise)
     - [Löschungen werden nicht synchronisiert](#löschungen-werden-nicht-synchronisiert)
     - [Task Scheduler Integration](#task-scheduler-integration)
+  - [Architektur](#architektur)
   - [Changelog](#changelog)
     - [v2.5 (2025-11-29) - Prefix/Suffix \& Fixes](#v25-2025-11-29---prefixsuffix--fixes)
     - [v2.4 (2025-11-26) - Config Parameter](#v24-2025-11-26---config-parameter)
@@ -186,20 +187,37 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ### Ablauf des Sync-Prozesses
 
-1.  **Initialisierung**: Config laden, Credentials aus Tresor holen.
-2.  **Analyse**: Prüft Quell-Schema. Bestimmt Strategie (Incremental/Full/Snapshot).
-3.  **Staging**:
-    - Prüft Existenz von `STG_<OriginalName>`.
-    - Erstellt Tabelle bei Bedarf neu.
-4.  **Extract**: Lädt Daten aus Firebird.
-    - Incremental: `WHERE GESPEICHERT > MAX(Ziel.GESPEICHERT)`
-    - _Hinweis: Das MaxDatum wird jetzt korrekt aus der Zieltabelle (mit Prefix/Suffix) gelesen._
-5.  **Load**: Bulk Insert in Staging.
-6.  **Merge**:
-    - Prüft Existenz der Zieltabelle (`Prefix + Name + Suffix`).
-    - Erstellt Zieltabelle und Indizes falls nötig (Self-Healing).
-    - Ruft `sp_Merge_Generic` auf.
-7.  **Sanity Check**: Vergleicht Row-Counts.
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  1. INITIALISIERUNG                                         │
+│     Config laden, Credentials aus Credential Manager holen  │
+├─────────────────────────────────────────────────────────────┤
+│  2. ANALYSE (pro Tabelle, parallel)                         │
+│     Prüft Quell-Schema auf ID und GESPEICHERT               │
+│     → Wählt Strategie: Incremental / FullMerge / Snapshot   │
+├─────────────────────────────────────────────────────────────┤
+│  3. SCHEMA-CHECK                                            │
+│     Erstellt STG_<Tabelle> falls nicht vorhanden            │
+│     Automatisches Firebird → SQL Server Type-Mapping        │
+├─────────────────────────────────────────────────────────────┤
+│  4. EXTRACT                                                 │
+│     Lädt Daten aus Firebird (Memory-Stream via IDataReader) │
+│     Bei Incremental: Nur Daten > MAX(GESPEICHERT) im Ziel   │
+├─────────────────────────────────────────────────────────────┤
+│  5. LOAD                                                    │
+│     Bulk Insert in Staging-Tabelle via SqlBulkCopy          │
+├─────────────────────────────────────────────────────────────┤
+│  6. MERGE                                                   │
+│     sp_Merge_Generic: Staging → Zieltabelle                 │
+│     Self-Healing: Erstellt fehlende Primary Keys            │
+│     NEU: Bei ForceFullSync wird vorher TRUNCATE ausgeführt  │
+├─────────────────────────────────────────────────────────────┤
+│  7. SANITY CHECK                                            │
+│     Vergleicht Row-Counts (Quelle vs. Ziel)                 │
+├─────────────────────────────────────────────────────────────┤
+│  ↻ RETRY bei Fehler (bis zu 3x mit 10s Pause)              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Sync-Strategien
 
@@ -264,6 +282,32 @@ Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Daten
 Programm: pwsh.exe
 Argumente: -ExecutionPolicy Bypass -File "C:\Scripts\Sync_Firebird_MSSQL_AutoSchema.ps1" -ConfigFile "config.json"
 Starten in: C:\Scripts
+```
+
+---
+
+## Architektur
+
+```text
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│    Firebird      │         │   PowerShell 7   │         │   SQL Server     │
+│   (Quelle)       │         │   ETL Engine     │         │   (Ziel)         │
+├──────────────────┤         ├──────────────────┤         ├──────────────────┤
+│                  │  Read   │                  │  Write  │                  │
+│  Tabelle A       │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
+│  Tabelle B       │         │  (ThrottleLimit) │         │  STG_B (Staging) │
+│  Tabelle C       │         │                  │         │  STG_C (Staging) │
+│                  │         │  🔐 Cred Manager │         │                  │
+│                  │         │  ↻ Retry Loop    │         │                  │
+│                  │         │  📄 Transcript   │         │                  │
+└──────────────────┘         └────────┬─────────┘         ├──────────────────┤
+                                      │                   │                  │
+                                      │ EXEC              │  sp_Merge_Generic│
+                                      └─────────────────► │         ↓        │
+                                                          │  Prefix_A_Suffix │
+                                                          │  Prefix_B_Suffix │
+                                                          │  Prefix_C_Suffix │
+                                                          └──────────────────┘
 ```
 
 ---
