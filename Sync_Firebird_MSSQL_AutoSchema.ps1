@@ -197,6 +197,9 @@ if (-not (Test-Path $DllPath)) {
 if (-not $DllPath -or -not (Test-Path $DllPath)) { Write-Error "KRITISCH: Firebird Treiber DLL nicht gefunden."; Stop-Transcript; exit 7 }
 Add-Type -Path $DllPath
 
+Write-Host "Firebird User=$($FBuser);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);" -ForegroundColor Cyan
+Write-Host "SQL Server Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=$MSSQLIntSec;" -ForegroundColor Cyan
+
 $FirebirdConnString = "User=$($FBuser);Password=$($FBpassword);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);"
 if ($MSSQLIntSec) { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;" }
 else { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id=$MSSQLUser;Password=$MSSQLPass;" }
