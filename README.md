@@ -14,8 +14,8 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Dateistruktur](#dateistruktur)
   - [Voraussetzungen](#voraussetzungen)
   - [Installation](#installation)
-    - [Schritt 1: SQL Server vorbereiten](#schritt-1-sql-server-vorbereiten)
-    - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
+    - [Schritt 1: Konfiguration anlegen](#schritt-1-konfiguration-anlegen)
+    - [Schritt 2: SQL Server vorbereiten](#schritt-2-sql-server-vorbereiten)
     - [Schritt 3: Credentials sicher speichern](#schritt-3-credentials-sicher-speichern)
     - [Schritt 4: Verbindung testen](#schritt-4-verbindung-testen)
     - [Schritt 5: Tabellen auswählen](#schritt-5-tabellen-auswählen)
@@ -35,6 +35,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Task Scheduler Integration](#task-scheduler-integration)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
+    - [v2.7 (2025-12-03) - SQL Environment Setup Automation](#v27-2025-12-03---sql-environment-setup-automation)
     - [v2.6 (2025-12-03) - Task Automation](#v26-2025-12-03---task-automation)
     - [v2.5 (2025-11-29) - Prefix/Suffix \& Fixes](#v25-2025-11-29---prefixsuffix--fixes)
     - [v2.4 (2025-11-26) - Config Parameter](#v24-2025-11-26---config-parameter)
@@ -93,18 +94,7 @@ SQLSync/
 
 ## Installation
 
-### Schritt 1: SQL Server vorbereiten
-
-Führe das SQL-Skript `Update_sp_Merge_Generic_V2.sql` auf deinem Microsoft SQL Server aus.
-
-**WICHTIG:** Die neue Version der Stored Procedure (`sp_Merge_Generic`) ist zwingend erforderlich, da sie nun zwei Parameter (`@TargetTableName`, `@StagingTableName`) akzeptiert, um Prefixe und Suffixe zu unterstützen.
-
-```sql
--- Erstellt oder aktualisiert:
--- PROCEDURE [dbo].[sp_Merge_Generic]
-```
-
-### Schritt 2: Konfiguration anlegen
+### Schritt 1: Konfiguration anlegen
 
 Kopiere `config.sample.json` nach `config.json`.
 
@@ -129,13 +119,44 @@ Kopiere `config.sample.json` nach `config.json`.
   },
   "MSSQL": {
     "Server": "SVRSQL03",
-    "Database": "STAGING",
     "Integrated Security": true,
+    "Username": "satest",
+    "Password": "123456",
+    "Database": "STAGING",
     "Prefix": "DWH_",
     "Suffix": ""
   },
-  "Tables": []
+  "Tables": ["EXAMPLETABLE1", "EXAMPLETABLE2"]
 }
+```
+
+### Schritt 2: SQL Server vorbereiten
+
+- Führe `Initialize_SQL_Environment.ps1` aus, damit die Datenbank angelegt wird. Beachte, dass die `config.json` (aus Schritt 1) dafür existieren muss und die Werte (`Server, Database, Username, Password`) eingetragen sind. Ansonsten ist die Datenbank (hier: `STAGING`) manuell anzulegen über das folgende Script:
+
+```sql
+USE [master];
+GO
+
+-- 1. Datenbank erstellen (falls nicht vorhanden)
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'STAGING')
+BEGIN
+    CREATE DATABASE [STAGING];
+    PRINT 'Datenbank STAGING erstellt.';
+END
+GO
+
+ALTER DATABASE [STAGING] SET RECOVERY SIMPLE;
+GO
+```
+
+- Führe das SQL-Skript `sql_server_setup.sql` auf deinem Microsoft SQL Server aus, um `sp_Merge_Generic` zu erstellen. (TODO: Muss vom Synchronisationsscript geprüft werden Pre-Flight)
+
+- **WICHTIG:** Die neue Version der Stored Procedure (`sp_Merge_Generic`) ist zwingend erforderlich, da sie nun zwei Parameter (`@TargetTableName`, `@StagingTableName`) akzeptiert, um Prefixe und Suffixe zu unterstützen.
+
+```sql
+-- Erstellt oder aktualisiert:
+-- PROCEDURE [dbo].[sp_Merge_Generic]
 ```
 
 ### Schritt 3: Credentials sicher speichern
@@ -327,6 +348,10 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.7 (2025-12-03) - SQL Environment Setup Automation
+
+- **Neu:** `Initialize_SQL_Environment.ps1` zur automatischen Einrichtung der SQL Datenbank inkl. `sp_Merge_Generic` Prozedur.
 
 ### v2.6 (2025-12-03) - Task Automation
 
