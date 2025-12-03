@@ -1,3 +1,4 @@
+/*
 USE [master];
 GO
 
@@ -21,6 +22,7 @@ GO
 
 SET QUOTED_IDENTIFIER ON
 GO
+*/
 
 /*
     Stored Procedure: sp_Merge_Generic
