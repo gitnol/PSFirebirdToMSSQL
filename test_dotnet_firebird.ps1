@@ -145,10 +145,10 @@ catch {
 
 # Generelle Konfiguration
 $GlobalTimeout = if ($Config.General.PSObject.Properties.Match("GlobalTimeout").Count) { $Config.General.GlobalTimeout } else { 7200 }
-$RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateStagingTable").Count) { $Config.General.RecreateStagingTable } else { $false }
-$RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true }
+# $RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateStagingTable").Count) { $Config.General.RecreateStagingTable } else { $false }
+# $RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true }
 $MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 }
-$RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 }
+# $RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 }
 
 # --- NEU: Prefix und Suffix auslesen ---
 $MSSQLPrefix = if ($Config.MSSQL.PSObject.Properties.Match("Prefix").Count) { $Config.MSSQL.Prefix } else { "" }
@@ -181,13 +181,13 @@ $MSSQLservername = $Config.MSSQL.Server
 $MSSQLdatabase = $Config.MSSQL.Database
 $MSSQLIntSec = $Config.MSSQL."Integrated Security"
 
-if ($MSSQLIntSec) { Write-Host "[Credentials] SQL Server: Windows Authentication" -ForegroundColor Green; $MSSQLUser = $null; $MSSQLPass = $null }
-else {
-    $SqlCred = Get-StoredCredential -Target "SQLSync_MSSQL"
-    if ($SqlCred) { $MSSQLUser = $SqlCred.Username; $MSSQLPass = $SqlCred.Password; Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green }
-    elseif ($Config.MSSQL.Password) { $MSSQLUser = $Config.MSSQL.Username; $MSSQLPass = $Config.MSSQL.Password; Write-Host "[Credentials] SQL Server: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow }
-    else { Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."; Stop-Transcript; exit 6 }
-}
+# if ($MSSQLIntSec) { Write-Host "[Credentials] SQL Server: Windows Authentication" -ForegroundColor Green; $MSSQLUser = $null; $MSSQLPass = $null }
+# else {
+#     $SqlCred = Get-StoredCredential -Target "SQLSync_MSSQL"
+#     if ($SqlCred) { $MSSQLUser = $SqlCred.Username; $MSSQLPass = $SqlCred.Password; Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green }
+#     elseif ($Config.MSSQL.Password) { $MSSQLUser = $Config.MSSQL.Username; $MSSQLPass = $Config.MSSQL.Password; Write-Host "[Credentials] SQL Server: config.json (WARNUNG: unsicher!)" -ForegroundColor Yellow }
+#     else { Write-Error "KRITISCH: Keine SQL Server Credentials! Führe Setup_Credentials.ps1 aus."; Stop-Transcript; exit 6 }
+# }
 
 # -----------------------------------------------------------------------------
 # 4. TREIBER & CONNECTION STRINGS
@@ -204,8 +204,8 @@ Write-Host "Firebird User=$($FBuser);Database=$($FBdatabase);DataSource=$($FBser
 Write-Host "SQL Server Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=$MSSQLIntSec;" -ForegroundColor Cyan
 
 $FirebirdConnString = "User=$($FBuser);Password=$($FBpassword);Database=$($FBdatabase);DataSource=$($FBservername);Port=$($FBport);Dialect=3;Charset=$($FBcharset);"
-if ($MSSQLIntSec) { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;" }
-else { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id=$MSSQLUser;Password=$MSSQLPass;" }
+# if ($MSSQLIntSec) { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;Integrated Security=True;" }
+# else { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id=$MSSQLUser;Password=$MSSQLPass;" }
 
 $Tabellen = $Config.Tables
 if (-not $Tabellen -or $Tabellen.Count -eq 0) { Write-Error "Keine Tabellen definiert."; Stop-Transcript; exit 8 }
