@@ -16,6 +16,12 @@ GO
 USE [STAGING];
 GO
 
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
 /*
     Stored Procedure: sp_Merge_Generic
     Beschreibung:     Führt einen generischen MERGE (Upsert) von einer Staging-Tabelle in die Zieltabelle durch.
