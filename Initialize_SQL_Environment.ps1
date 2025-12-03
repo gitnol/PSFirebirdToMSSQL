@@ -12,7 +12,7 @@ param(
 
 $ScriptDir = $PSScriptRoot
 $ConfigPath = Join-Path $ScriptDir $ConfigFile
-$SqlFile = Join-Path $ScriptDir "sp_Merge_Generic.sql"
+$SqlFile = Join-Path $ScriptDir "sql_server_setup.sql"
 
 # 1. Config laden
 if (-not (Test-Path $ConfigPath)) { Write-Error "Config '$ConfigPath' fehlt!"; exit }
