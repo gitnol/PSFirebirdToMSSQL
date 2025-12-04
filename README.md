@@ -86,6 +86,10 @@ SQLSync/
 | Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
 | MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
 
+Hinweis für die Installation unter Windows Server Betriebssystemen: 
+  - Sollte mit `Install-Package FirebirdSql.Data.FirebirdClient` (über NuGet) das Paket nicht installiert werden bzw. hängen bleiben, bitte unter Windows 11 installieren. 
+  - Dann die installierten Pakete von `C:\Program Files\PackageManagement\NuGet\Packages` in das jeweilige Verzeichnis auf dem Server kopieren.
+
 ---
 
 ## Installation
