@@ -1,32 +1,33 @@
 {
-    "General": {
-        "GlobalTimeout": 7200,
-        "RecreateStagingTable": false,
-        "ForceFullSync": false,
-        "RunSanityCheck": true,
-        "MaxRetries": 3,
-        "RetryDelaySeconds": 10
-    },
-    "Firebird": {
-        "Server": "DEIN_SERVER_NAME",
-        "Password": "DEIN_PASSWORT",
-        "Database": "C:\\Pfad\\Zu\\Deiner\\Datenbank.FDB",
-        "Port": 3050,
-        "Charset": "UTF8",
-        "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
-    },
-    "MSSQL": {
-        "Server": "SVRSQL03",
-        "Integrated Security": true,
-        "Username": "satest",
-        "Password": "123456",
-        "Database": "STAGING",
-        "Prefix": "FB_",
-        "Suffix": ""
-    },
-    "Tables": [
-        "BLIEF",
-        "BKUNDE",
-        "BSA"
-    ]
+  "General": {
+    "GlobalTimeout": 7200,
+    "RecreateStagingTable": false,
+    "ForceFullSync": false,
+    "RunSanityCheck": true,
+    "MaxRetries": 3,
+    "RetryDelaySeconds": 10,
+    "DeleteLogOlderThanDays": 30
+  },
+  "Firebird": {
+    "Server": "DEIN_SERVER_NAME",
+    "Password": "DEIN_PASSWORT",
+    "Database": "C:\\Pfad\\Zu\\Deiner\\Datenbank.FDB",
+    "Port": 3050,
+    "Charset": "UTF8",
+    "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
+  },
+  "MSSQL": {
+    "Server": "SVRSQL03",
+    "Integrated Security": true,
+    "Username": "satest",
+    "Password": "123456",
+    "Database": "STAGING",
+    "Prefix": "FB_",
+    "Suffix": "",
+    "Port": 1433
+  },
+  "Tables": [
+    "BLIEF", 
+    "BKUNDE", 
+    "BSA"]
 }
