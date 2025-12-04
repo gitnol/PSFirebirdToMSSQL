@@ -147,6 +147,8 @@ $RecreateStagingTable = if ($Config.General.PSObject.Properties.Match("RecreateS
 $RunSanityCheck = if ($Config.General.PSObject.Properties.Match("RunSanityCheck").Count) { $Config.General.RunSanityCheck } else { $true }
 $MaxRetries = if ($Config.General.PSObject.Properties.Match("MaxRetries").Count) { $Config.General.MaxRetries } else { 3 }
 $RetryDelaySeconds = if ($Config.General.PSObject.Properties.Match("RetryDelaySeconds").Count) { $Config.General.RetryDelaySeconds } else { 10 }
+# Wird am Schluss des Scripts unter LOG ROTATION (CLEANUP) verwendet
+$DeleteLogOlderThanDays = if ($Config.General.PSObject.Properties.Match("DeleteLogOlderThanDays").Count) { $Config.General.DeleteLogOlderThanDays } else { 30 }
 
 # --- NEU: Prefix und Suffix auslesen ---
 $MSSQLPrefix = if ($Config.MSSQL.PSObject.Properties.Match("Prefix").Count) { $Config.MSSQL.Prefix } else { "" }
@@ -206,6 +208,116 @@ else { $SqlConnString = "Server=$MSSQLservername;Database=$MSSQLdatabase;User Id
 
 $Tabellen = $Config.Tables
 if (-not $Tabellen -or $Tabellen.Count -eq 0) { Write-Error "Keine Tabellen definiert."; Stop-Transcript; exit 8 }
+
+
+# -----------------------------------------------------------------------------
+# 4a. PRE-FLIGHT CHECK (MSSQL) & AUTO-SETUP
+# -----------------------------------------------------------------------------
+Write-Host "Führe Pre-Flight Checks durch..." -ForegroundColor Cyan
+
+# --- TEIL 1: DATENBANK PRÜFEN / ERSTELLEN (via master) ---
+try {
+    # Verbindung zur Systemdatenbank 'master'
+    if ($MSSQLIntSec) { 
+        $MasterConnString = "Server=$MSSQLservername;Database=master;Integrated Security=True;" 
+    }
+    else { 
+        $MasterConnString = "Server=$MSSQLservername;Database=master;User Id=$MSSQLUser;Password=$MSSQLPass;" 
+    }
+
+    $MasterConn = New-Object System.Data.SqlClient.SqlConnection($MasterConnString)
+    $MasterConn.Open()
+
+    $CreateDbCmd = $MasterConn.CreateCommand()
+    # Logik: DB Erstellen + Recovery Simple, falls nicht existent
+    $CreateDbCmd.CommandText = @"
+    IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'$MSSQLdatabase')
+    BEGIN
+        CREATE DATABASE [$MSSQLdatabase];
+        ALTER DATABASE [$MSSQLdatabase] SET RECOVERY SIMPLE;
+        SELECT 1; 
+    END
+    ELSE
+    BEGIN
+        SELECT 0;
+    END
+"@
+    $WasCreated = $CreateDbCmd.ExecuteScalar()
+    $MasterConn.Close()
+
+    if ($WasCreated -eq 1) {
+        Write-Host "INFO: Datenbank '$MSSQLdatabase' wurde ERSTELLT (Recovery: Simple)." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2 # Kurz warten, bis SQL Server bereit ist
+    }
+    else {
+        Write-Host "OK: Datenbank '$MSSQLdatabase' ist vorhanden." -ForegroundColor Green
+    }
+}
+catch {
+    Write-Error "KRITISCH: Fehler beim Prüfen/Erstellen der Datenbank: $($_.Exception.Message)"
+    Stop-Transcript; exit 9
+}
+
+# --- TEIL 2: PROZEDUR PRÜFEN / INSTALLIEREN (via Ziel-DB) ---
+try {
+    # Wir nutzen hier den bereits konfigurierten $SqlConnString (zeigt auf Ziel-DB)
+    $TargetConn = New-Object System.Data.SqlClient.SqlConnection($SqlConnString)
+    $TargetConn.Open()
+    
+    # 2a. Prüfen ob SP existiert
+    $CheckCmd = $TargetConn.CreateCommand()
+    $CheckCmd.CommandText = "SELECT COUNT(*) FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[sp_Merge_Generic]') AND type in (N'P', N'PC')"
+    $ProcCount = $CheckCmd.ExecuteScalar()
+    
+    if ($ProcCount -eq 0) {
+        Write-Host "Stored Procedure 'sp_Merge_Generic' fehlt. Starte Installation..." -ForegroundColor Yellow
+        
+        # Pfad zur SQL Datei
+        $SqlFileName = "sql_server_setup.sql"
+        $SqlFile = Join-Path $ScriptDir $SqlFileName
+        
+        if (-not (Test-Path $SqlFile)) {
+            throw "Die Datei '$SqlFileName' wurde im Skript-Verzeichnis nicht gefunden! Bitte ablegen."
+        }
+
+        # Inhalt lesen
+        $SqlContent = Get-Content -Path $SqlFile -Raw
+
+        # --- KOMMENTAR-BEREINIGUNG START ---
+        # 1. Block-Kommentare entfernen (/* ... */)
+        #    Regex Erklärung: /\* matcht Start, [\s\S]*? matcht alles (auch Newlines) non-greedy, \*/ matcht Ende
+        $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "/\*[\s\S]*?\*/", "")
+
+        # 2. Zeilen-Kommentare entfernen (-- bis Zeilenende)
+        #    Multiline Option sorgt dafür, dass $ das Zeilenende matcht
+        $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "--.*$", "", [System.Text.RegularExpressions.RegexOptions]::Multiline)
+        # --- KOMMENTAR-BEREINIGUNG ENDE ---
+
+        # WICHTIG: Split am "GO" (case insensitive, eigene Zeile)
+        $SqlBatches = [System.Text.RegularExpressions.Regex]::Split($SqlContent, "^\s*GO\s*$", [System.Text.RegularExpressions.RegexOptions]::Multiline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+        foreach ($Batch in $SqlBatches) {
+            # Nur ausführen, wenn nach dem Entfernen von Kommentaren und Whitespace noch Code übrig ist
+            if (-not [string]::IsNullOrWhiteSpace($Batch)) {
+                $InstallCmd = $TargetConn.CreateCommand()
+                $InstallCmd.CommandText = $Batch
+                [void]$InstallCmd.ExecuteNonQuery()
+            }
+        }
+        
+        Write-Host "INSTALLIERT: 'sp_Merge_Generic' erfolgreich angelegt." -ForegroundColor Green
+    }
+    else {
+        Write-Host "OK: Stored Procedure 'sp_Merge_Generic' ist vorhanden." -ForegroundColor Green
+    }
+    
+    $TargetConn.Close()
+}
+catch {
+    Write-Error "PRE-FLIGHT CHECK (PROCEDURE) FAILED: $($_.Exception.Message)"
+    if ($TargetConn) { $TargetConn.Close() }
+    Stop-Transcript; exit 9
+}
 
 Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRetries" -ForegroundColor Cyan
 
@@ -506,6 +618,31 @@ $Results | Format-Table -AutoSize @{Label = "Quelle"; Expression = { $_.Tabelle 
 @{Label = "Sanity"; Expression = { $_.SanityCheck } },
 @{Label = "Time"; Expression = { $_.Duration.ToString("mm\:ss") } },
 @{Label = "Info"; Expression = { $_.Info } }
+
+# -----------------------------------------------------------------------------
+# 7. LOG ROTATION (CLEANUP)
+# -----------------------------------------------------------------------------
+
+# Lese Einstellung aus Config (Standard: 30 Tage. 0 = Deaktiviert)
+
+if ($DeleteLogOlderThanDays -gt 0) {
+    Write-Host "Prüfe auf alte Logs (älter als $DeleteLogOlderThanDays Tage)..." -ForegroundColor Gray
+    try {
+        $CleanupDate = (Get-Date).AddDays(-$DeleteLogOlderThanDays)
+        $OldLogs = Get-ChildItem -Path $LogDir -Filter "Sync_*.log" | Where-Object { $_.LastWriteTime -lt $CleanupDate }
+        
+        if ($OldLogs) {
+            $OldLogs | Remove-Item -Force
+            Write-Host "Cleanup: $($OldLogs.Count) alte Log-Dateien gelöscht." -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "Warnung beim Log-Cleanup: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+else {
+    Write-Host "Log-Cleanup deaktiviert. (Einstellung = 0 Tage)" -ForegroundColor Gray
+}
 
 Write-Host "GESAMTLAUFZEIT: $($TotalStopwatch.Elapsed.ToString("hh\:mm\:ss"))" -ForegroundColor Green
 Write-Host "LOGDATEI: $LogFile" -ForegroundColor Gray

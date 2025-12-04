@@ -57,9 +57,7 @@ Wöchentlich (Wochenende): Ein Job, der die Tabellen leert (TRUNCATE) und einmal
 Das bereinigt die Leichen. 
 ODER Du akzeptierst die Leichen im DWH (Data Warehouse), was oft sogar gewünscht ist (Historie).
 
-*/
 
-/*
     Stored Procedure: sp_Merge_Generic (Version 2 - Flexibel)
     Beschreibung:     Führt einen generischen MERGE durch.
     
@@ -109,7 +107,6 @@ BEGIN
     SET @SQL = 'MERGE ' + QUOTENAME(@TargetTableName) + ' AS Target ' +
                'USING ' + QUOTENAME(@StagingTableName) + ' AS Source ' +
                'ON (Target.ID = Source.ID) ' +
-               
                'WHEN MATCHED ';
 
     IF @HasGespeichert = 1
@@ -119,7 +116,6 @@ BEGIN
 
     SET @SQL = @SQL + 'THEN ' +
                'UPDATE SET ' + @UpdateList + ' ' +
-               
                'WHEN NOT MATCHED BY TARGET THEN ' +
                'INSERT (ID, ' + @ColumnList + ') ' +
                'VALUES (Source.ID, ' + @ColumnList + ');';
