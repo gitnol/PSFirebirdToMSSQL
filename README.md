@@ -28,6 +28,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Sync-Strategien](#sync-strategien)
   - [Konfigurationsoptionen](#konfigurationsoptionen)
     - [General Sektion](#general-sektion)
+    - [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
     - [JSON-Schema-Validierung (NEU)](#json-schema-validierung-neu)
   - [Modul-Architektur](#modul-architektur)
@@ -38,6 +39,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Task Scheduler Integration](#task-scheduler-integration)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
+    - [v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
     - [v2.8 (2025-12-06) - Modul-Architektur \& Bugfixes](#v28-2025-12-06---modul-architektur--bugfixes)
     - [v2.7 (2025-12-04) - Auto-Setup \& Robustness](#v27-2025-12-04---auto-setup--robustness)
     - [v2.6 (2025-12-03) - Task Automation](#v26-2025-12-03---task-automation)
@@ -122,7 +124,10 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
     "ForceFullSync": false,
     "RunSanityCheck": true,
     "MaxRetries": 3,
-    "RetryDelaySeconds": 10
+    "RetryDelaySeconds": 10,
+    "DeleteLogOlderThanDays": 30,
+    "CleanupOrphans": false,
+    "OrphanCleanupBatchSize": 50000    
   },
   "Firebird": {
     "Server": "svrerp01",
@@ -261,6 +266,29 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 | `MaxRetries`             | 3        | Wiederholungsversuche bei Fehler                               |
 | `RetryDelaySeconds`      | 10       | Wartezeit zwischen Retries                                     |
 | `DeleteLogOlderThanDays` | 30       | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)         |
+| `CleanupOrphans`         | `false`  | Verwaiste Datensätze im Ziel löschen                           |
+| `OrphanCleanupBatchSize` | 50000    | Batch-Größe für ID-Transfer beim Cleanup                       |
+
+### Orphan-Cleanup (Löschungserkennung)
+
+Wenn `CleanupOrphans: true` gesetzt ist, werden nach dem Sync alle Datensätze im Ziel gelöscht, die in der Quelle nicht mehr existieren.
+
+**Ablauf:**
+
+1. Alle IDs aus Firebird in eine Temp-Tabelle laden (in Batches)
+2. `DELETE FROM Ziel WHERE ID NOT IN (SELECT ID FROM #TempIDs)`
+3. Temp-Tabelle aufräumen
+
+**Einschränkungen:**
+
+- Funktioniert nur bei Tabellen mit `ID`-Spalte (nicht bei Snapshot-Strategie)
+- Erhöht die Laufzeit, da alle IDs übertragen werden müssen
+- Nicht nötig bei `ForceFullSync` (Tabelle wird eh komplett neu geladen)
+
+**Empfehlung:**
+
+- `CleanupOrphans: false` für tägliche Diff-Syncs (Performance)
+- `CleanupOrphans: true` für wöchentliche Full-Syncs (Datenbereinigung)
 
 ### MSSQL Prefix & Suffix
 
@@ -357,6 +385,13 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)
+
+- **NEU:** `CleanupOrphans` Option - Erkennt und löscht verwaiste Datensätze im Ziel
+- **NEU:** `OrphanCleanupBatchSize` - Konfigurierbarer Batch-Size für große Tabellen
+- **NEU:** "Del" Spalte in Zusammenfassung zeigt gelöschte Orphans an
+- Batch-basierter ID-Transfer für Memory-Effizienz bei >100.000 Zeilen
 
 ### v2.8 (2025-12-06) - Modul-Architektur & Bugfixes
 
