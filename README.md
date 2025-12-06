@@ -78,7 +78,7 @@ SQLSync/
 ├── Get_Firebird_Schema.ps1              # Hilfstool: Datentyp-Analyse
 ├── sql_server_setup.sql                 # SQL-Template für DB & SP (wird vom Hauptskript genutzt)
 ├── Example_Sync_Start.ps1               # Beispiel-Wrapper
-├── test_dotnet_firebird.ps1             # Verbindungstest
+├── Test-SQLSyncConnections.ps1          # Verbindungstest
 ├── config.json                          # Zugangsdaten & Einstellungen (git-ignoriert)
 ├── config.sample.json                   # Konfigurationsvorlage
 ├── config.schema.json                   # NEU: JSON-Schema für Validierung
@@ -169,7 +169,7 @@ Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential
 ### Schritt 5: Verbindung testen
 
 ```powershell
-.\test_dotnet_firebird.ps1
+.\Test-SQLSyncConnections.ps1
 ```
 
 ### Schritt 6: Tabellen auswählen
