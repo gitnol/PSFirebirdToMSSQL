@@ -579,7 +579,14 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             if ($SqlConn) { $SqlConn.Close(); $SqlConn.Dispose() }
         }
         finally {
-            if ($Success) { if ($FbConn) { $FbConn.Close() }; if ($SqlConn) { $SqlConn.Close() } }
+            if ($FbConn) { 
+                try { $FbConn.Close() } catch { }
+                try { $FbConn.Dispose() } catch { }
+            }
+            if ($SqlConn) { 
+                try { $SqlConn.Close() } catch { }
+                try { $SqlConn.Dispose() } catch { }
+            }
         }
     } 
 
