@@ -154,33 +154,33 @@ function Get-SQLSyncConfig {
     # Defaults anwenden und Hashtable bauen
     $Result = @{
         # General Settings
-        GlobalTimeout         = Get-ConfigValue $Config.General "GlobalTimeout" 7200
-        RecreateStagingTable  = Get-ConfigValue $Config.General "RecreateStagingTable" $false
-        ForceFullSync         = Get-ConfigValue $Config.General "ForceFullSync" $false
-        RunSanityCheck        = Get-ConfigValue $Config.General "RunSanityCheck" $true
-        MaxRetries            = Get-ConfigValue $Config.General "MaxRetries" 3
-        RetryDelaySeconds     = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
+        GlobalTimeout          = Get-ConfigValue $Config.General "GlobalTimeout" 7200
+        RecreateStagingTable   = Get-ConfigValue $Config.General "RecreateStagingTable" $false
+        ForceFullSync          = Get-ConfigValue $Config.General "ForceFullSync" $false
+        RunSanityCheck         = Get-ConfigValue $Config.General "RunSanityCheck" $true
+        MaxRetries             = Get-ConfigValue $Config.General "MaxRetries" 3
+        RetryDelaySeconds      = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
         DeleteLogOlderThanDays = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
 
         # Firebird Settings
-        FBServer   = $Config.Firebird.Server
-        FBDatabase = $Config.Firebird.Database
-        FBPort     = Get-ConfigValue $Config.Firebird "Port" 3050
-        FBCharset  = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
-        DllPath    = $Config.Firebird.DllPath
+        FBServer               = $Config.Firebird.Server
+        FBDatabase             = $Config.Firebird.Database
+        FBPort                 = Get-ConfigValue $Config.Firebird "Port" 3050
+        FBCharset              = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
+        DllPath                = $Config.Firebird.DllPath
 
         # MSSQL Settings
-        MSSQLServer      = $Config.MSSQL.Server
-        MSSQLDatabase    = $Config.MSSQL.Database
-        MSSQLIntSec      = Get-ConfigValue $Config.MSSQL "Integrated Security" $false
-        MSSQLPrefix      = Get-ConfigValue $Config.MSSQL "Prefix" ""
-        MSSQLSuffix      = Get-ConfigValue $Config.MSSQL "Suffix" ""
+        MSSQLServer            = $Config.MSSQL.Server
+        MSSQLDatabase          = $Config.MSSQL.Database
+        MSSQLIntSec            = Get-ConfigValue $Config.MSSQL "Integrated Security" $false
+        MSSQLPrefix            = Get-ConfigValue $Config.MSSQL "Prefix" ""
+        MSSQLSuffix            = Get-ConfigValue $Config.MSSQL "Suffix" ""
 
         # Tables
-        Tables = @($Config.Tables)
+        Tables                 = @($Config.Tables)
 
         # Raw Config für Zugriff auf weitere Properties
-        RawConfig = $Config
+        RawConfig              = $Config
     }
 
     # Validierungen
@@ -327,16 +327,32 @@ function Resolve-MSSQLCredentials {
 function New-FirebirdConnectionString {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$Server,
-        [Parameter(Mandatory)][string]$Database,
-        [Parameter(Mandatory)][string]$Username,
-        [Parameter(Mandatory)][SecureString]$Password,
+        [Parameter(Mandatory)]
+        [string]$Server,
+        
+        [Parameter(Mandatory)]
+        [string]$Database,
+        
+        [Parameter(Mandatory)]
+        [string]$Username,
+        
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        $Password,  # Kein Typ-Constraint - akzeptiert String oder SecureString
+        
         [int]$Port = 3050,
+        
         [string]$Charset = "UTF8"
     )
 
-    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringUni([System.Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($Password))
-    
+    # Falls SecureString übergeben wurde, konvertieren
+    $PlainPassword = $Password
+    if ($Password -is [System.Security.SecureString]) {
+        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    }
+
     return "User=$Username;Password=$PlainPassword;Database=$Database;DataSource=$Server;Port=$Port;Dialect=3;Charset=$Charset;"
 }
 
@@ -347,10 +363,20 @@ function New-FirebirdConnectionString {
 function New-MSSQLConnectionString {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$Server,
-        [Parameter(Mandatory)][string]$Database,
-        [string]$Username,
-        [SecureString]$Password,
+        [Parameter(Mandatory)]
+        [string]$Server,
+        
+        [Parameter(Mandatory)]
+        [string]$Database,
+        
+        [AllowEmptyString()]
+        [AllowNull()]
+        $Username,
+        
+        [AllowEmptyString()]
+        [AllowNull()]
+        $Password,  # Kein Typ-Constraint - akzeptiert String oder SecureString
+        
         [bool]$IntegratedSecurity = $false
     )
 
@@ -358,7 +384,13 @@ function New-MSSQLConnectionString {
         return "Server=$Server;Database=$Database;Integrated Security=True;"
     }
     else {
-        $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringUni([System.Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($Password))
+        # Falls SecureString übergeben wurde, konvertieren
+        $PlainPassword = $Password
+        if ($Password -is [System.Security.SecureString]) {
+            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+            $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+        }
         return "Server=$Server;Database=$Database;User Id=$Username;Password=$PlainPassword;"
     }
 }
@@ -416,7 +448,7 @@ function Initialize-FirebirdDriver {
         foreach ($SearchPath in $SearchPaths) {
             if (Test-Path $SearchPath) {
                 $Found = Get-ChildItem -Path $SearchPath -Filter "FirebirdSql.Data.FirebirdClient.dll" -Recurse -ErrorAction SilentlyContinue | 
-                         Select-Object -First 1
+                Select-Object -First 1
                 if ($Found) {
                     $ResolvedPath = $Found.FullName
                     break
@@ -571,8 +603,8 @@ function Write-SyncStatus {
     $Color = switch ($Level) {
         "Success" { "Green" }
         "Warning" { "Yellow" }
-        "Error"   { "Red" }
-        default   { "Gray" }
+        "Error" { "Red" }
+        default { "Gray" }
     }
 
     Write-Host "[$TableName] $Message" -ForegroundColor $Color
@@ -605,10 +637,10 @@ function ConvertTo-SqlServerType {
     )
 
     switch ($DotNetTypeName) {
-        "Int16"    { return "SMALLINT" }
-        "Int32"    { return "INT" }
-        "Int64"    { return "BIGINT" }
-        "String"   { 
+        "Int16" { return "SMALLINT" }
+        "Int32" { return "INT" }
+        "Int64" { return "BIGINT" }
+        "String" { 
             if ($Size -gt 0 -and $Size -le 4000) { 
                 return "NVARCHAR($Size)" 
             } 
@@ -618,13 +650,13 @@ function ConvertTo-SqlServerType {
         }
         "DateTime" { return "DATETIME2" }
         "TimeSpan" { return "TIME" }
-        "Decimal"  { return "DECIMAL(18,4)" }
-        "Double"   { return "FLOAT" }
-        "Single"   { return "REAL" }
-        "Byte[]"   { return "VARBINARY(MAX)" }
-        "Boolean"  { return "BIT" }
-        "Guid"     { return "UNIQUEIDENTIFIER" }
-        default    { return "NVARCHAR(MAX)" }
+        "Decimal" { return "DECIMAL(18,4)" }
+        "Double" { return "FLOAT" }
+        "Single" { return "REAL" }
+        "Byte[]" { return "VARBINARY(MAX)" }
+        "Boolean" { return "BIT" }
+        "Guid" { return "UNIQUEIDENTIFIER" }
+        default { return "NVARCHAR(MAX)" }
     }
 }
 
@@ -649,8 +681,9 @@ Export-ModuleMember -Function @(
     'Initialize-FirebirdDriver'
     
     # Safe Operations
-    'Invoke-WithFirebirdConnection'
-    'Invoke-WithMSSQLConnection'
+    # HINWEIS: Invoke-WithFirebirdConnection und Invoke-WithMSSQLConnection wurden entfernt,
+    # da $using: in normalen ScriptBlocks nicht funktioniert. Stattdessen direkt 
+    # try/finally mit Close-DatabaseConnection verwenden.
     'Close-DatabaseConnection'
     
     # Helpers

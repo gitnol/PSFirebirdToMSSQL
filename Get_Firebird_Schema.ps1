@@ -86,52 +86,56 @@ $ConnectionString = New-FirebirdConnectionString `
 Write-Host "Verbinde zu: $($Config.FBServer) : $($Config.FBDatabase)" -ForegroundColor Cyan
 Write-Host "Analysiere Tabelle: $TableName" -ForegroundColor Yellow
 
+$FbConn = $null
 try {
-    Invoke-WithFirebirdConnection -ConnectionString $ConnectionString -Action {
-        param($FbConn)
+    $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
+    $FbConn.Open()
 
-        # WICHTIG: $using: erst zu lokaler Variable zuweisen
-        $LocalTableName = $using:TableName
+    $FbCmdSchema = $FbConn.CreateCommand()
+    $FbCmdSchema.CommandText = "SELECT FIRST 1 * FROM ""$TableName"""
+    
+    # ExecuteReader mit SchemaOnly lädt KEINE Daten, nur Metadaten (sehr schnell)
+    $ReaderSchema = $FbCmdSchema.ExecuteReader([System.Data.CommandBehavior]::SchemaOnly)
+    $SchemaTable = $ReaderSchema.GetSchemaTable()
+    $ReaderSchema.Close()
 
-        $FbCmdSchema = $FbConn.CreateCommand()
-        $FbCmdSchema.CommandText = "SELECT FIRST 1 * FROM ""$LocalTableName"""
+    # -------------------------------------------------------------------------
+    # AUSGABE AUFBEREITEN
+    # -------------------------------------------------------------------------
+    $Result = @()
+
+    foreach ($Row in $SchemaTable) {
+        $ColName = $Row.ColumnName
+        $DotNetType = $Row.DataType
+        $Size = $Row.ColumnSize
+        $AllowDBNull = $Row.AllowDBNull
         
-        # ExecuteReader mit SchemaOnly lädt KEINE Daten, nur Metadaten (sehr schnell)
-        $ReaderSchema = $FbCmdSchema.ExecuteReader([System.Data.CommandBehavior]::SchemaOnly)
-        $SchemaTable = $ReaderSchema.GetSchemaTable()
-        $ReaderSchema.Close()
+        # SQL Server Typ-Vorschlag
+        $ProposedSqlType = ConvertTo-SqlServerType -DotNetTypeName $DotNetType.Name -Size $Size
 
-        # -------------------------------------------------------------------------
-        # AUSGABE AUFBEREITEN
-        # -------------------------------------------------------------------------
-        $Result = @()
-
-        foreach ($Row in $SchemaTable) {
-            $ColName = $Row.ColumnName
-            $DotNetType = $Row.DataType
-            $Size = $Row.ColumnSize
-            $AllowDBNull = $Row.AllowDBNull
-            
-            # SQL Server Typ-Vorschlag
-            $ProposedSqlType = ConvertTo-SqlServerType -DotNetTypeName $DotNetType.Name -Size $Size
-
-            $Result += [PSCustomObject]@{
-                Column          = $ColName
-                ".NET Type"     = $DotNetType.Name
-                "Full Type"     = $DotNetType.FullName
-                "Size"          = $Size
-                "Nullable"      = $AllowDBNull
-                "Vorschlag SQL" = $ProposedSqlType
-            }
+        $Result += [PSCustomObject]@{
+            Column          = $ColName
+            ".NET Type"     = $DotNetType.Name
+            "Full Type"     = $DotNetType.FullName
+            "Size"          = $Size
+            "Nullable"      = $AllowDBNull
+            "Vorschlag SQL" = $ProposedSqlType
         }
-
-        # Ausgabe als formatierte Tabelle
-        $Result | Format-Table -AutoSize
     }
+
+    # Ausgabe als formatierte Tabelle
+    $Result | Format-Table -AutoSize
+    
+    Write-Host "Analyse abgeschlossen." -ForegroundColor Green
 }
 catch {
     Write-Error "Fehler bei der Analyse: $($_.Exception.Message)"
     exit 4
 }
-
-Write-Host "Analyse abgeschlossen." -ForegroundColor Green
+finally {
+    # WICHTIG: Connection immer aufräumen
+    if ($FbConn) {
+        try { $FbConn.Close() } catch { }
+        try { $FbConn.Dispose() } catch { }
+    }
+}

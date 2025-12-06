@@ -161,6 +161,7 @@ Write-Host "SQL Server: Server=$($Config.MSSQLServer);Database=$($Config.MSSQLDa
 Write-Host "Führe Pre-Flight Checks durch..." -ForegroundColor Cyan
 
 # --- TEIL 1: DATENBANK PRÜFEN / ERSTELLEN (via master) ---
+$MasterConn = $null
 try {
     $MasterConnString = New-MSSQLConnectionString `
         -Server $Config.MSSQLServer `
@@ -169,35 +170,31 @@ try {
         -Password $SqlCreds.Password `
         -IntegratedSecurity $SqlCreds.IntegratedSecurity
 
-    Invoke-WithMSSQLConnection -ConnectionString $MasterConnString -Action {
-        param($MasterConn)
+    $MasterConn = New-Object System.Data.SqlClient.SqlConnection($MasterConnString)
+    $MasterConn.Open()
 
-        # WICHTIG: $using: erst zu lokaler Variable zuweisen (keine Property-Zugriffe!)
-        $LocalConfig = $using:Config
-        $DbName = $LocalConfig.MSSQLDatabase
-        
-        $CreateDbCmd = $MasterConn.CreateCommand()
-        $CreateDbCmd.CommandText = @"
-        IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'$DbName')
-        BEGIN
-            CREATE DATABASE [$DbName];
-            ALTER DATABASE [$DbName] SET RECOVERY SIMPLE;
-            SELECT 1; 
-        END
-        ELSE
-        BEGIN
-            SELECT 0;
-        END
+    $DbName = $Config.MSSQLDatabase
+    $CreateDbCmd = $MasterConn.CreateCommand()
+    $CreateDbCmd.CommandText = @"
+    IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'$DbName')
+    BEGIN
+        CREATE DATABASE [$DbName];
+        ALTER DATABASE [$DbName] SET RECOVERY SIMPLE;
+        SELECT 1; 
+    END
+    ELSE
+    BEGIN
+        SELECT 0;
+    END
 "@
-        $WasCreated = $CreateDbCmd.ExecuteScalar()
+    $WasCreated = $CreateDbCmd.ExecuteScalar()
 
-        if ($WasCreated -eq 1) {
-            Write-Host "INFO: Datenbank '$DbName' wurde ERSTELLT (Recovery: Simple)." -ForegroundColor Yellow
-            Start-Sleep -Seconds 2
-        }
-        else {
-            Write-Host "OK: Datenbank '$DbName' ist vorhanden." -ForegroundColor Green
-        }
+    if ($WasCreated -eq 1) {
+        Write-Host "INFO: Datenbank '$DbName' wurde ERSTELLT (Recovery: Simple)." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
+    else {
+        Write-Host "OK: Datenbank '$DbName' ist vorhanden." -ForegroundColor Green
     }
 }
 catch {
@@ -205,57 +202,66 @@ catch {
     Stop-Transcript
     exit 9
 }
+finally {
+    if ($MasterConn) {
+        try { $MasterConn.Close() } catch { }
+        try { $MasterConn.Dispose() } catch { }
+    }
+}
 
 # --- TEIL 2: PROZEDUR PRÜFEN / INSTALLIEREN (via Ziel-DB) ---
+$TargetConn = $null
 try {
-    Invoke-WithMSSQLConnection -ConnectionString $SqlConnString -Action {
-        param($TargetConn)
+    $TargetConn = New-Object System.Data.SqlClient.SqlConnection($SqlConnString)
+    $TargetConn.Open()
 
-        # WICHTIG: $using: erst zu lokaler Variable zuweisen
-        $LocalScriptDir = $using:ScriptDir
-
-        $CheckCmd = $TargetConn.CreateCommand()
-        $CheckCmd.CommandText = "SELECT COUNT(*) FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[sp_Merge_Generic]') AND type in (N'P', N'PC')"
-        $ProcCount = $CheckCmd.ExecuteScalar()
+    $CheckCmd = $TargetConn.CreateCommand()
+    $CheckCmd.CommandText = "SELECT COUNT(*) FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[sp_Merge_Generic]') AND type in (N'P', N'PC')"
+    $ProcCount = $CheckCmd.ExecuteScalar()
+    
+    if ($ProcCount -eq 0) {
+        Write-Host "Stored Procedure 'sp_Merge_Generic' fehlt. Starte Installation..." -ForegroundColor Yellow
         
-        if ($ProcCount -eq 0) {
-            Write-Host "Stored Procedure 'sp_Merge_Generic' fehlt. Starte Installation..." -ForegroundColor Yellow
-            
-            $SqlFileName = "sql_server_setup.sql"
-            $SqlFile = Join-Path $LocalScriptDir $SqlFileName
-            
-            if (-not (Test-Path $SqlFile)) {
-                throw "Die Datei '$SqlFileName' wurde im Skript-Verzeichnis nicht gefunden!"
-            }
-
-            $SqlContent = Get-Content -Path $SqlFile -Raw
-
-            # Kommentar-Bereinigung
-            $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "/\*[\s\S]*?\*/", "")
-            $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "--.*$", "", [System.Text.RegularExpressions.RegexOptions]::Multiline)
-
-            # Split am GO
-            $SqlBatches = [System.Text.RegularExpressions.Regex]::Split($SqlContent, "^\s*GO\s*$", [System.Text.RegularExpressions.RegexOptions]::Multiline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-
-            foreach ($Batch in $SqlBatches) {
-                if (-not [string]::IsNullOrWhiteSpace($Batch)) {
-                    $InstallCmd = $TargetConn.CreateCommand()
-                    $InstallCmd.CommandText = $Batch
-                    [void]$InstallCmd.ExecuteNonQuery()
-                }
-            }
-            
-            Write-Host "INSTALLIERT: 'sp_Merge_Generic' erfolgreich angelegt." -ForegroundColor Green
+        $SqlFileName = "sql_server_setup.sql"
+        $SqlFile = Join-Path $ScriptDir $SqlFileName
+        
+        if (-not (Test-Path $SqlFile)) {
+            throw "Die Datei '$SqlFileName' wurde im Skript-Verzeichnis nicht gefunden!"
         }
-        else {
-            Write-Host "OK: Stored Procedure 'sp_Merge_Generic' ist vorhanden." -ForegroundColor Green
+
+        $SqlContent = Get-Content -Path $SqlFile -Raw
+
+        # Kommentar-Bereinigung
+        $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "/\*[\s\S]*?\*/", "")
+        $SqlContent = [System.Text.RegularExpressions.Regex]::Replace($SqlContent, "--.*$", "", [System.Text.RegularExpressions.RegexOptions]::Multiline)
+
+        # Split am GO
+        $SqlBatches = [System.Text.RegularExpressions.Regex]::Split($SqlContent, "^\s*GO\s*$", [System.Text.RegularExpressions.RegexOptions]::Multiline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+        foreach ($Batch in $SqlBatches) {
+            if (-not [string]::IsNullOrWhiteSpace($Batch)) {
+                $InstallCmd = $TargetConn.CreateCommand()
+                $InstallCmd.CommandText = $Batch
+                [void]$InstallCmd.ExecuteNonQuery()
+            }
         }
+        
+        Write-Host "INSTALLIERT: 'sp_Merge_Generic' erfolgreich angelegt." -ForegroundColor Green
+    }
+    else {
+        Write-Host "OK: Stored Procedure 'sp_Merge_Generic' ist vorhanden." -ForegroundColor Green
     }
 }
 catch {
     Write-Error "PRE-FLIGHT CHECK (PROCEDURE) FAILED: $($_.Exception.Message)"
     Stop-Transcript
     exit 9
+}
+finally {
+    if ($TargetConn) {
+        try { $TargetConn.Close() } catch { }
+        try { $TargetConn.Dispose() } catch { }
+    }
 }
 
 Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRetries" -ForegroundColor Cyan

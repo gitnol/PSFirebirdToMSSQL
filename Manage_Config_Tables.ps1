@@ -88,59 +88,55 @@ $ConnectionString = New-FirebirdConnectionString `
     -Charset $FBCharset
 
 $TableList = @()
+$FbConn = $null
 
 try {
     Write-Host "Verbinde zu Firebird ($FBServer)..." -ForegroundColor Cyan
     
-    Invoke-WithFirebirdConnection -ConnectionString $ConnectionString -Action {
-        param($FbConn)
+    $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
+    $FbConn.Open()
 
-        # WICHTIG: $using: darf keine komplexen Ausdrücke enthalten!
-        # Erst lokale Variable zuweisen, dann damit arbeiten.
-        $LocalCurrentTables = $using:CurrentTables
-
-        $Sql = @'
-        SELECT 
-            TRIM(REL.RDB$RELATION_NAME) as TABELLENNAME,
-            MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'ID' THEN 1 ELSE 0 END) as HAT_ID,
-            MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'GESPEICHERT' THEN 1 ELSE 0 END) as HAT_DATUM
-        FROM RDB$RELATIONS REL
-        LEFT JOIN RDB$RELATION_FIELDS FLD ON REL.RDB$RELATION_NAME = FLD.RDB$RELATION_NAME
-        WHERE REL.RDB$SYSTEM_FLAG = 0 
-          AND REL.RDB$VIEW_BLR IS NULL
-        GROUP BY REL.RDB$RELATION_NAME
-        ORDER BY REL.RDB$RELATION_NAME
+    $Sql = @'
+    SELECT 
+        TRIM(REL.RDB$RELATION_NAME) as TABELLENNAME,
+        MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'ID' THEN 1 ELSE 0 END) as HAT_ID,
+        MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'GESPEICHERT' THEN 1 ELSE 0 END) as HAT_DATUM
+    FROM RDB$RELATIONS REL
+    LEFT JOIN RDB$RELATION_FIELDS FLD ON REL.RDB$RELATION_NAME = FLD.RDB$RELATION_NAME
+    WHERE REL.RDB$SYSTEM_FLAG = 0 
+      AND REL.RDB$VIEW_BLR IS NULL
+    GROUP BY REL.RDB$RELATION_NAME
+    ORDER BY REL.RDB$RELATION_NAME
 '@
 
-        $Cmd = $FbConn.CreateCommand()
-        $Cmd.CommandText = $Sql
-        $Reader = $Cmd.ExecuteReader()
+    $Cmd = $FbConn.CreateCommand()
+    $Cmd.CommandText = $Sql
+    $Reader = $Cmd.ExecuteReader()
 
-        while ($Reader.Read()) {
-            $Name = $Reader["TABELLENNAME"]
-            $HatId = [int]$Reader["HAT_ID"] -eq 1
-            $HatDatum = [int]$Reader["HAT_DATUM"] -eq 1
-            
-            $Status = "Neu"
-            if ($LocalCurrentTables.Contains($Name)) {
-                $Status = "Aktiv (Konfiguriert)"
-            }
-
-            $Hinweis = ""
-            if (-not $HatId) { $Hinweis = "ACHTUNG: Keine ID Spalte (Snapshot Modus)" }
-            elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Datum (Full Merge)" }
-
-            $script:TableList += [PSCustomObject]@{
-                Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } else { "Hinzufügen bei Auswahl" } 
-                Tabelle     = $Name
-                Status      = $Status
-                "Hat ID"    = $HatId
-                "Hat Datum" = $HatDatum
-                Hinweis     = $Hinweis
-            }
+    while ($Reader.Read()) {
+        $Name = $Reader["TABELLENNAME"]
+        $HatId = [int]$Reader["HAT_ID"] -eq 1
+        $HatDatum = [int]$Reader["HAT_DATUM"] -eq 1
+        
+        $Status = "Neu"
+        if ($CurrentTables.Contains($Name)) {
+            $Status = "Aktiv (Konfiguriert)"
         }
-        $Reader.Close()
+
+        $Hinweis = ""
+        if (-not $HatId) { $Hinweis = "ACHTUNG: Keine ID Spalte (Snapshot Modus)" }
+        elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Datum (Full Merge)" }
+
+        $TableList += [PSCustomObject]@{
+            Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } else { "Hinzufügen bei Auswahl" } 
+            Tabelle     = $Name
+            Status      = $Status
+            "Hat ID"    = $HatId
+            "Hat Datum" = $HatDatum
+            Hinweis     = $Hinweis
+        }
     }
+    $Reader.Close()
 }
 catch {
     Write-Error "Fehler beim Lesen der Firebird-Metadaten: $($_.Exception.Message)"
@@ -148,6 +144,13 @@ catch {
         Write-Host "Details: $($_.Exception.InnerException.Message)" -ForegroundColor Red 
     }
     exit 2
+}
+finally {
+    # WICHTIG: Connection immer aufräumen
+    if ($FbConn) {
+        try { $FbConn.Close() } catch { }
+        try { $FbConn.Dispose() } catch { }
+    }
 }
 
 # -----------------------------------------------------------------------------
