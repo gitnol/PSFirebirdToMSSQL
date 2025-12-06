@@ -321,6 +321,37 @@ Das Modul stellt zentral folgende Funktionen bereit:
 
 ---
 
+Verwendung in eigenen Skripten
+
+```powershell
+Import-Module (Join-Path $PSScriptRoot "SQLSyncCommon.psm1") -Force
+
+$Config = Get-SQLSyncConfig -ConfigPath ".\config.json"
+$FbCreds = Resolve-FirebirdCredentials -Config $Config.RawConfig
+
+$ConnStr = New-FirebirdConnectionString `
+    -Server $Config.FBServer `
+    -Database $Config.FBDatabase `
+    -Username $FbCreds.Username `
+    -Password $FbCreds.Password
+
+# Direkt mit try/finally arbeiten (empfohlen)
+$FbConn = $null
+try {
+    $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnStr)
+    $FbConn.Open()
+    
+    $cmd = $FbConn.CreateCommand()
+    $cmd.CommandText = "SELECT COUNT(*) FROM MYTABLE"
+    $cmd.ExecuteScalar()
+}
+finally {
+    Close-DatabaseConnection -Connection $FbConn
+}
+```
+
+---
+
 ## Credential Management
 
 Die Credentials werden im Windows Credential Manager unter folgenden Namen gespeichert:
@@ -328,7 +359,14 @@ Die Credentials werden im Windows Credential Manager unter folgenden Namen gespe
 - `SQLSync_Firebird`
 - `SQLSync_MSSQL`
 
-Verwaltung per Kommandozeile: `cmdkey /list:SQLSync*`
+```powershell
+# Anzeigen
+cmdkey /list:SQLSync*
+
+# Löschen
+cmdkey /delete:SQLSync_Firebird
+cmdkey /delete:SQLSync_MSSQL
+```
 
 ---
 
