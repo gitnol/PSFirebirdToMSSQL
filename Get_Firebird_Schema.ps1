@@ -25,6 +25,65 @@ param(
     [string]$TableName
 )
 
+
+# -----------------------------------------------------------------------------
+# 2. CREDENTIAL MANAGER FUNKTION (ROBUST)
+# -----------------------------------------------------------------------------
+function Get-StoredCredential {
+    param([Parameter(Mandatory)][string]$Target)
+    
+    # Prüfen ob Typ schon existiert (verhindert Fehler bei erneutem Laden)
+    if (-not ('CredManager.Util' -as [type])) {
+        $Source = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace CredManager {
+    public static class Util {
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool CredRead(string target, int type, int reserved, out IntPtr credential);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern void CredFree(IntPtr credential);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct CREDENTIAL {
+            public int Flags;
+            public int Type;
+            public string TargetName;
+            public string Comment;
+            public long LastWritten;
+            public int CredentialBlobSize;
+            public IntPtr CredentialBlob;
+            public int Persist;
+            public int AttributeCount;
+            public IntPtr Attributes;
+            public string TargetAlias;
+            public string UserName;
+        }
+    }
+}
+'@
+        Add-Type -TypeDefinition $Source -Language CSharp
+    }
+
+    $CredPtr = [IntPtr]::Zero
+    $Success = [CredManager.Util]::CredRead($Target, 1, 0, [ref]$CredPtr)
+    
+    if (-not $Success) { return $null }
+    
+    try {
+        $Cred = [System.Runtime.InteropServices.Marshal]::PtrToStructure($CredPtr, [Type][CredManager.Util+CREDENTIAL])
+        $Password = ""
+        if ($Cred.CredentialBlobSize -gt 0) {
+            $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($Cred.CredentialBlob, $Cred.CredentialBlobSize / 2)
+        }
+        return [PSCustomObject]@{ Username = $Cred.UserName; Password = $Password }
+    }
+    finally { [CredManager.Util]::CredFree($CredPtr) }
+}
+
 # -----------------------------------------------------------------------------
 # 1. KONFIGURATION LADEN (für Credentials & DLL Pfad)
 # -----------------------------------------------------------------------------
