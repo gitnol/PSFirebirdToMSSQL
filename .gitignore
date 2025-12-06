@@ -1,4 +1,5 @@
 config*
 !config.sample.json
+!config.schema.json
 Logs
 **/*.log

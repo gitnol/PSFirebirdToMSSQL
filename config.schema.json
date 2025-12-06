@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/gitnol/PSFirebirdToMSSQL/config.schema.json",
+  "title": "SQLSync Configuration",
+  "description": "Konfigurationsschema für PSFirebirdToMSSQL - Firebird to MSSQL Synchronizer",
+  "type": "object",
+  "required": ["Firebird", "MSSQL", "Tables"],
+  "properties": {
+    "General": {
+      "type": "object",
+      "description": "Allgemeine Synchronisationseinstellungen",
+      "properties": {
+        "GlobalTimeout": {
+          "type": "integer",
+          "description": "Timeout in Sekunden für SQL-Befehle und BulkCopy",
+          "minimum": 60,
+          "maximum": 86400,
+          "default": 7200
+        },
+        "RecreateStagingTable": {
+          "type": "boolean",
+          "description": "Staging-Tabellen bei jedem Lauf neu erstellen (Schema-Update)",
+          "default": false
+        },
+        "ForceFullSync": {
+          "type": "boolean",
+          "description": "TRUNCATE der Zieltabelle + vollständige Neuladung",
+          "default": false
+        },
+        "RunSanityCheck": {
+          "type": "boolean",
+          "description": "COUNT-Vergleich zwischen Quelle und Ziel durchführen",
+          "default": true
+        },
+        "MaxRetries": {
+          "type": "integer",
+          "description": "Wiederholungsversuche bei Verbindungsfehlern",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 3
+        },
+        "RetryDelaySeconds": {
+          "type": "integer",
+          "description": "Wartezeit in Sekunden zwischen Wiederholungsversuchen",
+          "minimum": 1,
+          "maximum": 300,
+          "default": 10
+        },
+        "DeleteLogOlderThanDays": {
+          "type": "integer",
+          "description": "Automatisches Löschen von Logs nach X Tagen (0 = deaktiviert)",
+          "minimum": 0,
+          "maximum": 365,
+          "default": 30
+        }
+      },
+      "additionalProperties": false
+    },
+    "Firebird": {
+      "type": "object",
+      "description": "Firebird Quell-Datenbank Einstellungen",
+      "required": ["Server", "Database"],
+      "properties": {
+        "Server": {
+          "type": "string",
+          "description": "Hostname oder IP-Adresse des Firebird-Servers",
+          "minLength": 1,
+          "examples": ["svrerp01", "192.168.1.100"]
+        },
+        "Database": {
+          "type": "string",
+          "description": "Vollständiger Pfad zur .FDB Datei auf dem Server",
+          "minLength": 1,
+          "pattern": ".*\\.(fdb|FDB)$",
+          "examples": ["D:\\DB\\LA01_ECHT.FDB", "/var/firebird/data/mydb.fdb"]
+        },
+        "Port": {
+          "type": "integer",
+          "description": "Firebird Server Port",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 3050
+        },
+        "Charset": {
+          "type": "string",
+          "description": "Zeichensatz für die Verbindung",
+          "enum": ["UTF8", "ISO8859_1", "WIN1252", "NONE"],
+          "default": "UTF8"
+        },
+        "DllPath": {
+          "type": "string",
+          "description": "Pfad zur FirebirdSql.Data.FirebirdClient.dll"
+        },
+        "User": {
+          "type": "string",
+          "description": "Firebird Benutzername (Fallback wenn Credential Manager leer)",
+          "default": "SYSDBA"
+        },
+        "Password": {
+          "type": "string",
+          "description": "Firebird Passwort (UNSICHER! Besser: Credential Manager)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "MSSQL": {
+      "type": "object",
+      "description": "Microsoft SQL Server Ziel-Datenbank Einstellungen",
+      "required": ["Server", "Database"],
+      "properties": {
+        "Server": {
+          "type": "string",
+          "description": "SQL Server Hostname oder Instance-Name",
+          "minLength": 1,
+          "examples": ["SVRSQL03", "localhost\\SQLEXPRESS", "server.domain.local,1433"]
+        },
+        "Database": {
+          "type": "string",
+          "description": "Name der Ziel-Datenbank (wird automatisch erstellt falls nicht vorhanden)",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+          "examples": ["STAGING", "DWH_Firebird"]
+        },
+        "Port": {
+          "type": "integer",
+          "description": "SQL Server Port (Standard: 1433)",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 1433
+        },
+        "Integrated Security": {
+          "type": "boolean",
+          "description": "Windows Authentication verwenden",
+          "default": false
+        },
+        "Username": {
+          "type": "string",
+          "description": "SQL Server Benutzername (nur bei SQL Auth)"
+        },
+        "Password": {
+          "type": "string",
+          "description": "SQL Server Passwort (UNSICHER! Besser: Credential Manager)"
+        },
+        "Prefix": {
+          "type": "string",
+          "description": "Prefix für Zieltabellen (z.B. 'DWH_' -> DWH_KUNDE)",
+          "pattern": "^[a-zA-Z0-9_]*$",
+          "default": ""
+        },
+        "Suffix": {
+          "type": "string",
+          "description": "Suffix für Zieltabellen (z.B. '_V1' -> KUNDE_V1)",
+          "pattern": "^[a-zA-Z0-9_]*$",
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    },
+    "Tables": {
+      "type": "array",
+      "description": "Liste der zu synchronisierenden Firebird-Tabellen",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "description": "Firebird Tabellenname (case-sensitive)",
+        "minLength": 1,
+        "pattern": "^[A-Z0-9_]+$"
+      },
+      "examples": [
+        ["BKUNDE", "BLIEF", "BSA"],
+        ["ARTIKEL", "BESTELLUNG", "KUNDE"]
+      ]
+    }
+  },
+  "additionalProperties": false
+}
