@@ -35,7 +35,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Credential Management](#credential-management)
   - [Logging](#logging)
   - [Wichtige Hinweise](#wichtige-hinweise)
-    - [Löschungen werden nicht synchronisiert](#löschungen-werden-nicht-synchronisiert)
+    - [Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)](#löschungen-werden-im-standard-nicht-synchronisiert-cleanuporphans-option)
     - [Task Scheduler Integration](#task-scheduler-integration)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
@@ -341,9 +341,10 @@ Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 
 ## Wichtige Hinweise
 
-### Löschungen werden nicht synchronisiert
+### Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)
 
-Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten (Historie). Um dies zu bereinigen, nutzen Sie `ForceFullSync: true` in einem regelmäßigen Wartungs-Task (z.B. Sonntags), der die Zieltabellen leert und neu aufbaut.
+Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten (Historie). Um dies zu bereinigen, nutzen Sie `ForceFullSync: true` in einem regelmäßigen Wartungs-Task (z.B. Sonntags), der die Zieltabellen leert und neu aufbaut. Aktualisiert auch das Schema.
+Es ist allerdings auch möglich durch `CleanupOrphans: true` in der `config.json` die IDs der Quelle mit dem Ziels abzugleichen. Es werden diejenigen gelöscht, die nicht in der Quelle sind. Siehe auch: [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
 
 ### Task Scheduler Integration
 
