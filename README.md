@@ -14,12 +14,13 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Dateistruktur](#dateistruktur)
   - [Voraussetzungen](#voraussetzungen)
   - [Installation](#installation)
-    - [Schritt 1: Konfiguration anlegen](#schritt-1-konfiguration-anlegen)
-    - [Schritt 2: SQL Server Umgebung (Automatisch)](#schritt-2-sql-server-umgebung-automatisch)
-    - [Schritt 3: Credentials sicher speichern](#schritt-3-credentials-sicher-speichern)
-    - [Schritt 4: Verbindung testen](#schritt-4-verbindung-testen)
-    - [Schritt 5: Tabellen auswählen](#schritt-5-tabellen-auswählen)
-    - [Schritt 6: Automatische Aufgabenplanung (Optional)](#schritt-6-automatische-aufgabenplanung-optional)
+    - [Schritt 1: Dateien kopieren](#schritt-1-dateien-kopieren)
+    - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
+    - [Schritt 3: SQL Server Umgebung (Automatisch)](#schritt-3-sql-server-umgebung-automatisch)
+    - [Schritt 4: Credentials sicher speichern](#schritt-4-credentials-sicher-speichern)
+    - [Schritt 5: Verbindung testen](#schritt-5-verbindung-testen)
+    - [Schritt 6: Tabellen auswählen](#schritt-6-tabellen-auswählen)
+    - [Schritt 7: Automatische Aufgabenplanung (Optional)](#schritt-7-automatische-aufgabenplanung-optional)
   - [Nutzung](#nutzung)
     - [Sync starten (Standard)](#sync-starten-standard)
     - [Sync starten (Spezifische Config)](#sync-starten-spezifische-config)
@@ -28,6 +29,8 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Konfigurationsoptionen](#konfigurationsoptionen)
     - [General Sektion](#general-sektion)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
+    - [JSON-Schema-Validierung (NEU)](#json-schema-validierung-neu)
+  - [Modul-Architektur](#modul-architektur)
   - [Credential Management](#credential-management)
   - [Logging](#logging)
   - [Wichtige Hinweise](#wichtige-hinweise)
@@ -35,6 +38,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Task Scheduler Integration](#task-scheduler-integration)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
+    - [v2.8 (2025-12-06) - Modul-Architektur \& Bugfixes](#v28-2025-12-06---modul-architektur--bugfixes)
     - [v2.7 (2025-12-04) - Auto-Setup \& Robustness](#v27-2025-12-04---auto-setup--robustness)
     - [v2.6 (2025-12-03) - Task Automation](#v26-2025-12-03---task-automation)
     - [v2.5 (2025-11-29) - Prefix/Suffix \& Fixes](#v25-2025-11-29---prefixsuffix--fixes)
@@ -54,6 +58,9 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 - **Parallelisierung**: Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`).
 - **Sichere Credentials**: Windows Credential Manager statt Klartext-Passwörter.
 - **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau.
+- **NEU: Modul-Architektur**: Wiederverwendbare Funktionen in `SQLSyncCommon.psm1`.
+- **NEU: JSON-Schema-Validierung**: Optionale Validierung der Konfigurationsdatei.
+- **NEU: Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup.
 
 ---
 
@@ -61,6 +68,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 
 ```text
 SQLSync/
+├── SQLSyncCommon.psm1                   # KERN-MODUL: Gemeinsame Funktionen (MUSS vorhanden sein!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # Einmalig: Passwörter sicher speichern
 ├── Setup_ScheduledTasks.ps1             # Richtet autom. die Windows-Tasks ein
@@ -71,6 +79,7 @@ SQLSync/
 ├── test_dotnet_firebird.ps1             # Verbindungstest
 ├── config.json                          # Zugangsdaten & Einstellungen (git-ignoriert)
 ├── config.sample.json                   # Konfigurationsvorlage
+├── config.schema.json                   # NEU: JSON-Schema für Validierung
 ├── .gitignore                           # Schützt config.json
 └── Logs/                                # Log-Dateien (automatisch erstellt)
 ```
@@ -86,17 +95,22 @@ SQLSync/
 | Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
 | MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
 
-Hinweis für die Installation unter Windows Server Betriebssystemen: 
-  - Sollte mit `Install-Package FirebirdSql.Data.FirebirdClient` (über NuGet) das Paket nicht installiert werden bzw. hängen bleiben, bitte unter Windows 11 installieren. 
-  - Dann die installierten Pakete von `C:\Program Files\PackageManagement\NuGet\Packages` in das jeweilige Verzeichnis auf dem Server kopieren.
+**Hinweis für Windows Server:**
+Sollte `Install-Package FirebirdSql.Data.FirebirdClient` hängen bleiben, bitte unter Windows 11 installieren und die Pakete von `C:\Program Files\PackageManagement\NuGet\Packages` manuell auf den Server kopieren.
 
 ---
 
 ## Installation
 
-### Schritt 1: Konfiguration anlegen
+### Schritt 1: Dateien kopieren
 
-Kopiere `config.sample.json` nach `config.json`.
+Alle `.ps1`, `.sql`, `.json` und vor allem die `.psm1` Dateien in ein gemeinsames Verzeichnis kopieren (z.B. `E:\SQLSync_Firebird_to_MSSQL\`).
+
+**Wichtig:** Die Datei `SQLSyncCommon.psm1` muss zwingend im selben Verzeichnis wie die Skripte liegen!
+
+### Schritt 2: Konfiguration anlegen
+
+Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
 
 **Beispielkonfiguration:**
 
@@ -130,22 +144,16 @@ Kopiere `config.sample.json` nach `config.json`.
 }
 ```
 
-### Schritt 2: SQL Server Umgebung (Automatisch)
+### Schritt 3: SQL Server Umgebung (Automatisch)
 
-Das Hauptskript (`Sync_Firebird_MSSQL_AutoSchema.ps1`) verfügt nun über einen **Pre-Flight Check**.
+Das Hauptskript verfügt über einen **Pre-Flight Check**.
+Wenn das Skript gestartet wird, passiert Folgendes automatisch:
 
-1.  Stellen Sie sicher, dass die Datei `sql_server_setup.sql` im selben Ordner wie das Skript liegt.
-2.  Wenn das Skript gestartet wird (siehe "Nutzung"), passiert Folgendes automatisch:
-    - Verbindungsversuch zur Systemdatenbank `master`.
-    - Prüfung, ob die in `config.json` definierte Datenbank (z.B. `STAGING`) existiert.
-    - **Falls nein:** Datenbank wird erstellt (`CREATE DATABASE`) und auf `RECOVERY SIMPLE` gesetzt.
-    - Prüfung, ob die Prozedur `sp_Merge_Generic` existiert.
-    - **Falls nein:** Der Inhalt von `sql_server_setup.sql` wird eingelesen (Kommentare entfernt, Batches gesplittet) und ausgeführt.
+1.  Verbindungsversuch zur Systemdatenbank `master`.
+2.  **Datenbank erstellen:** Falls die Ziel-DB nicht existiert, wird sie erstellt und auf `RECOVERY SIMPLE` gesetzt.
+3.  **Prozedur installieren:** Falls `sp_Merge_Generic` fehlt, wird sie aus der `sql_server_setup.sql` installiert.
 
-_Manueller Fallback (nur nötig bei Fehlern):_
-Führen Sie den Inhalt von `sql_server_setup.sql` manuell im SQL Management Studio aus.
-
-### Schritt 3: Credentials sicher speichern
+### Schritt 4: Credentials sicher speichern
 
 Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential Manager zu speichern:
 
@@ -153,13 +161,13 @@ Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential
 .\Setup_Credentials.ps1
 ```
 
-### Schritt 4: Verbindung testen
+### Schritt 5: Verbindung testen
 
 ```powershell
 .\test_dotnet_firebird.ps1
 ```
 
-### Schritt 5: Tabellen auswählen
+### Schritt 6: Tabellen auswählen
 
 Starten Sie den GUI-Manager, um Tabellen auszuwählen:
 
@@ -172,7 +180,7 @@ Der Manager bietet eine **Toggle-Logik**:
 - Markierte Tabellen, die _nicht_ in der Config sind -> Werden **hinzugefügt**.
 - Markierte Tabellen, die _schon_ in der Config sind -> Werden **entfernt**.
 
-### Schritt 6: Automatische Aufgabenplanung (Optional)
+### Schritt 7: Automatische Aufgabenplanung (Optional)
 
 Nutzen Sie das bereitgestellte Skript, um die Synchronisation im Windows Task Scheduler einzurichten. Das Skript erstellt automatisch zwei Aufgaben (Daily Diff & Weekly Full) und fragt sicher nach dem Windows-Passwort.
 
@@ -209,7 +217,7 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 │  1. PRE-FLIGHT CHECK (Neu in v2.7)                          │
 │     Verbindung zu 'master', Auto-Create DB, Auto-Install SP │
 ├─────────────────────────────────────────────────────────────┤
-│  2. INITIALISIERUNG                                         │
+│  2. INITIALISIERUNG (Modul laden)                           │
 │     Config laden, Credentials aus Credential Manager holen  │
 ├─────────────────────────────────────────────────────────────┤
 │  3. ANALYSE (pro Tabelle, parallel)                         │
@@ -256,11 +264,32 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ### MSSQL Prefix & Suffix
 
-Steuern die Namensgebung im Zielsystem. Die Staging-Tabelle heißt intern immer `STG_<OriginalName>`, das Zielsystem kann aber angepasst werden.
+Steuern die Namensgebung im Zielsystem.
 
 - **Prefix**: `DWH_` -> Zieltabelle wird `DWH_KUNDE`
 - **Suffix**: `_V1` -> Zieltabelle wird `KUNDE_V1`
-- Beide leer -> Zieltabelle heißt wie Quelltabelle.
+
+### JSON-Schema-Validierung (NEU)
+
+Die Datei `config.schema.json` kann zur Validierung verwendet werden, um Tippfehler in der Config zu vermeiden:
+
+```powershell
+$json = Get-Content "config.json" -Raw
+Test-Json -Json $json -SchemaFile "config.schema.json"
+```
+
+---
+
+## Modul-Architektur
+
+Ab Version 2.8 verwendet SQLSync ein gemeinsames PowerShell-Modul (`SQLSyncCommon.psm1`) für wiederverwendbare Funktionen. Dieses Modul muss immer im Skriptverzeichnis liegen.
+
+Das Modul stellt zentral folgende Funktionen bereit:
+
+- **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
+- **Configuration:** `Get-SQLSyncConfig` (inkl. Schema-Validierung)
+- **Driver Loading:** `Initialize-FirebirdDriver`
+- **Type Mapping:** `ConvertTo-SqlServerType` (.NET zu SQL Datentypen)
 
 ---
 
@@ -311,6 +340,8 @@ Starten in: C:\Scripts
 │                  │  Read   │                  │  Write  │                  │
 │  Tabelle A       │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
 │  Tabelle B       │         │  (ThrottleLimit) │         │  STG_B (Staging) │
+│                  │         │                  │         │                  │
+│                  │         │  SQLSyncCommon   │         │                  │
 │                  │         │  🔐 Cred Manager │         │                  │
 │                  │         │  ↻ Retry Loop    │         │                  │
 │                  │         │  📄 Transcript   │         │                  │
@@ -327,11 +358,18 @@ Starten in: C:\Scripts
 
 ## Changelog
 
+### v2.8 (2025-12-06) - Modul-Architektur & Bugfixes
+
+- **NEU:** `SQLSyncCommon.psm1` - Gemeinsames Modul für wiederverwendbare Funktionen.
+- **NEU:** `config.schema.json` - JSON-Schema für Konfigurationsvalidierung.
+- **FIX:** Connection Leak behoben - Connections werden jetzt garantiert geschlossen.
+- **FIX:** `Get_Firebird_Schema.ps1` - Fehlende `Get-StoredCredential` Funktion behoben.
+- **Refactoring:** Duplizierter Code in alle Skripte entfernt (~60% weniger Redundanz).
+
 ### v2.7 (2025-12-04) - Auto-Setup & Robustness
 
 - **Feature:** Integrierter Pre-Flight Check: Erstellt Datenbank und installiert `sp_Merge_Generic` automatisch (via `sql_server_setup.sql`), falls fehlend.
 - **Fix:** Verbesserte Behandlung von SQL-Kommentaren beim Einlesen von SQL-Dateien.
-- **Cleanup:** `Initialize_SQL_Environment.ps1` entfernt (Logik im Hauptskript integriert).
 
 ### v2.6 (2025-12-03) - Task Automation
 
