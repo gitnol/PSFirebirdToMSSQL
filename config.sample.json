@@ -6,7 +6,9 @@
     "RunSanityCheck": true,
     "MaxRetries": 3,
     "RetryDelaySeconds": 10,
-    "DeleteLogOlderThanDays": 30
+    "DeleteLogOlderThanDays": 30,
+    "CleanupOrphans": false,
+    "OrphanCleanupBatchSize": 50000
   },
   "Firebird": {
     "Server": "DEIN_SERVER_NAME",
@@ -29,5 +31,6 @@
   "Tables": [
     "BLIEF", 
     "BKUNDE", 
-    "BSA"]
+    "BSA"
+  ]
 }

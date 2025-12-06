@@ -52,6 +52,18 @@
           "minimum": 0,
           "maximum": 365,
           "default": 30
+        },
+        "CleanupOrphans": {
+          "type": "boolean",
+          "description": "Verwaiste Datensätze (in Quelle gelöscht) im Ziel entfernen",
+          "default": false
+        },
+        "OrphanCleanupBatchSize": {
+          "type": "integer",
+          "description": "Batch-Größe für ID-Transfer beim Orphan-Cleanup",
+          "minimum": 1000,
+          "maximum": 500000,
+          "default": 50000
         }
       },
       "additionalProperties": false

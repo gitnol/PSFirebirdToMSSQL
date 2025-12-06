@@ -98,6 +98,8 @@ $MaxRetries = $Config.MaxRetries
 $RetryDelaySeconds = $Config.RetryDelaySeconds
 $DeleteLogOlderThanDays = $Config.DeleteLogOlderThanDays
 $ForceFullSync = $Config.ForceFullSync
+$CleanupOrphans = $Config.CleanupOrphans
+$OrphanCleanupBatchSize = $Config.OrphanCleanupBatchSize
 $MSSQLPrefix = $Config.MSSQLPrefix
 $MSSQLSuffix = $Config.MSSQLSuffix
 $Tabellen = $Config.Tables
@@ -108,6 +110,9 @@ if ($MSSQLPrefix -ne "" -or $MSSQLSuffix -ne "") {
 }
 if ($ForceFullSync) { 
     Write-Host "WARNUNG: ForceFullSync ist AKTIViert. Es werden ALLE Daten neu geladen!" -ForegroundColor Magenta 
+}
+if ($CleanupOrphans) {
+    Write-Host "INFO: CleanupOrphans ist AKTIViert. Verwaiste Datensätze werden gelöscht." -ForegroundColor Yellow
 }
 
 # -----------------------------------------------------------------------------
@@ -284,6 +289,8 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     $Delay = $using:RetryDelaySeconds
     $Prefix = $using:MSSQLPrefix
     $Suffix = $using:MSSQLSuffix
+    $DoCleanupOrphans = $using:CleanupOrphans
+    $CleanupBatchSize = $using:OrphanCleanupBatchSize
     
     # Zieltabelle berechnen
     $TargetTableName = "${Prefix}${Tabelle}${Suffix}"
@@ -296,6 +303,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     $FbCount = -1
     $SqlCount = -1
     $SanityStatus = "N/A"
+    $OrphansDeleted = 0
     
     # Connection Variablen AUSSERHALB der while-Schleife initialisieren
     $FbConn = $null
@@ -511,7 +519,60 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 }
             }
 
-            # F: SANITY ($TargetTableName prüfen)
+            # G: ORPHAN CLEANUP (nur bei HasID und CleanupOrphans aktiviert)
+            # Nicht nötig bei: Snapshot (Truncate+Insert), ForceFullSync (Truncate+Merge)
+            if ($DoCleanupOrphans -and $HasID -and $SyncStrategy -notin @("Snapshot", "FullMerge (Forced)")) {
+                try {
+                    Write-Host "[$Tabelle] Starte Orphan-Cleanup..." -ForegroundColor DarkGray
+                    
+                    # Temp-Tabelle für Quell-IDs erstellen
+                    $TempTableName = "#SourceIDs_$Tabelle"
+                    $CreateTempCmd = $SqlConn.CreateCommand()
+                    $CreateTempCmd.CommandTimeout = $Timeout
+                    $CreateTempCmd.CommandText = "CREATE TABLE $TempTableName (ID BIGINT NOT NULL PRIMARY KEY);"
+                    [void]$CreateTempCmd.ExecuteNonQuery()
+                    
+                    # Alle IDs aus Firebird laden (nur ID-Spalte)
+                    $FbIdCmd = $FbConn.CreateCommand()
+                    $FbIdCmd.CommandText = "SELECT ID FROM ""$Tabelle"""
+                    $IdReader = $FbIdCmd.ExecuteReader()
+                    
+                    # BulkCopy für IDs in Batches
+                    $IdBulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($SqlConn)
+                    $IdBulkCopy.DestinationTableName = $TempTableName
+                    $IdBulkCopy.BulkCopyTimeout = $Timeout
+                    $IdBulkCopy.BatchSize = $CleanupBatchSize
+                    [void]$IdBulkCopy.ColumnMappings.Add("ID", "ID")
+                    $IdBulkCopy.WriteToServer($IdReader)
+                    $IdReader.Close()
+                    
+                    # Verwaiste Datensätze löschen
+                    $DeleteOrphansCmd = $SqlConn.CreateCommand()
+                    $DeleteOrphansCmd.CommandTimeout = $Timeout
+                    $DeleteOrphansCmd.CommandText = @"
+                        DELETE FROM [$TargetTableName] 
+                        WHERE ID NOT IN (SELECT ID FROM $TempTableName);
+                        SELECT @@ROWCOUNT;
+"@
+                    $OrphansDeleted = [int]$DeleteOrphansCmd.ExecuteScalar()
+                    
+                    # Temp-Tabelle aufräumen
+                    $DropTempCmd = $SqlConn.CreateCommand()
+                    $DropTempCmd.CommandText = "DROP TABLE $TempTableName;"
+                    [void]$DropTempCmd.ExecuteNonQuery()
+                    
+                    if ($OrphansDeleted -gt 0) {
+                        $Message += "(Cleanup: $OrphansDeleted gelöscht) "
+                        Write-Host "[$Tabelle] Orphan-Cleanup: $OrphansDeleted Datensätze gelöscht." -ForegroundColor Yellow
+                    }
+                }
+                catch {
+                    $Message += "(Cleanup-Fehler: $($_.Exception.Message)) "
+                    Write-Host "[$Tabelle] Orphan-Cleanup Fehler: $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+
+            # H: SANITY ($TargetTableName prüfen)
             if ($DoSanity) {
                 $FbCountCmd = $FbConn.CreateCommand()
                 $FbCountCmd.CommandText = "SELECT COUNT(*) FROM ""$Tabelle"""
@@ -554,18 +615,19 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     Write-Host "[$Tabelle] Abschluss: $Status ($SanityStatus)" -ForegroundColor ($Status -eq "Erfolg" ? "Green" : "Red")
 
     [PSCustomObject]@{
-        Tabelle     = $Tabelle
-        Target      = $TargetTableName
-        Status      = $Status
-        Strategie   = $Strategy
-        RowsLoaded  = $RowsLoaded
-        FbTotal     = if ($DoSanity) { $FbCount } else { "-" }
-        SqlTotal    = if ($DoSanity) { $SqlCount } else { "-" }
-        SanityCheck = $SanityStatus
-        Duration    = $TableStopwatch.Elapsed
-        Speed       = if ($TableStopwatch.Elapsed.TotalSeconds -gt 0) { [math]::Round($RowsLoaded / $TableStopwatch.Elapsed.TotalSeconds, 0) } else { 0 }
-        Info        = $Message
-        Versuche    = $Attempt
+        Tabelle        = $Tabelle
+        Target         = $TargetTableName
+        Status         = $Status
+        Strategie      = $Strategy
+        RowsLoaded     = $RowsLoaded
+        OrphansDeleted = $OrphansDeleted
+        FbTotal        = if ($DoSanity) { $FbCount } else { "-" }
+        SqlTotal       = if ($DoSanity) { $SqlCount } else { "-" }
+        SanityCheck    = $SanityStatus
+        Duration       = $TableStopwatch.Elapsed
+        Speed          = if ($TableStopwatch.Elapsed.TotalSeconds -gt 0) { [math]::Round($RowsLoaded / $TableStopwatch.Elapsed.TotalSeconds, 0) } else { 0 }
+        Info           = $Message
+        Versuche       = $Attempt
     }
 
 } -ThrottleLimit 4
@@ -580,6 +642,7 @@ $Results | Format-Table -AutoSize @{Label = "Quelle"; Expression = { $_.Tabelle 
 @{Label = "Ziel"; Expression = { $_.Target } },
 @{Label = "Status"; Expression = { $_.Status } },
 @{Label = "Sync"; Expression = { $_.RowsLoaded }; Align = "Right" },
+@{Label = "Del"; Expression = { $_.OrphansDeleted }; Align = "Right" },
 @{Label = "FB"; Expression = { $_.FbTotal }; Align = "Right" },
 @{Label = "SQL"; Expression = { $_.SqlTotal }; Align = "Right" },
 @{Label = "Sanity"; Expression = { $_.SanityCheck } },

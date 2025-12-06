@@ -161,6 +161,8 @@ function Get-SQLSyncConfig {
         MaxRetries             = Get-ConfigValue $Config.General "MaxRetries" 3
         RetryDelaySeconds      = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
         DeleteLogOlderThanDays = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
+        CleanupOrphans         = Get-ConfigValue $Config.General "CleanupOrphans" $false
+        OrphanCleanupBatchSize = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
 
         # Firebird Settings
         FBServer               = $Config.Firebird.Server
@@ -189,6 +191,9 @@ function Get-SQLSyncConfig {
     }
     if (-not $Result.Tables -or $Result.Tables.Count -eq 0) {
         throw "Keine Tabellen in der Konfiguration definiert."
+    }
+    if ($Result.OrphanCleanupBatchSize -lt 1000) {
+        throw "OrphanCleanupBatchSize muss mindestens 1000 sein."
     }
 
     return $Result
