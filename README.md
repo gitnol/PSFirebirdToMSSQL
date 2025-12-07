@@ -37,7 +37,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Logging](#logging)
   - [Wichtige Hinweise](#wichtige-hinweise)
     - [Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)](#löschungen-werden-im-standard-nicht-synchronisiert-cleanuporphans-option)
-    - [Task Scheduler Integration](#task-scheduler-integration)
+    - [Task Scheduler Integration (Pfadanpassung)](#task-scheduler-integration-pfadanpassung)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
     - [v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
@@ -63,7 +63,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 - **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau.
 - **NEU: Modul-Architektur**: Wiederverwendbare Funktionen in `SQLSyncCommon.psm1`.
 - **NEU: JSON-Schema-Validierung**: Optionale Validierung der Konfigurationsdatei.
-- **NEU: Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup.
+- **NEU: Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup (try/finally).
 
 ---
 
@@ -74,7 +74,7 @@ SQLSync/
 ├── SQLSyncCommon.psm1                   # KERN-MODUL: Gemeinsame Funktionen (MUSS vorhanden sein!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # Einmalig: Passwörter sicher speichern
-├── Setup_ScheduledTasks.ps1             # Richtet autom. die Windows-Tasks ein
+├── Setup_ScheduledTasks.ps1             # Vorlage für Windows-Tasks (Pfade anpassen!)
 ├── Manage_Config_Tables.ps1             # GUI-Tool zur Tabellenverwaltung
 ├── Get_Firebird_Schema.ps1              # Hilfstool: Datentyp-Analyse
 ├── sql_server_setup.sql                 # SQL-Template für DB & SP (wird vom Hauptskript genutzt)
@@ -82,7 +82,7 @@ SQLSync/
 ├── Test-SQLSyncConnections.ps1          # Verbindungstest
 ├── config.json                          # Zugangsdaten & Einstellungen (git-ignoriert)
 ├── config.sample.json                   # Konfigurationsvorlage
-├── config.schema.json                   # NEU: JSON-Schema für Validierung
+├── config.schema.json                   # JSON-Schema für Validierung (optional)
 ├── .gitignore                           # Schützt config.json
 └── Logs/                                # Log-Dateien (automatisch erstellt)
 ```
@@ -98,8 +98,6 @@ SQLSync/
 | Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
 | MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
 
-**Hinweis für Windows Server:**
-Sollte `Install-Package FirebirdSql.Data.FirebirdClient` hängen bleiben, bitte unter Windows 11 installieren und die Pakete von `C:\Program Files\PackageManagement\NuGet\Packages` manuell auf den Server kopieren.
 
 ---
 
@@ -144,11 +142,14 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
     "Password": "123456",
     "Database": "STAGING",
     "Prefix": "DWH_",
-    "Suffix": ""
+    "Suffix": "",
+    "Port": 1433
   },
   "Tables": ["EXAMPLETABLE1", "EXAMPLETABLE2"]
 }
 ```
+
+_Hinweis zum MSSQL Port:_ Das Skript verwendet primär den `Server`-Parameter. Sollte ein nicht-standard Port (ungleich 1433) benötigt werden, geben Sie diesen bitte im Format `Servername,Port` im Feld `Server` an (z.B. `"SVRSQL03,1433"`).
 
 ### Schritt 3: SQL Server Umgebung (Automatisch)
 
@@ -188,7 +189,15 @@ Der Manager bietet eine **Toggle-Logik**:
 
 ### Schritt 7: Automatische Aufgabenplanung (Optional)
 
-Nutzen Sie das bereitgestellte Skript, um die Synchronisation im Windows Task Scheduler einzurichten. Das Skript erstellt automatisch zwei Aufgaben (Daily Diff & Weekly Full) und fragt sicher nach dem Windows-Passwort.
+Nutzen Sie das bereitgestellte Skript, um die Synchronisation im Windows Task Scheduler einzurichten. Das Skript erstellt Aufgaben für Daily Diff & Weekly Full.
+
+**ACHTUNG:** Das Skript `Setup_ScheduledTasks.ps1` dient als Vorlage und enthält Beispielpfade (z.B. `E:\SQLSync_...`).
+
+1.  Öffnen Sie `Setup_ScheduledTasks.ps1` in einem Editor.
+2.  Passen Sie die Variablen `$ScriptPath`, `$WorkDir` und die Config-Namen an Ihre Umgebung an.
+3.  Führen Sie es erst dann als Administrator aus.
+
+<!-- end list -->
 
 ```powershell
 # Als Administrator ausführen!
@@ -276,9 +285,9 @@ Wenn `CleanupOrphans: true` gesetzt ist, werden nach dem Sync alle Datensätze i
 
 **Ablauf:**
 
-1. Alle IDs aus Firebird in eine Temp-Tabelle laden (in Batches)
-2. `DELETE FROM Ziel WHERE ID NOT IN (SELECT ID FROM #TempIDs)`
-3. Temp-Tabelle aufräumen
+1.  Alle IDs aus Firebird in eine Temp-Tabelle laden (in Batches für Speichereffizienz)
+2.  `DELETE FROM Ziel WHERE ID NOT IN (SELECT ID FROM #TempIDs)`
+3.  Temp-Tabelle aufräumen
 
 **Einschränkungen:**
 
@@ -383,11 +392,12 @@ Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 ### Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)
 
 Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten (Historie). Um dies zu bereinigen, nutzen Sie `ForceFullSync: true` in einem regelmäßigen Wartungs-Task (z.B. Sonntags), der die Zieltabellen leert und neu aufbaut. Aktualisiert auch das Schema.
-Es ist allerdings auch möglich durch `CleanupOrphans: true` in der `config.json` die IDs der Quelle mit dem Ziels abzugleichen. Es werden diejenigen gelöscht, die nicht in der Quelle sind. Siehe auch: [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
+Alternativ kann `CleanupOrphans: true` genutzt werden, um IDs abzugleichen.
 
-### Task Scheduler Integration
+### Task Scheduler Integration (Pfadanpassung)
 
-Es wird empfohlen, das Skript `Setup_ScheduledTasks.ps1` zu verwenden.
+Es wird empfohlen, das Skript `Setup_ScheduledTasks.ps1` als Vorlage zu verwenden. **Wichtig:** Da das Skript Umgebungsvariablen wie `$WorkDir` und `$ScriptPath` mit Beispielwerten belegt, **muss es vor der Ausführung bearbeitet werden**, um auf Ihre tatsächliche Installation zu zeigen.
+
 Manuelle Aufruf-Parameter für eigene Integrationen:
 
 ```text
