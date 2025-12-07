@@ -32,6 +32,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
     - [JSON-Schema-Validierung (NEU)](#json-schema-validierung-neu)
   - [Modul-Architektur](#modul-architektur)
+  - [Verwendung in eigenen Skripten](#verwendung-in-eigenen-skripten)
   - [Credential Management](#credential-management)
   - [Logging](#logging)
   - [Wichtige Hinweise](#wichtige-hinweise)
@@ -127,7 +128,7 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
     "RetryDelaySeconds": 10,
     "DeleteLogOlderThanDays": 30,
     "CleanupOrphans": false,
-    "OrphanCleanupBatchSize": 50000    
+    "OrphanCleanupBatchSize": 50000
   },
   "Firebird": {
     "Server": "svrerp01",
@@ -321,7 +322,7 @@ Das Modul stellt zentral folgende Funktionen bereit:
 
 ---
 
-Verwendung in eigenen Skripten
+## Verwendung in eigenen Skripten
 
 ```powershell
 Import-Module (Join-Path $PSScriptRoot "SQLSyncCommon.psm1") -Force
@@ -340,7 +341,7 @@ $FbConn = $null
 try {
     $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnStr)
     $FbConn.Open()
-    
+
     $cmd = $FbConn.CreateCommand()
     $cmd.CommandText = "SELECT COUNT(*) FROM MYTABLE"
     $cmd.ExecuteScalar()
