@@ -417,6 +417,19 @@ function New-MSSQLConnectionString {
 .OUTPUTS
     Der aufgelöste Pfad zur DLL.
 #>
+<#
+.SYNOPSIS
+    Lädt den Firebird .NET Treiber (Version 10.3.4).
+    Installiert ihn bei Bedarf systemweit in C:\ProgramData (benötigt Admin-Rechte).
+
+.PARAMETER DllPath
+    Optional: Ein expliziter Pfad zur DLL (überschreibt die Automatik).
+.PARAMETER ScriptDir
+    Optional: Skript-Verzeichnis für relative Pfade.
+
+.OUTPUTS
+    Der aufgelöste Pfad zur DLL.
+#>
 function Initialize-FirebirdDriver {
     [CmdletBinding()]
     param(
@@ -424,55 +437,89 @@ function Initialize-FirebirdDriver {
         [string]$ScriptDir
     )
 
-    # Paket installieren falls nötig
-    if (-not (Get-Package FirebirdSql.Data.FirebirdClient -ErrorAction SilentlyContinue)) {
-        Write-Host "Installiere Firebird .NET Provider..." -ForegroundColor Yellow
-        Install-Package FirebirdSql.Data.FirebirdClient -Force -Confirm:$false | Out-Null
+    # Konstanten
+    $PackageVersion = "10.3.4"
+    $PackageName = "FirebirdSql.Data.FirebirdClient"
+    $CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$PackageName.$PackageVersion"
+    
+    # Helper: Admin-Check
+    function Test-IsAdministrator {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+        return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # DLL-Pfad auflösen
-    $ResolvedPath = $DllPath
+    # --- SCHRITT A: Prüfen, ob Assembly schon geladen ist (Verhindert Ihren Fehler) ---
+    $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | 
+    Where-Object { $_.GetName().Name -eq $PackageName } | 
+    Select-Object -First 1
 
-    if (-not (Test-Path $ResolvedPath)) {
-        # Relativer Pfad?
-        if ($ScriptDir) {
-            $PotentialPath = Join-Path $ScriptDir $DllPath
-            if (Test-Path $PotentialPath) {
-                $ResolvedPath = $PotentialPath
-            }
+    if ($LoadedAssembly) {
+        Write-Host "[Driver] Firebird .NET Provider ist bereits aktiv (aus Speicher)." -ForegroundColor DarkGray
+        # Wir nutzen die Version, die schon da ist, um Konflikte zu vermeiden
+        return $LoadedAssembly.Location
+    }
+
+    # --- SCHRITT B: Pfad suchen (wenn noch nicht geladen) ---
+    $CandidatePaths = @()
+    if (-not [string]::IsNullOrWhiteSpace($DllPath)) {
+        $CandidatePaths += $DllPath
+        if ($ScriptDir) { $CandidatePaths += Join-Path $ScriptDir $DllPath }
+    }
+    # Priorisiere .NET 8.0 für moderne Systeme
+    $CandidatePaths += Join-Path $CentralInstallDir "lib\net8.0\$PackageName.dll"
+    $CandidatePaths += Join-Path $CentralInstallDir "lib\netstandard2.1\$PackageName.dll"
+
+    $ResolvedPath = $null
+    foreach ($Path in $CandidatePaths) {
+        if (Test-Path $Path) {
+            $ResolvedPath = $Path
+            break
         }
     }
 
-    if (-not (Test-Path $ResolvedPath)) {
-        # NuGet Packages durchsuchen
-        $SearchPaths = @(
-            "C:\Program Files\PackageManagement\NuGet\Packages",
-            "$env:USERPROFILE\.nuget\packages"
-        )
+    # --- SCHRITT C: Installieren (wenn Datei fehlt) ---
+    if (-not $ResolvedPath) {
+        Write-Host "Firebird Treiber ($PackageVersion) nicht gefunden." -ForegroundColor Yellow
         
-        foreach ($SearchPath in $SearchPaths) {
-            if (Test-Path $SearchPath) {
-                $Found = Get-ChildItem -Path $SearchPath -Filter "FirebirdSql.Data.FirebirdClient.dll" -Recurse -ErrorAction SilentlyContinue | 
-                Select-Object -First 1
-                if ($Found) {
-                    $ResolvedPath = $Found.FullName
-                    break
-                }
-            }
+        if (-not (Test-IsAdministrator)) {
+            throw "Der Firebird-Treiber fehlt in $CentralInstallDir. Bitte einmalig als ADMINISTRATOR ausführen."
+        }
+
+        Write-Host "Starte systemweiten Download..." -ForegroundColor Cyan
+        if (-not (Test-Path $CentralInstallDir)) { New-Item -ItemType Directory -Path $CentralInstallDir -Force | Out-Null }
+
+        $ZipPath = Join-Path $CentralInstallDir "package.zip"
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg" -OutFile $ZipPath -ErrorAction Stop
+            Expand-Archive -Path $ZipPath -DestinationPath $CentralInstallDir -Force
+            Remove-Item -Path $ZipPath -Force -ErrorAction SilentlyContinue
+            
+            # Neu aufgelöster Pfad
+            $ResolvedPath = Join-Path $CentralInstallDir "lib\net8.0\$PackageName.dll"
+        }
+        catch {
+            throw "Download fehlgeschlagen: $($_.Exception.Message)"
         }
     }
 
+    # --- SCHRITT D: Laden ---
     if (-not $ResolvedPath -or -not (Test-Path $ResolvedPath)) {
-        throw "Firebird Treiber DLL nicht gefunden. Bitte DllPath in config.json prüfen."
+        throw "Treiber konnte nicht bereitgestellt werden."
     }
 
-    # Typ laden
-    Add-Type -Path $ResolvedPath
-    Write-Host "[Driver] Firebird .NET Provider geladen: $ResolvedPath" -ForegroundColor DarkGray
+    try {
+        Add-Type -Path $ResolvedPath
+        Write-Host "[Driver] Firebird .NET Provider geladen: $ResolvedPath" -ForegroundColor DarkGray
+    }
+    catch {
+        # Falls Add-Type trotz Vorab-Check fehlschlägt (sehr selten)
+        throw "Fehler beim Laden der Assembly ($ResolvedPath): $($_.Exception.Message)"
+    }
 
     return $ResolvedPath
 }
-
 #endregion
 
 #region Safe Database Operations
