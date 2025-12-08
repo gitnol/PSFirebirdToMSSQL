@@ -1,47 +1,52 @@
+# PSFirebirdToMSSQL
+
 # SQLSync: Firebird to MSSQL High-Performance Synchronizer
 
-Hochperformante, parallelisierte ETL-Lösung zur inkrementellen Synchronisation von Firebird-Datenbanken (z.B. AvERP) nach Microsoft SQL Server.
+[![de](https://img.shields.io/badge/lang-de-green.svg)](README.de.md)
 
-Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz mit `SqlBulkCopy` und intelligentem Schema-Mapping.
+High-performance, parallelized ETL solution for incremental synchronization of Firebird databases (e.g., AvERP) to Microsoft SQL Server.
+
+Replaces outdated Linked Server solutions with a modern PowerShell approach using `SqlBulkCopy` and intelligent schema mapping.
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
+- [PSFirebirdToMSSQL](#psfirebirdtomssql)
 - [SQLSync: Firebird to MSSQL High-Performance Synchronizer](#sqlsync-firebird-to-mssql-high-performance-synchronizer)
-  - [Inhaltsverzeichnis](#inhaltsverzeichnis)
+  - [Table of Contents](#table-of-contents)
   - [Features](#features)
-  - [Dateistruktur](#dateistruktur)
-  - [Voraussetzungen](#voraussetzungen)
+  - [File Structure](#file-structure)
+  - [Prerequisites](#prerequisites)
   - [Installation](#installation)
-    - [Schritt 1: Dateien kopieren](#schritt-1-dateien-kopieren)
-    - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
-    - [Schritt 3: SQL Server Umgebung (Automatisch)](#schritt-3-sql-server-umgebung-automatisch)
-    - [Schritt 4: Credentials sicher speichern](#schritt-4-credentials-sicher-speichern)
-    - [Schritt 5: Verbindung testen](#schritt-5-verbindung-testen)
-    - [Schritt 6: Tabellen auswählen](#schritt-6-tabellen-auswählen)
-    - [Schritt 7: Automatische Aufgabenplanung (Optional)](#schritt-7-automatische-aufgabenplanung-optional)
-  - [Nutzung](#nutzung)
-    - [Sync starten (Standard)](#sync-starten-standard)
-    - [Sync starten (Spezifische Config)](#sync-starten-spezifische-config)
-    - [Ablauf des Sync-Prozesses](#ablauf-des-sync-prozesses)
-    - [Sync-Strategien](#sync-strategien)
-  - [Konfigurationsoptionen](#konfigurationsoptionen)
-    - [General Sektion](#general-sektion)
-    - [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
+    - [Step 1: Copy Files](#step-1-copy-files)
+    - [Step 2: Create Configuration](#step-2-create-configuration)
+    - [Step 3: SQL Server Environment (Automatic)](#step-3-sql-server-environment-automatic)
+    - [Step 4: Store Credentials Securely](#step-4-store-credentials-securely)
+    - [Step 5: Test Connection](#step-5-test-connection)
+    - [Step 6: Select Tables](#step-6-select-tables)
+    - [Step 7: Automatic Task Scheduling (Optional)](#step-7-automatic-task-scheduling-optional)
+  - [Usage](#usage)
+    - [Start Sync (Default)](#start-sync-default)
+    - [Start Sync (Specific Config)](#start-sync-specific-config)
+    - [Sync Process Flow](#sync-process-flow)
+    - [Sync Strategies](#sync-strategies)
+  - [Configuration Options](#configuration-options)
+    - [General Section](#general-section)
+    - [Orphan Cleanup (Deletion Detection)](#orphan-cleanup-deletion-detection)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
-    - [JSON-Schema-Validierung (NEU)](#json-schema-validierung-neu)
-  - [Modul-Architektur](#modul-architektur)
-  - [Verwendung in eigenen Skripten](#verwendung-in-eigenen-skripten)
+    - [JSON Schema Validation (NEW)](#json-schema-validation-new)
+  - [Module Architecture](#module-architecture)
+  - [Usage in Custom Scripts](#usage-in-custom-scripts)
   - [Credential Management](#credential-management)
   - [Logging](#logging)
-  - [Wichtige Hinweise](#wichtige-hinweise)
-    - [Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)](#löschungen-werden-im-standard-nicht-synchronisiert-cleanuporphans-option)
-    - [Task Scheduler Integration (Pfadanpassung)](#task-scheduler-integration-pfadanpassung)
-  - [Architektur](#architektur)
+  - [Important Notes](#important-notes)
+    - [Deletions Are Not Synchronized by Default (CleanupOrphans Option)](#deletions-are-not-synchronized-by-default-cleanuporphans-option)
+    - [Task Scheduler Integration (Path Adjustment)](#task-scheduler-integration-path-adjustment)
+  - [Architecture](#architecture)
   - [Changelog](#changelog)
-    - [v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
-    - [v2.8 (2025-12-06) - Modul-Architektur \& Bugfixes](#v28-2025-12-06---modul-architektur--bugfixes)
+    - [v2.9 (2025-12-06) - Orphan Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
+    - [v2.8 (2025-12-06) - Module Architecture \& Bugfixes](#v28-2025-12-06---module-architecture--bugfixes)
     - [v2.7 (2025-12-04) - Auto-Setup \& Robustness](#v27-2025-12-04---auto-setup--robustness)
     - [v2.6 (2025-12-03) - Task Automation](#v26-2025-12-03---task-automation)
     - [v2.5 (2025-11-29) - Prefix/Suffix \& Fixes](#v25-2025-11-29---prefixsuffix--fixes)
@@ -51,69 +56,68 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 
 ## Features
 
-- **High-Speed Transfer**: .NET `SqlBulkCopy` für maximale Schreibgeschwindigkeit (Staging-Ansatz mit Memory-Streaming).
-- **Inkrementeller Sync**: Lädt nur geänderte Daten (Delta) basierend auf der `GESPEICHERT`-Spalte (High Watermark Pattern).
-- **Auto-Environment Setup**: Das Skript prüft beim Start, ob die Ziel-Datenbank existiert. Falls nicht, verbindet es sich mit `master`, **erstellt die Datenbank** automatisch und setzt das Recovery Model auf `SIMPLE`.
-- **Auto-Installation SP**: Installiert oder aktualisiert die benötigte Stored Procedure `sp_Merge_Generic` automatisch aus der `sql_server_setup.sql`.
-- **Flexible Namensgebung**: Unterstützt **Prefixe** und **Suffixe** für Zieltabellen (z.B. Quelle `KUNDE` -> Ziel `DWH_KUNDE_V1`).
-- **Multi-Config Support**: Parameter `-ConfigFile` erlaubt getrennte Jobs (z.B. Daily vs. Weekly).
-- **Self-Healing**: Erkennt Schema-Änderungen, fehlende Primärschlüssel und Indizes und repariert diese.
-- **Parallelisierung**: Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`).
-- **Sichere Credentials**: Windows Credential Manager statt Klartext-Passwörter.
-- **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau.
-- **NEU: Modul-Architektur**: Wiederverwendbare Funktionen in `SQLSyncCommon.psm1`.
-- **NEU: JSON-Schema-Validierung**: Optionale Validierung der Konfigurationsdatei.
-- **NEU: Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup (try/finally).
+- **High-Speed Transfer**: .NET `SqlBulkCopy` for maximum write performance (staging approach with memory streaming).
+- **Incremental Sync**: Loads only changed data (delta) based on the `GESPEICHERT` column (High Watermark Pattern).
+- **Auto-Environment Setup**: The script checks at startup whether the target database exists. If not, it connects to `master`, **creates the database** automatically, and sets the recovery model to `SIMPLE`.
+- **Auto-Install SP**: Automatically installs or updates the required stored procedure `sp_Merge_Generic` from `sql_server_setup.sql`.
+- **Flexible Naming**: Supports **prefixes** and **suffixes** for target tables (e.g., source `KUNDE` -> target `DWH_KUNDE_V1`).
+- **Multi-Config Support**: The `-ConfigFile` parameter allows separate jobs (e.g., Daily vs. Weekly).
+- **Self-Healing**: Detects schema changes, missing primary keys, and indexes, and repairs them.
+- **Parallelization**: Processes multiple tables simultaneously (PowerShell 7+ `ForEach-Object -Parallel`).
+- **Secure Credentials**: Windows Credential Manager instead of plaintext passwords.
+- **GUI Config Manager**: Convenient tool for table selection with metadata preview.
+- **NEW: Module Architecture**: Reusable functions in `SQLSyncCommon.psm1`.
+- **NEW: JSON Schema Validation**: Optional configuration file validation.
+- **NEW: Secure Connection Handling**: No resource leaks through guaranteed cleanup (try/finally).
 
 ---
 
-## Dateistruktur
+## File Structure
 
 ```text
 SQLSync/
-├── SQLSyncCommon.psm1                   # KERN-MODUL: Gemeinsame Funktionen (MUSS vorhanden sein!)
-├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract -> Staging -> Merge)
-├── Setup_Credentials.ps1                # Einmalig: Passwörter sicher speichern
-├── Setup_ScheduledTasks.ps1             # Vorlage für Windows-Tasks (Pfade anpassen!)
-├── Manage_Config_Tables.ps1             # GUI-Tool zur Tabellenverwaltung
-├── Get_Firebird_Schema.ps1              # Hilfstool: Datentyp-Analyse
-├── sql_server_setup.sql                 # SQL-Template für DB & SP (wird vom Hauptskript genutzt)
-├── Example_Sync_Start.ps1               # Beispiel-Wrapper
-├── Test-SQLSyncConnections.ps1          # Verbindungstest
-├── config.json                          # Zugangsdaten & Einstellungen (git-ignoriert)
-├── config.sample.json                   # Konfigurationsvorlage
-├── config.schema.json                   # JSON-Schema für Validierung (optional)
-├── .gitignore                           # Schützt config.json
-└── Logs/                                # Log-Dateien (automatisch erstellt)
+├── SQLSyncCommon.psm1                   # CORE MODULE: Shared functions (MUST be present!)
+├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Main script (Extract -> Staging -> Merge)
+├── Setup_Credentials.ps1                # One-time: Store passwords securely
+├── Setup_ScheduledTasks.ps1             # Template for Windows Tasks (adjust paths!)
+├── Manage_Config_Tables.ps1             # GUI tool for table management
+├── Get_Firebird_Schema.ps1              # Helper tool: Data type analysis
+├── sql_server_setup.sql                 # SQL template for DB & SP (used by main script)
+├── Example_Sync_Start.ps1               # Example wrapper
+├── Test-SQLSyncConnections.ps1          # Connection test
+├── config.json                          # Credentials & settings (git-ignored)
+├── config.sample.json                   # Configuration template
+├── config.schema.json                   # JSON schema for validation (optional)
+├── .gitignore                           # Protects config.json
+└── Logs/                                # Log files (created automatically)
 ```
 
 ---
 
-## Voraussetzungen
+## Prerequisites
 
-| Komponente             | Anforderung                                                                    |
-| :--------------------- | :----------------------------------------------------------------------------- |
-| PowerShell             | Version 7.0 oder höher (zwingend für `-Parallel`)                              |
-| Firebird .NET Provider | Wird automatisch via NuGet installiert                                         |
-| Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
-| MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
-
+| Component              | Requirement                                                                     |
+| :--------------------- | :------------------------------------------------------------------------------ |
+| PowerShell             | Version 7.0 or higher (required for `-Parallel`)                                |
+| Firebird .NET Provider | Automatically installed via NuGet                                               |
+| Firebird Access        | Read permissions on the source database                                         |
+| MSSQL Access           | Permission to create DBs (`db_creator`) or at least `db_owner` on target DB     |
 
 ---
 
 ## Installation
 
-### Schritt 1: Dateien kopieren
+### Step 1: Copy Files
 
-Alle `.ps1`, `.sql`, `.json` und vor allem die `.psm1` Dateien in ein gemeinsames Verzeichnis kopieren (z.B. `E:\SQLSync_Firebird_to_MSSQL\`).
+Copy all `.ps1`, `.sql`, `.json`, and especially the `.psm1` files to a common directory (e.g., `E:\SQLSync_Firebird_to_MSSQL\`).
 
-**Wichtig:** Die Datei `SQLSyncCommon.psm1` muss zwingend im selben Verzeichnis wie die Skripte liegen!
+**Important:** The file `SQLSyncCommon.psm1` must be in the same directory as the scripts!
 
-### Schritt 2: Konfiguration anlegen
+### Step 2: Create Configuration
 
-Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
+Copy `config.sample.json` to `config.json` and adjust the values.
 
-**Beispielkonfiguration:**
+**Example Configuration:**
 
 ```json
 {
@@ -149,167 +153,165 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
 }
 ```
 
-_Hinweis zum MSSQL Port:_ Das Skript verwendet primär den `Server`-Parameter. Sollte ein nicht-standard Port (ungleich 1433) benötigt werden, geben Sie diesen bitte im Format `Servername,Port` im Feld `Server` an (z.B. `"SVRSQL03,1433"`).
+_Note on MSSQL Port:_ The script primarily uses the `Server` parameter. If a non-standard port (other than 1433) is needed, specify it in the format `ServerName,Port` in the `Server` field (e.g., `"SVRSQL03,1433"`).
 
-### Schritt 3: SQL Server Umgebung (Automatisch)
+### Step 3: SQL Server Environment (Automatic)
 
-Das Hauptskript verfügt über einen **Pre-Flight Check**.
-Wenn das Skript gestartet wird, passiert Folgendes automatisch:
+The main script includes a **Pre-Flight Check**.
+When the script starts, the following happens automatically:
 
-1.  Verbindungsversuch zur Systemdatenbank `master`.
-2.  **Datenbank erstellen:** Falls die Ziel-DB nicht existiert, wird sie erstellt und auf `RECOVERY SIMPLE` gesetzt.
-3.  **Prozedur installieren:** Falls `sp_Merge_Generic` fehlt, wird sie aus der `sql_server_setup.sql` installiert.
+1.  Connection attempt to the `master` system database.
+2.  **Create Database:** If the target DB doesn't exist, it is created and set to `RECOVERY SIMPLE`.
+3.  **Install Procedure:** If `sp_Merge_Generic` is missing, it is installed from `sql_server_setup.sql`.
 
-### Schritt 4: Credentials sicher speichern
+### Step 4: Store Credentials Securely
 
-Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential Manager zu speichern:
+Run the setup script to store passwords encrypted in the Windows Credential Manager:
 
 ```powershell
 .\Setup_Credentials.ps1
 ```
 
-### Schritt 5: Verbindung testen
+### Step 5: Test Connection
 
 ```powershell
 .\Test-SQLSyncConnections.ps1
 ```
 
-### Schritt 6: Tabellen auswählen
+### Step 6: Select Tables
 
-Starten Sie den GUI-Manager, um Tabellen auszuwählen:
+Start the GUI manager to select tables:
 
 ```powershell
 .\Manage_Config_Tables.ps1
 ```
 
-Der Manager bietet eine **Toggle-Logik**:
+The manager offers a **toggle logic**:
 
-- Markierte Tabellen, die _nicht_ in der Config sind -> Werden **hinzugefügt**.
-- Markierte Tabellen, die _schon_ in der Config sind -> Werden **entfernt**.
+- Selected tables that are _not_ in the config -> Will be **added**.
+- Selected tables that are _already_ in the config -> Will be **removed**.
 
-### Schritt 7: Automatische Aufgabenplanung (Optional)
+### Step 7: Automatic Task Scheduling (Optional)
 
-Nutzen Sie das bereitgestellte Skript, um die Synchronisation im Windows Task Scheduler einzurichten. Das Skript erstellt Aufgaben für Daily Diff & Weekly Full.
+Use the provided script to set up synchronization in the Windows Task Scheduler. The script creates tasks for Daily Diff & Weekly Full.
 
-**ACHTUNG:** Das Skript `Setup_ScheduledTasks.ps1` dient als Vorlage und enthält Beispielpfade (z.B. `E:\SQLSync_...`).
+**WARNING:** The script `Setup_ScheduledTasks.ps1` serves as a template and contains example paths (e.g., `E:\SQLSync_...`).
 
-1.  Öffnen Sie `Setup_ScheduledTasks.ps1` in einem Editor.
-2.  Passen Sie die Variablen `$ScriptPath`, `$WorkDir` und die Config-Namen an Ihre Umgebung an.
-3.  Führen Sie es erst dann als Administrator aus.
-
-<!-- end list -->
+1.  Open `Setup_ScheduledTasks.ps1` in an editor.
+2.  Adjust the variables `$ScriptPath`, `$WorkDir`, and config names to your environment.
+3.  Run it as Administrator only after making adjustments.
 
 ```powershell
-# Als Administrator ausführen!
+# Run as Administrator!
 .\Setup_ScheduledTasks.ps1
 ```
 
 ---
 
-## Nutzung
+## Usage
 
-### Sync starten (Standard)
+### Start Sync (Default)
 
-Startet den Sync mit der Standard-Datei `config.json` im Skriptverzeichnis:
+Starts the sync with the default file `config.json` in the script directory:
 
 ```powershell
 .\Sync_Firebird_MSSQL_AutoSchema.ps1
 ```
 
-### Sync starten (Spezifische Config)
+### Start Sync (Specific Config)
 
-Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine Konfigurationsdatei übergeben werden:
+For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration file can be passed:
 
 ```powershell
-# Beispiel für einen Weekly-Job
+# Example for a Weekly job
 .\Sync_Firebird_MSSQL_AutoSchema.ps1 -ConfigFile "config_weekly_full.json"
 ```
 
-### Ablauf des Sync-Prozesses
+### Sync Process Flow
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  1. PRE-FLIGHT CHECK (Neu in v2.7)                          │
-│     Verbindung zu 'master', Auto-Create DB, Auto-Install SP │
+│  1. PRE-FLIGHT CHECK (New in v2.7)                          │
+│     Connect to 'master', Auto-Create DB, Auto-Install SP    │
 ├─────────────────────────────────────────────────────────────┤
-│  2. INITIALISIERUNG (Modul laden)                           │
-│     Config laden, Credentials aus Credential Manager holen  │
+│  2. INITIALIZATION (Load module)                            │
+│     Load config, Get credentials from Credential Manager    │
 ├─────────────────────────────────────────────────────────────┤
-│  3. ANALYSE (pro Tabelle, parallel)                         │
-│     Prüft Quell-Schema auf ID und GESPEICHERT               │
-│     → Wählt Strategie: Incremental / FullMerge / Snapshot   │
+│  3. ANALYSIS (per table, parallel)                          │
+│     Check source schema for ID and GESPEICHERT              │
+│     → Select strategy: Incremental / FullMerge / Snapshot   │
 ├─────────────────────────────────────────────────────────────┤
-│  4. SCHEMA-CHECK                                            │
-│     Erstellt STG_<Tabelle> falls nicht vorhanden            │
+│  4. SCHEMA CHECK                                            │
+│     Create STG_<Table> if not present                       │
 ├─────────────────────────────────────────────────────────────┤
 │  5. EXTRACT & LOAD                                          │
 │     Firebird Reader -> BulkCopy Stream -> MSSQL Staging     │
 ├─────────────────────────────────────────────────────────────┤
 │  6. MERGE                                                   │
-│     sp_Merge_Generic: Staging -> Zieltabelle (mit Prefix)   │
-│     Self-Healing: Erstellt fehlende Primary Keys            │
+│     sp_Merge_Generic: Staging -> Target table (with Prefix) │
+│     Self-Healing: Creates missing Primary Keys              │
 ├─────────────────────────────────────────────────────────────┤
 │  7. SANITY CHECK & RETRY LOOP                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Sync-Strategien
+### Sync Strategies
 
-| Strategie       | Bedingung                      | Verhalten                          |
-| :-------------- | :----------------------------- | :--------------------------------- |
-| **Incremental** | ID + GESPEICHERT vorhanden     | Lädt nur Delta (schnellste Option) |
-| **FullMerge**   | ID vorhanden, kein GESPEICHERT | Lädt alles, merged per ID          |
-| **Snapshot**    | Keine ID                       | Truncate & vollständiger Insert    |
+| Strategy        | Condition                        | Behavior                          |
+| :-------------- | :------------------------------- | :-------------------------------- |
+| **Incremental** | ID + GESPEICHERT present         | Loads only delta (fastest option) |
+| **FullMerge**   | ID present, no GESPEICHERT       | Loads all, merges by ID           |
+| **Snapshot**    | No ID                            | Truncate & complete insert        |
 
 ---
 
-## Konfigurationsoptionen
+## Configuration Options
 
-### General Sektion
+### General Section
 
-| Variable                 | Standard | Beschreibung                                                   |
+| Variable                 | Default  | Description                                                    |
 | :----------------------- | :------- | :------------------------------------------------------------- |
-| `GlobalTimeout`          | 7200     | Timeout in Sekunden für SQL-Befehle und BulkCopy               |
-| `RecreateStagingTable`   | `false`  | `true` = Staging bei jedem Lauf neu erstellen (Schema-Update)  |
-| `ForceFullSync`          | `false`  | `true` = **Truncate** der Zieltabelle + vollständige Neuladung |
-| `RunSanityCheck`         | `true`   | `false` = Überspringt COUNT-Vergleich                          |
-| `MaxRetries`             | 3        | Wiederholungsversuche bei Fehler                               |
-| `RetryDelaySeconds`      | 10       | Wartezeit zwischen Retries                                     |
-| `DeleteLogOlderThanDays` | 30       | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)         |
-| `CleanupOrphans`         | `false`  | Verwaiste Datensätze im Ziel löschen                           |
-| `OrphanCleanupBatchSize` | 50000    | Batch-Größe für ID-Transfer beim Cleanup                       |
+| `GlobalTimeout`          | 7200     | Timeout in seconds for SQL commands and BulkCopy               |
+| `RecreateStagingTable`   | `false`  | `true` = Recreate staging on each run (schema update)          |
+| `ForceFullSync`          | `false`  | `true` = **Truncate** target table + complete reload           |
+| `RunSanityCheck`         | `true`   | `false` = Skip COUNT comparison                                |
+| `MaxRetries`             | 3        | Retry attempts on error                                        |
+| `RetryDelaySeconds`      | 10       | Wait time between retries                                      |
+| `DeleteLogOlderThanDays` | 30       | Automatically delete logs after X days (0 = Disabled)          |
+| `CleanupOrphans`         | `false`  | Delete orphaned records in target                              |
+| `OrphanCleanupBatchSize` | 50000    | Batch size for ID transfer during cleanup                      |
 
-### Orphan-Cleanup (Löschungserkennung)
+### Orphan Cleanup (Deletion Detection)
 
-Wenn `CleanupOrphans: true` gesetzt ist, werden nach dem Sync alle Datensätze im Ziel gelöscht, die in der Quelle nicht mehr existieren.
+When `CleanupOrphans: true` is set, all records in the target that no longer exist in the source are deleted after sync.
 
-**Ablauf:**
+**Process:**
 
-1.  Alle IDs aus Firebird in eine Temp-Tabelle laden (in Batches für Speichereffizienz)
-2.  `DELETE FROM Ziel WHERE ID NOT IN (SELECT ID FROM #TempIDs)`
-3.  Temp-Tabelle aufräumen
+1.  Load all IDs from Firebird into a temp table (in batches for memory efficiency)
+2.  `DELETE FROM Target WHERE ID NOT IN (SELECT ID FROM #TempIDs)`
+3.  Clean up temp table
 
-**Einschränkungen:**
+**Limitations:**
 
-- Funktioniert nur bei Tabellen mit `ID`-Spalte (nicht bei Snapshot-Strategie)
-- Erhöht die Laufzeit, da alle IDs übertragen werden müssen
-- Nicht nötig bei `ForceFullSync` (Tabelle wird eh komplett neu geladen)
+- Only works for tables with an `ID` column (not for Snapshot strategy)
+- Increases runtime as all IDs must be transferred
+- Not necessary with `ForceFullSync` (table is completely reloaded anyway)
 
-**Empfehlung:**
+**Recommendation:**
 
-- `CleanupOrphans: false` für tägliche Diff-Syncs (Performance)
-- `CleanupOrphans: true` für wöchentliche Full-Syncs (Datenbereinigung)
+- `CleanupOrphans: false` for daily diff syncs (performance)
+- `CleanupOrphans: true` for weekly full syncs (data cleanup)
 
 ### MSSQL Prefix & Suffix
 
-Steuern die Namensgebung im Zielsystem.
+Control naming in the target system.
 
-- **Prefix**: `DWH_` -> Zieltabelle wird `DWH_KUNDE`
-- **Suffix**: `_V1` -> Zieltabelle wird `KUNDE_V1`
+- **Prefix**: `DWH_` -> Target table becomes `DWH_KUNDE`
+- **Suffix**: `_V1` -> Target table becomes `KUNDE_V1`
 
-### JSON-Schema-Validierung (NEU)
+### JSON Schema Validation (NEW)
 
-Die Datei `config.schema.json` kann zur Validierung verwendet werden, um Tippfehler in der Config zu vermeiden:
+The file `config.schema.json` can be used for validation to avoid typos in the config:
 
 ```powershell
 $json = Get-Content "config.json" -Raw
@@ -318,20 +320,20 @@ Test-Json -Json $json -SchemaFile "config.schema.json"
 
 ---
 
-## Modul-Architektur
+## Module Architecture
 
-Ab Version 2.8 verwendet SQLSync ein gemeinsames PowerShell-Modul (`SQLSyncCommon.psm1`) für wiederverwendbare Funktionen. Dieses Modul muss immer im Skriptverzeichnis liegen.
+Starting with version 2.8, SQLSync uses a shared PowerShell module (`SQLSyncCommon.psm1`) for reusable functions. This module must always be in the script directory.
 
-Das Modul stellt zentral folgende Funktionen bereit:
+The module centrally provides the following functions:
 
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
-- **Configuration:** `Get-SQLSyncConfig` (inkl. Schema-Validierung)
+- **Configuration:** `Get-SQLSyncConfig` (including schema validation)
 - **Driver Loading:** `Initialize-FirebirdDriver`
-- **Type Mapping:** `ConvertTo-SqlServerType` (.NET zu SQL Datentypen)
+- **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types)
 
 ---
 
-## Verwendung in eigenen Skripten
+## Usage in Custom Scripts
 
 ```powershell
 Import-Module (Join-Path $PSScriptRoot "SQLSyncCommon.psm1") -Force
@@ -345,7 +347,7 @@ $ConnStr = New-FirebirdConnectionString `
     -Username $FbCreds.Username `
     -Password $FbCreds.Password
 
-# Direkt mit try/finally arbeiten (empfohlen)
+# Work directly with try/finally (recommended)
 $FbConn = $null
 try {
     $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnStr)
@@ -364,16 +366,16 @@ finally {
 
 ## Credential Management
 
-Die Credentials werden im Windows Credential Manager unter folgenden Namen gespeichert:
+Credentials are stored in the Windows Credential Manager under the following names:
 
 - `SQLSync_Firebird`
 - `SQLSync_MSSQL`
 
 ```powershell
-# Anzeigen
+# Display
 cmdkey /list:SQLSync*
 
-# Löschen
+# Delete
 cmdkey /delete:SQLSync_Firebird
 cmdkey /delete:SQLSync_MSSQL
 ```
@@ -382,42 +384,42 @@ cmdkey /delete:SQLSync_MSSQL
 
 ## Logging
 
-Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
+All output is automatically written to a log file:
 `Logs\Sync_<ConfigName>_YYYY-MM-DD_HHmm.log`
 
 ---
 
-## Wichtige Hinweise
+## Important Notes
 
-### Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)
+### Deletions Are Not Synchronized by Default (CleanupOrphans Option)
 
-Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten (Historie). Um dies zu bereinigen, nutzen Sie `ForceFullSync: true` in einem regelmäßigen Wartungs-Task (z.B. Sonntags), der die Zieltabellen leert und neu aufbaut. Aktualisiert auch das Schema.
-Alternativ kann `CleanupOrphans: true` genutzt werden, um IDs abzugleichen.
+The incremental sync only detects new/changed records. Deleted records in Firebird remain in SQL Server (history). To clean this up, use `ForceFullSync: true` in a regular maintenance task (e.g., Sundays) that empties and rebuilds the target tables. This also updates the schema.
+Alternatively, `CleanupOrphans: true` can be used to compare IDs.
 
-### Task Scheduler Integration (Pfadanpassung)
+### Task Scheduler Integration (Path Adjustment)
 
-Es wird empfohlen, das Skript `Setup_ScheduledTasks.ps1` als Vorlage zu verwenden. **Wichtig:** Da das Skript Umgebungsvariablen wie `$WorkDir` und `$ScriptPath` mit Beispielwerten belegt, **muss es vor der Ausführung bearbeitet werden**, um auf Ihre tatsächliche Installation zu zeigen.
+It is recommended to use the script `Setup_ScheduledTasks.ps1` as a template. **Important:** Since the script uses environment variables like `$WorkDir` and `$ScriptPath` with example values, **it must be edited before execution** to point to your actual installation.
 
-Manuelle Aufruf-Parameter für eigene Integrationen:
+Manual call parameters for custom integrations:
 
 ```text
-Programm: pwsh.exe
-Argumente: -ExecutionPolicy Bypass -File "C:\Scripts\Sync_Firebird_MSSQL_AutoSchema.ps1" -ConfigFile "config.json"
-Starten in: C:\Scripts
+Program: pwsh.exe
+Arguments: -ExecutionPolicy Bypass -File "C:\Scripts\Sync_Firebird_MSSQL_AutoSchema.ps1" -ConfigFile "config.json"
+Start in: C:\Scripts
 ```
 
 ---
 
-## Architektur
+## Architecture
 
 ```text
 ┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
 │    Firebird      │         │   PowerShell 7   │         │   SQL Server     │
-│   (Quelle)       │         │   ETL Engine     │         │   (Ziel)         │
+│   (Source)       │         │   ETL Engine     │         │   (Target)       │
 ├──────────────────┤         ├──────────────────┤         ├──────────────────┤
 │                  │  Read   │                  │  Write  │                  │
-│  Tabelle A       │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
-│  Tabelle B       │         │  (ThrottleLimit) │         │  STG_B (Staging) │
+│  Table A         │ ──────► │  Parallel Jobs   │ ──────► │  STG_A (Staging) │
+│  Table B         │         │  (ThrottleLimit) │         │  STG_B (Staging) │
 │                  │         │                  │         │                  │
 │                  │         │  SQLSyncCommon   │         │                  │
 │                  │         │  🔐 Cred Manager │         │                  │
@@ -436,34 +438,34 @@ Starten in: C:\Scripts
 
 ## Changelog
 
-### v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)
+### v2.9 (2025-12-06) - Orphan Cleanup (Soft Deletes)
 
-- **NEU:** `CleanupOrphans` Option - Erkennt und löscht verwaiste Datensätze im Ziel
-- **NEU:** `OrphanCleanupBatchSize` - Konfigurierbarer Batch-Size für große Tabellen
-- **NEU:** "Del" Spalte in Zusammenfassung zeigt gelöschte Orphans an
-- Batch-basierter ID-Transfer für Memory-Effizienz bei >100.000 Zeilen
+- **NEW:** `CleanupOrphans` option - Detects and deletes orphaned records in target
+- **NEW:** `OrphanCleanupBatchSize` - Configurable batch size for large tables
+- **NEW:** "Del" column in summary shows deleted orphans
+- Batch-based ID transfer for memory efficiency with >100,000 rows
 
-### v2.8 (2025-12-06) - Modul-Architektur & Bugfixes
+### v2.8 (2025-12-06) - Module Architecture & Bugfixes
 
-- **NEU:** `SQLSyncCommon.psm1` - Gemeinsames Modul für wiederverwendbare Funktionen.
-- **NEU:** `config.schema.json` - JSON-Schema für Konfigurationsvalidierung.
-- **FIX:** Connection Leak behoben - Connections werden jetzt garantiert geschlossen.
-- **FIX:** `Get_Firebird_Schema.ps1` - Fehlende `Get-StoredCredential` Funktion behoben.
-- **Refactoring:** Duplizierter Code in alle Skripte entfernt (~60% weniger Redundanz).
+- **NEW:** `SQLSyncCommon.psm1` - Shared module for reusable functions.
+- **NEW:** `config.schema.json` - JSON schema for configuration validation.
+- **FIX:** Connection leak fixed - Connections are now guaranteed to close.
+- **FIX:** `Get_Firebird_Schema.ps1` - Fixed missing `Get-StoredCredential` function.
+- **Refactoring:** Removed duplicate code from all scripts (~60% less redundancy).
 
 ### v2.7 (2025-12-04) - Auto-Setup & Robustness
 
-- **Feature:** Integrierter Pre-Flight Check: Erstellt Datenbank und installiert `sp_Merge_Generic` automatisch (via `sql_server_setup.sql`), falls fehlend.
-- **Fix:** Verbesserte Behandlung von SQL-Kommentaren beim Einlesen von SQL-Dateien.
+- **Feature:** Integrated Pre-Flight Check: Creates database and installs `sp_Merge_Generic` automatically (via `sql_server_setup.sql`) if missing.
+- **Fix:** Improved handling of SQL comments when reading SQL files.
 
 ### v2.6 (2025-12-03) - Task Automation
 
-- **Neu:** `Setup_ScheduledTasks.ps1` zur automatischen Einrichtung der Windows-Aufgabenplanung.
+- **New:** `Setup_ScheduledTasks.ps1` for automatic Windows Task Scheduler setup.
 
 ### v2.5 (2025-11-29) - Prefix/Suffix & Fixes
 
-- **Feature:** `MSSQL.Prefix` und `MSSQL.Suffix` implementiert.
+- **Feature:** `MSSQL.Prefix` and `MSSQL.Suffix` implemented.
 
 ### v2.1 (2025-11-25) - Secure Credentials
 
-- Windows Credential Manager Integration.
+- Windows Credential Manager integration.
