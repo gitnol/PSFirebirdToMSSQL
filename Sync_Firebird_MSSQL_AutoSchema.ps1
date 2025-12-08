@@ -23,6 +23,9 @@
 
 .NOTES
     Version: 2.7 (Refactored - Modul-basiert)
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL    
 #>
 
 param(

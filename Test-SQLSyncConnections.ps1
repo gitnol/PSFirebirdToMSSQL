@@ -21,6 +21,9 @@
 
 .NOTES
     Version: 2.0 (Refactored - Modul-basiert)
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL
 #>
 
 #Requires -Version 7.0

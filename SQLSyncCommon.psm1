@@ -12,6 +12,10 @@
 .NOTES
     Version: 1.0.0
     Importieren mit: Import-Module (Join-Path $PSScriptRoot "SQLSyncCommon.psm1") -Force
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL
+
 #>
 
 #region Credential Manager
@@ -449,7 +453,7 @@ function Initialize-FirebirdDriver {
         return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # --- SCHRITT A: Prüfen, ob Assembly schon geladen ist (Verhindert Ihren Fehler) ---
+    # --- SCHRITT A: Prüfen, ob Assembly schon geladen ist (Verhindert Fehler) ---
     $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | 
     Where-Object { $_.GetName().Name -eq $PackageName } | 
     Select-Object -First 1

@@ -16,6 +16,9 @@
     - MultipleInstances: IgnoreNew (verhindert parallele Starts wenn ein Job hängt)
     - LogonType Parameter entfernt (wird durch -Password impliziert)
     - StopAtDurationEnd deaktiviert (kein harter Abbruch um 21:01)
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL
 #>
 
 # -----------------------------------------------------------------------------

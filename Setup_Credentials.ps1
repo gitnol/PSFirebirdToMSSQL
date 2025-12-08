@@ -8,6 +8,9 @@
     
 .NOTES
     Nach Ausführung können die Passwörter aus config.json entfernt werden.
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL
 #>
 
 # -----------------------------------------------------------------------------

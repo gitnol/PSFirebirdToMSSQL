@@ -12,6 +12,10 @@
 
 .EXAMPLE
     .\Get_Firebird_Schema.ps1 -TableName "BAUF"
+
+.LINK
+    https://github.com/gitnol/PSFirebirdToMSSQL
+
 #>
 
 #Requires -Version 7.0
