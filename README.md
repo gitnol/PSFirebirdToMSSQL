@@ -30,6 +30,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
     - [Sync Strategies](#sync-strategies)
   - [Configuration Options](#configuration-options)
     - [General Section](#general-section)
+    - [Column Configuration (NEW in v2.10)](#column-configuration-new-in-v210)
     - [Orphan Cleanup (Deletion Detection)](#orphan-cleanup-deletion-detection)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
     - [JSON Schema Validation (NEW)](#json-schema-validation-new)
@@ -42,6 +43,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
     - [Task Scheduler Integration (Path Adjustment)](#task-scheduler-integration-path-adjustment)
   - [Architecture](#architecture)
   - [Changelog](#changelog)
+    - [v2.10 (2025-12-09) - Dynamic Column Configuration](#v210-2025-12-09---dynamic-column-configuration)
     - [v2.9 (2025-12-06) - Orphan Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
     - [v2.8 (2025-12-06) - Module Architecture \& Bugfixes](#v28-2025-12-06---module-architecture--bugfixes)
     - [v2.7 (2025-12-04) - Auto-Setup \& Robustness](#v27-2025-12-04---auto-setup--robustness)
@@ -254,11 +256,11 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 
 ### Sync Strategies
 
-| Strategy        | Condition                        | Behavior                          |
-| :-------------- | :------------------------------- | :-------------------------------- |
-| **Incremental** | ID + GESPEICHERT present         | Loads only delta (fastest option) |
-| **FullMerge**   | ID present, no GESPEICHERT       | Loads all, merges by ID           |
-| **Snapshot**    | No ID                            | Truncate & complete insert        |
+| Strategy        | Condition                            | Behavior                          |
+| :-------------- | :----------------------------------- | :-------------------------------- |
+| **Incremental** | ID + Timestamp column present        | Loads only delta (fastest option) |
+| **FullMerge**   | ID present, no timestamp column      | Loads all, merges by ID           |
+| **Snapshot**    | No ID                                | Truncate & complete insert        |
 
 ---
 
@@ -277,6 +279,46 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 | `DeleteLogOlderThanDays` | 30       | Automatically delete logs after X days (0 = Disabled)          |
 | `CleanupOrphans`         | `false`  | Delete orphaned records in target                              |
 | `OrphanCleanupBatchSize` | 50000    | Batch size for ID transfer during cleanup                      |
+| `IdColumn`               | `"ID"`   | Default ID column name for all tables                          |
+| `TimestampColumns`       | `["GESPEICHERT"]` | List of possible timestamp columns (first found is used) |
+
+### Column Configuration (NEW in v2.10)
+
+The script now supports flexible column configuration for different table structures.
+
+**Global Defaults:**
+
+```json
+{
+  "General": {
+    "IdColumn": "ID",
+    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE", "CHANGED_AT"]
+  }
+}
+```
+
+**Table-Specific Overrides:**
+
+```json
+{
+  "TableOverrides": {
+    "LEGACY_ORDERS": {
+      "IdColumn": "ORDER_ID",
+      "TimestampColumn": "CHANGED_AT"
+    },
+    "AUDIT_LOG": {
+      "IdColumn": "LOG_ID"
+    }
+  }
+}
+```
+
+**Logic:**
+
+1. Check if `TableOverrides[Table]` exists → Use override values
+2. `IdColumn`: Override → Global → "ID" (default)
+3. `TimestampColumn`: Override → First found from `TimestampColumns` → `null`
+4. Strategy: HasId + HasTimestamp → Incremental | HasId → FullMerge | else → Snapshot
 
 ### Orphan Cleanup (Deletion Detection)
 
@@ -434,6 +476,15 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.10 (2025-12-09) - Dynamic Column Configuration
+
+- **NEW:** `IdColumn` - Global configuration for ID column name (default: "ID")
+- **NEW:** `TimestampColumns` - List of possible timestamp column names (first found is used)
+- **NEW:** `TableOverrides` - Table-specific overrides for ID and timestamp columns
+- **NEW:** `Get-TableColumnConfig` function in module for reusable column logic
+- **Feature:** Automatic strategy selection based on available columns
+- **Backwards compatible:** Without configuration, "ID" and "GESPEICHERT" are still used
 
 ### v2.9 (2025-12-06) - Orphan Cleanup (Soft Deletes)
 

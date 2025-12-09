@@ -161,12 +161,18 @@ function Get-SQLSyncConfig {
         GlobalTimeout          = Get-ConfigValue $Config.General "GlobalTimeout" 7200
         RecreateStagingTable   = Get-ConfigValue $Config.General "RecreateStagingTable" $false
         ForceFullSync          = Get-ConfigValue $Config.General "ForceFullSync" $false
+        RecreateStoredProcedure= Get-ConfigValue $Config.General "RecreateStoredProcedure" $false
+        NumberOfThreads        = Get-ConfigValue $Config.General "NumberOfThreads" 4
         RunSanityCheck         = Get-ConfigValue $Config.General "RunSanityCheck" $true
         MaxRetries             = Get-ConfigValue $Config.General "MaxRetries" 3
         RetryDelaySeconds      = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
         DeleteLogOlderThanDays = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
         CleanupOrphans         = Get-ConfigValue $Config.General "CleanupOrphans" $false
         OrphanCleanupBatchSize = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
+        
+        # Column Configuration (NEU in v2.10)
+        IdColumn               = Get-ConfigValue $Config.General "IdColumn" "ID"
+        TimestampColumns       = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
 
         # Firebird Settings
         FBServer               = $Config.Firebird.Server
@@ -184,9 +190,22 @@ function Get-SQLSyncConfig {
 
         # Tables
         Tables                 = @($Config.Tables)
+        
+        # Table Overrides (NEU in v2.10)
+        TableOverrides         = @{}
 
         # Raw Config für Zugriff auf weitere Properties
         RawConfig              = $Config
+    }
+    
+    # TableOverrides laden (falls vorhanden)
+    if ($Config.PSObject.Properties.Match("TableOverrides").Count -gt 0 -and $null -ne $Config.TableOverrides) {
+        foreach ($prop in $Config.TableOverrides.PSObject.Properties) {
+            $Result.TableOverrides[$prop.Name] = @{
+                IdColumn        = Get-ConfigValue $prop.Value "IdColumn" $null
+                TimestampColumn = Get-ConfigValue $prop.Value "TimestampColumn" $null
+            }
+        }
     }
 
     # Validierungen
@@ -718,6 +737,119 @@ function ConvertTo-SqlServerType {
 
 #endregion
 
+#region Table Column Configuration
+
+<#
+.SYNOPSIS
+    Ermittelt die ID- und Timestamp-Spalten für eine Tabelle.
+
+.DESCRIPTION
+    Diese Funktion kapselt die gesamte Logik zur Ermittlung der richtigen
+    Spalten für die Sync-Strategie:
+    1. Prüft TableOverrides für tabellenspezifische Konfiguration
+    2. Fällt auf globale Defaults zurück
+    3. Prüft welche Spalten tatsächlich in der Tabelle existieren
+    4. Leitet die Sync-Strategie ab
+
+.PARAMETER TableName
+    Name der zu prüfenden Tabelle.
+
+.PARAMETER Config
+    Das Config-Objekt aus Get-SQLSyncConfig.
+
+.PARAMETER ActualColumns
+    Array mit den tatsächlichen Spaltennamen der Tabelle.
+
+.OUTPUTS
+    Hashtable mit:
+    - IdColumn: Name der ID-Spalte (oder $null)
+    - TimestampColumn: Name der Timestamp-Spalte (oder $null)
+    - HasId: Boolean ob ID-Spalte vorhanden
+    - HasTimestamp: Boolean ob Timestamp-Spalte vorhanden
+    - SyncStrategy: "Incremental", "FullMerge" oder "Snapshot"
+    - IsOverride: Boolean ob Override verwendet wurde
+
+.EXAMPLE
+    $colConfig = Get-TableColumnConfig -TableName "BKUNDE" -Config $Config -ActualColumns @("ID", "NAME", "GESPEICHERT")
+    # Returns: @{ IdColumn = "ID"; TimestampColumn = "GESPEICHERT"; HasId = $true; HasTimestamp = $true; SyncStrategy = "Incremental" }
+
+.EXAMPLE
+    # Mit Override in der Config:
+    # "TableOverrides": { "LEGACY_ORDERS": { "IdColumn": "ORDER_ID", "TimestampColumn": "CHANGED_AT" } }
+    $colConfig = Get-TableColumnConfig -TableName "LEGACY_ORDERS" -Config $Config -ActualColumns @("ORDER_ID", "NAME", "CHANGED_AT")
+    # Returns: @{ IdColumn = "ORDER_ID"; TimestampColumn = "CHANGED_AT"; ... }
+#>
+function Get-TableColumnConfig {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$TableName,
+
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+
+        [Parameter(Mandatory)]
+        [string[]]$ActualColumns
+    )
+
+    # Defaults aus Config
+    $DefaultIdColumn = $Config.IdColumn
+    $DefaultTimestampColumns = $Config.TimestampColumns
+    
+    # Override prüfen
+    $Override = $null
+    $IsOverride = $false
+    if ($Config.TableOverrides.ContainsKey($TableName)) {
+        $Override = $Config.TableOverrides[$TableName]
+        $IsOverride = $true
+    }
+    
+    # ID-Spalte bestimmen
+    $IdColumn = if ($Override -and $Override.IdColumn) { 
+        $Override.IdColumn 
+    } else { 
+        $DefaultIdColumn 
+    }
+    
+    # Timestamp-Spalte bestimmen
+    $TimestampColumn = $null
+    if ($Override -and $Override.TimestampColumn) {
+        # Override hat explizite Timestamp-Spalte
+        $TimestampColumn = $Override.TimestampColumn
+    } else {
+        # Erste gefundene aus der TimestampColumns-Liste verwenden
+        foreach ($tsCol in $DefaultTimestampColumns) {
+            if ($tsCol -in $ActualColumns) {
+                $TimestampColumn = $tsCol
+                break
+            }
+        }
+    }
+    
+    # Prüfen ob Spalten existieren
+    $HasId = $IdColumn -in $ActualColumns
+    $HasTimestamp = $null -ne $TimestampColumn -and $TimestampColumn -in $ActualColumns
+    
+    # Strategie ableiten
+    $SyncStrategy = "Incremental"
+    if (-not $HasId) {
+        $SyncStrategy = "Snapshot"
+    } elseif (-not $HasTimestamp) {
+        $SyncStrategy = "FullMerge"
+    }
+    
+    return @{
+        IdColumn        = if ($HasId) { $IdColumn } else { $null }
+        TimestampColumn = if ($HasTimestamp) { $TimestampColumn } else { $null }
+        HasId           = $HasId
+        HasTimestamp    = $HasTimestamp
+        SyncStrategy    = $SyncStrategy
+        IsOverride      = $IsOverride
+    }
+}
+
+#endregion
+
 # Exportiere alle Public Functions
 Export-ModuleMember -Function @(
     # Credentials
@@ -728,6 +860,7 @@ Export-ModuleMember -Function @(
     # Configuration
     'Get-SQLSyncConfig'
     'Get-ConfigValue'
+    'Get-TableColumnConfig'
     
     # Connection Strings
     'New-FirebirdConnectionString'

@@ -27,6 +27,18 @@
           "description": "TRUNCATE der Zieltabelle + vollständige Neuladung",
           "default": false
         },
+        "RecreateStoredProcedure": {
+          "type": "boolean",
+          "description": "Gespeicherte Prozedur für Merge bei jedem Lauf neu erstellen",
+          "default": false
+        },        
+        "NumberOfThreads": {
+          "type": "integer",
+          "description": "Anzahl der gleichzeitigen Threads für die Tabellensynchronisation",
+          "minimum": 1,
+          "maximum": 8,
+          "default": 4
+        },
         "RunSanityCheck": {
           "type": "boolean",
           "description": "COUNT-Vergleich zwischen Quelle und Ziel durchführen",
@@ -64,6 +76,31 @@
           "minimum": 1000,
           "maximum": 500000,
           "default": 50000
+        },
+        "IdColumn": {
+          "type": "string",
+          "description": "Standard-Name der ID-Spalte für alle Tabellen",
+          "minLength": 1,
+          "pattern": "^[A-Z0-9_]+$",
+          "default": "ID",
+          "examples": ["ID", "PK_ID", "ROW_ID"]
+        },
+        "TimestampColumns": {
+          "type": "array",
+          "description": "Liste möglicher Timestamp-Spaltennamen (erste gefundene wird verwendet)",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Z0-9_]+$"
+          },
+          "default": ["GESPEICHERT"],
+          "examples": [
+            ["GESPEICHERT"],
+            ["MODIFIED_DATE", "LAST_UPDATE", "CHANGED_AT"],
+            ["GESPEICHERT", "UPDATED_AT", "TIMESTAMP"]
+          ]
         }
       },
       "additionalProperties": false
@@ -182,6 +219,37 @@
       "examples": [
         ["BKUNDE", "BLIEF", "BSA"],
         ["ARTIKEL", "BESTELLUNG", "KUNDE"]
+      ]
+    },
+    "TableOverrides": {
+      "type": "object",
+      "description": "Tabellenspezifische Überschreibungen für ID- und Timestamp-Spalten",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Override-Konfiguration für eine spezifische Tabelle",
+        "properties": {
+          "IdColumn": {
+            "type": "string",
+            "description": "Überschreibt die Standard-ID-Spalte für diese Tabelle",
+            "minLength": 1,
+            "pattern": "^[A-Z0-9_]+$",
+            "examples": ["ORDER_ID", "LOG_ID", "ITEM_KEY"]
+          },
+          "TimestampColumn": {
+            "type": "string",
+            "description": "Überschreibt die automatische Timestamp-Erkennung für diese Tabelle",
+            "minLength": 1,
+            "pattern": "^[A-Z0-9_]+$",
+            "examples": ["CHANGED_AT", "MODIFIED_DATE", "UPDATE_TS"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "examples": [
+        {
+          "LEGACY_ORDERS": { "IdColumn": "ORDER_ID", "TimestampColumn": "CHANGED_AT" },
+          "AUDIT_LOG": { "IdColumn": "LOG_ID" }
+        }
       ]
     }
   },

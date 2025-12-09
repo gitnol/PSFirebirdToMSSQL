@@ -124,23 +124,23 @@ try {
     $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($FbConnString)
     $FbConn.Open()
     
-    # Server-Version
+    # Server-Version (Literal-String für RDB$-Referenzen)
     $VersionCmd = $FbConn.CreateCommand()
-    $VersionCmd.CommandText = "SELECT rdb`$get_context('SYSTEM', 'ENGINE_VERSION') FROM rdb`$database"
+    $VersionCmd.CommandText = 'SELECT rdb$get_context(''SYSTEM'', ''ENGINE_VERSION'') FROM rdb$database'
     $FbVersion = $VersionCmd.ExecuteScalar()
     
-    # Tabellen zählen
+    # Tabellen zählen (Literal Here-String für RDB$-Referenzen)
     $CountCmd = $FbConn.CreateCommand()
-    $CountCmd.CommandText = @"
-        SELECT COUNT(*) FROM RDB`$RELATIONS 
-        WHERE RDB`$SYSTEM_FLAG = 0 AND RDB`$VIEW_BLR IS NULL
-"@
+    $CountCmd.CommandText = @'
+        SELECT COUNT(*) FROM RDB$RELATIONS 
+        WHERE RDB$SYSTEM_FLAG = 0 AND RDB$VIEW_BLR IS NULL
+'@
     $FbTableCount = $CountCmd.ExecuteScalar()
     
     # Test-Query auf erste konfigurierte Tabelle
     $TestTable = $Config.Tables | Select-Object -First 1
     $TestCmd = $FbConn.CreateCommand()
-    $TestCmd.CommandText = "SELECT COUNT(*) FROM ""$TestTable"""
+    $TestCmd.CommandText = 'SELECT COUNT(*) FROM "{0}"' -f $TestTable
     $TestCount = $TestCmd.ExecuteScalar()
     
     Write-Host "  Server:      $($Config.FBServer):$($Config.FBPort)" -ForegroundColor White
@@ -262,4 +262,4 @@ else {
     }
     Write-Host ""
     exit 1
-}
+}

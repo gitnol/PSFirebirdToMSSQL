@@ -58,15 +58,21 @@ Das bereinigt die Leichen.
 ODER Du akzeptierst die Leichen im DWH (Data Warehouse), was oft sogar gewünscht ist (Historie).
 
 
-    Stored Procedure: sp_Merge_Generic (Version 2 - Flexibel)
+    Stored Procedure: sp_Merge_Generic (Version 3 - Dynamic Columns)
     Beschreibung:     Führt einen generischen MERGE durch.
     
     Änderung V2:      Akzeptiert nun separate Namen für Target und Staging.
                       Das ermöglicht Prefixe/Suffixe auf der Zieltabelle.
+    
+    Änderung V3:      Akzeptiert dynamische ID- und Timestamp-Spaltennamen.
+                      @IdColumnName: Name der ID-Spalte (Default: 'ID')
+                      @TimestampColumnName: Name der Timestamp-Spalte (NULL = kein Timestamp-Check)
 */
 CREATE OR ALTER PROCEDURE [dbo].[sp_Merge_Generic]
     @TargetTableName NVARCHAR(128),
-    @StagingTableName NVARCHAR(128)
+    @StagingTableName NVARCHAR(128),
+    @IdColumnName NVARCHAR(128) = 'ID',
+    @TimestampColumnName NVARCHAR(128) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -74,7 +80,8 @@ BEGIN
     DECLARE @SQL NVARCHAR(MAX);
     DECLARE @ColumnList NVARCHAR(MAX);
     DECLARE @UpdateList NVARCHAR(MAX);
-    DECLARE @HasGespeichert BIT = 0;
+    DECLARE @HasTimestamp BIT = 0;
+    DECLARE @SourceColumnList NVARCHAR(MAX);
 
     -- 1. Validierung
     IF OBJECT_ID(@TargetTableName) IS NULL OR OBJECT_ID(@StagingTableName) IS NULL
@@ -83,43 +90,57 @@ BEGIN
         RETURN;
     END
 
-    -- 2. Metadaten-Analyse (Auf Basis der Zieltabelle)
-    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@TargetTableName) AND name = 'GESPEICHERT')
+    -- Prüfen ob ID-Spalte existiert
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@TargetTableName) AND name = @IdColumnName)
     BEGIN
-        SET @HasGespeichert = 1;
+        PRINT 'Fehler: ID-Spalte ' + @IdColumnName + ' existiert nicht in ' + @TargetTableName;
+        RETURN;
     END
 
-    -- Spaltenliste (ohne ID)
+    -- 2. Metadaten-Analyse (Auf Basis der Zieltabelle)
+    IF @TimestampColumnName IS NOT NULL AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@TargetTableName) AND name = @TimestampColumnName)
+    BEGIN
+        SET @HasTimestamp = 1;
+    END
+
+    -- Spaltenliste (ohne ID-Spalte)
     SELECT @ColumnList = STRING_AGG(CAST(QUOTENAME(c.name) AS NVARCHAR(MAX)), ', ')
     FROM sys.columns c
     WHERE c.object_id = OBJECT_ID(@TargetTableName)
-      AND c.name NOT IN ('ID')
+      AND c.name <> @IdColumnName
+      AND c.is_computed = 0;
+
+    -- Spaltenliste mit Source-Prefix
+    SELECT @SourceColumnList = STRING_AGG(CAST('Source.' + QUOTENAME(c.name) AS NVARCHAR(MAX)), ', ')
+    FROM sys.columns c
+    WHERE c.object_id = OBJECT_ID(@TargetTableName)
+      AND c.name <> @IdColumnName
       AND c.is_computed = 0;
 
     -- Update Liste
     SELECT @UpdateList = STRING_AGG(CAST(QUOTENAME(c.name) + ' = Source.' + QUOTENAME(c.name) AS NVARCHAR(MAX)), ', ')
     FROM sys.columns c
     WHERE c.object_id = OBJECT_ID(@TargetTableName)
-      AND c.name NOT IN ('ID')
+      AND c.name <> @IdColumnName
       AND c.is_computed = 0;
 
     -- 3. MERGE SQL
     SET @SQL = 'MERGE ' + QUOTENAME(@TargetTableName) + ' AS Target ' +
                'USING ' + QUOTENAME(@StagingTableName) + ' AS Source ' +
-               'ON (Target.ID = Source.ID) ' +
+               'ON (Target.' + QUOTENAME(@IdColumnName) + ' = Source.' + QUOTENAME(@IdColumnName) + ') ' +
                'WHEN MATCHED ';
 
-    IF @HasGespeichert = 1
+    IF @HasTimestamp = 1
     BEGIN
-        SET @SQL = @SQL + 'AND (Target.GESPEICHERT <> Source.GESPEICHERT OR Target.GESPEICHERT IS NULL) ';
+        SET @SQL = @SQL + 'AND (Target.' + QUOTENAME(@TimestampColumnName) + ' <> Source.' + QUOTENAME(@TimestampColumnName) + ' OR Target.' + QUOTENAME(@TimestampColumnName) + ' IS NULL) ';
     END
 
     SET @SQL = @SQL + 'THEN ' +
                'UPDATE SET ' + @UpdateList + ' ' +
                'WHEN NOT MATCHED BY TARGET THEN ' +
-               'INSERT (ID, ' + @ColumnList + ') ' +
-               'VALUES (Source.ID, ' + @ColumnList + ');';
+               'INSERT (' + QUOTENAME(@IdColumnName) + ', ' + @ColumnList + ') ' +
+               'VALUES (Source.' + QUOTENAME(@IdColumnName) + ', ' + @SourceColumnList + ');';
 
     EXEC sp_executesql @SQL;
 END
-GO
+GO

@@ -257,11 +257,11 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ### Sync-Strategien
 
-| Strategie       | Bedingung                      | Verhalten                          |
-| :-------------- | :----------------------------- | :--------------------------------- |
-| **Incremental** | ID + GESPEICHERT vorhanden     | Lädt nur Delta (schnellste Option) |
-| **FullMerge**   | ID vorhanden, kein GESPEICHERT | Lädt alles, merged per ID          |
-| **Snapshot**    | Keine ID                       | Truncate & vollständiger Insert    |
+| Strategie       | Bedingung                           | Verhalten                          |
+| :-------------- | :---------------------------------- | :--------------------------------- |
+| **Incremental** | ID + Timestamp-Spalte vorhanden     | Lädt nur Delta (schnellste Option) |
+| **FullMerge**   | ID vorhanden, keine Timestamp-Spalte| Lädt alles, merged per ID          |
+| **Snapshot**    | Keine ID                            | Truncate & vollständiger Insert    |
 
 ---
 
@@ -280,6 +280,46 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 | `DeleteLogOlderThanDays` | 30       | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)         |
 | `CleanupOrphans`         | `false`  | Verwaiste Datensätze im Ziel löschen                           |
 | `OrphanCleanupBatchSize` | 50000    | Batch-Größe für ID-Transfer beim Cleanup                       |
+| `IdColumn`               | `"ID"`   | Standard-Name der ID-Spalte für alle Tabellen                  |
+| `TimestampColumns`       | `["GESPEICHERT"]` | Liste möglicher Timestamp-Spalten (erste gefundene wird verwendet) |
+
+### Column Configuration (NEU in v2.10)
+
+Das Skript unterstützt jetzt flexible Spalten-Konfiguration für unterschiedliche Tabellenstrukturen.
+
+**Globale Defaults:**
+
+```json
+{
+  "General": {
+    "IdColumn": "ID",
+    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE", "CHANGED_AT"]
+  }
+}
+```
+
+**Tabellenspezifische Overrides:**
+
+```json
+{
+  "TableOverrides": {
+    "LEGACY_ORDERS": {
+      "IdColumn": "ORDER_ID",
+      "TimestampColumn": "CHANGED_AT"
+    },
+    "AUDIT_LOG": {
+      "IdColumn": "LOG_ID"
+    }
+  }
+}
+```
+
+**Logik:**
+
+1. Prüfe ob `TableOverrides[Tabelle]` existiert → Override-Werte verwenden
+2. `IdColumn`: Override → Global → "ID" (Default)
+3. `TimestampColumn`: Override → Erste gefundene aus `TimestampColumns` → `null`
+4. Strategie: HasId + HasTimestamp → Incremental | HasId → FullMerge | sonst → Snapshot
 
 ### Orphan-Cleanup (Löschungserkennung)
 
@@ -437,6 +477,15 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.10 (2025-12-09) - Dynamic Column Configuration
+
+- **NEU:** `IdColumn` - Globale Konfiguration der ID-Spalte (Standard: "ID")
+- **NEU:** `TimestampColumns` - Liste möglicher Timestamp-Spalten (erste gefundene wird verwendet)
+- **NEU:** `TableOverrides` - Tabellenspezifische Überschreibungen für ID- und Timestamp-Spalten
+- **NEU:** `Get-TableColumnConfig` Funktion im Modul für wiederverwendbare Spalten-Logik
+- **Feature:** Automatische Strategiewahl basierend auf vorhandenen Spalten
+- **Rückwärtskompatibel:** Ohne Konfiguration werden weiterhin "ID" und "GESPEICHERT" verwendet
 
 ### v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)
 

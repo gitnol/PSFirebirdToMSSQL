@@ -52,6 +52,10 @@ if ($Config.Tables) {
     $Config.Tables | ForEach-Object { [void]$CurrentTables.Add($_) }
 }
 
+# Column Configuration (v2.10)
+$IdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
+$TimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
+
 # -----------------------------------------------------------------------------
 # 2. CREDENTIALS AUFLÖSEN
 # -----------------------------------------------------------------------------
@@ -100,18 +104,25 @@ try {
     $FbConn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
     $FbConn.Open()
 
+    # Dynamische Bedingung für Timestamp-Spalten (wird via Format-Operator eingefügt)
+    $TsConditions = ($TimestampColumns | ForEach-Object { "TRIM(FLD.RDB`$FIELD_NAME) = '$_'" }) -join " OR "
+    
+    # Fallback auf "1=0" (nie wahr), falls keine Timestamp-Spalten konfiguriert
+    if (-not $TsConditions) { $TsConditions = "1=0" }
+    
+    # Literal Here-String mit Format-Operator für sichere RDB$-Referenzen
     $Sql = @'
     SELECT 
         TRIM(REL.RDB$RELATION_NAME) as TABELLENNAME,
-        MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'ID' THEN 1 ELSE 0 END) as HAT_ID,
-        MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = 'GESPEICHERT' THEN 1 ELSE 0 END) as HAT_DATUM
+        MAX(CASE WHEN TRIM(FLD.RDB$FIELD_NAME) = '{0}' THEN 1 ELSE 0 END) as HAT_ID,
+        MAX(CASE WHEN {1} THEN 1 ELSE 0 END) as HAT_DATUM
     FROM RDB$RELATIONS REL
     LEFT JOIN RDB$RELATION_FIELDS FLD ON REL.RDB$RELATION_NAME = FLD.RDB$RELATION_NAME
     WHERE REL.RDB$SYSTEM_FLAG = 0 
       AND REL.RDB$VIEW_BLR IS NULL
     GROUP BY REL.RDB$RELATION_NAME
     ORDER BY REL.RDB$RELATION_NAME
-'@
+'@ -f $IdColumn, $TsConditions
 
     $Cmd = $FbConn.CreateCommand()
     $Cmd.CommandText = $Sql
@@ -128,8 +139,8 @@ try {
         }
 
         $Hinweis = ""
-        if (-not $HatId) { $Hinweis = "ACHTUNG: Keine ID Spalte (Snapshot Modus)" }
-        elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Datum (Full Merge)" }
+        if (-not $HatId) { $Hinweis = "ACHTUNG: Keine $IdColumn Spalte (Snapshot Modus)" }
+        elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Timestamp (Full Merge)" }
 
         $TableList += [PSCustomObject]@{
             Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } else { "Hinzufügen bei Auswahl" } 
@@ -258,4 +269,4 @@ if (Test-Path $BackupPath) {
 else {
     Write-Error "Backup fehlgeschlagen. Abbruch."
     exit 4
-}
+}
