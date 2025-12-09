@@ -1,4 +1,4 @@
-# SQLSync: Firebird to MSSQL High-Performance Synchronizer
+# PSFirebirdToMSSQL: Firebird to MSSQL High-Performance Synchronizer
 
 [![en](https://img.shields.io/badge/lang-en-red.svg)](README.md)
 
@@ -10,7 +10,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 
 ## Inhaltsverzeichnis
 
-- [SQLSync: Firebird to MSSQL High-Performance Synchronizer](#sqlsync-firebird-to-mssql-high-performance-synchronizer)
+- [PSFirebirdToMSSQL: Firebird to MSSQL High-Performance Synchronizer](#psfirebirdtomssql-firebird-to-mssql-high-performance-synchronizer)
   - [Inhaltsverzeichnis](#inhaltsverzeichnis)
   - [Features](#features)
   - [Dateistruktur](#dateistruktur)
