@@ -158,44 +158,44 @@ function Get-SQLSyncConfig {
     # Defaults anwenden und Hashtable bauen
     $Result = @{
         # General Settings
-        GlobalTimeout          = Get-ConfigValue $Config.General "GlobalTimeout" 7200
-        RecreateStagingTable   = Get-ConfigValue $Config.General "RecreateStagingTable" $false
-        ForceFullSync          = Get-ConfigValue $Config.General "ForceFullSync" $false
-        RecreateStoredProcedure= Get-ConfigValue $Config.General "RecreateStoredProcedure" $false
-        NumberOfThreads        = Get-ConfigValue $Config.General "NumberOfThreads" 4
-        RunSanityCheck         = Get-ConfigValue $Config.General "RunSanityCheck" $true
-        MaxRetries             = Get-ConfigValue $Config.General "MaxRetries" 3
-        RetryDelaySeconds      = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
-        DeleteLogOlderThanDays = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
-        CleanupOrphans         = Get-ConfigValue $Config.General "CleanupOrphans" $false
-        OrphanCleanupBatchSize = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
+        GlobalTimeout           = Get-ConfigValue $Config.General "GlobalTimeout" 7200
+        RecreateStagingTable    = Get-ConfigValue $Config.General "RecreateStagingTable" $false
+        ForceFullSync           = Get-ConfigValue $Config.General "ForceFullSync" $false
+        RecreateStoredProcedure = Get-ConfigValue $Config.General "RecreateStoredProcedure" $false
+        NumberOfThreads         = Get-ConfigValue $Config.General "NumberOfThreads" 4
+        RunSanityCheck          = Get-ConfigValue $Config.General "RunSanityCheck" $true
+        MaxRetries              = Get-ConfigValue $Config.General "MaxRetries" 3
+        RetryDelaySeconds       = Get-ConfigValue $Config.General "RetryDelaySeconds" 10
+        DeleteLogOlderThanDays  = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
+        CleanupOrphans          = Get-ConfigValue $Config.General "CleanupOrphans" $false
+        OrphanCleanupBatchSize  = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
         
         # Column Configuration (NEU in v2.10)
-        IdColumn               = Get-ConfigValue $Config.General "IdColumn" "ID"
-        TimestampColumns       = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
+        IdColumn                = Get-ConfigValue $Config.General "IdColumn" "ID"
+        TimestampColumns        = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
 
         # Firebird Settings
-        FBServer               = $Config.Firebird.Server
-        FBDatabase             = $Config.Firebird.Database
-        FBPort                 = Get-ConfigValue $Config.Firebird "Port" 3050
-        FBCharset              = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
-        DllPath                = $Config.Firebird.DllPath
+        FBServer                = $Config.Firebird.Server
+        FBDatabase              = $Config.Firebird.Database
+        FBPort                  = Get-ConfigValue $Config.Firebird "Port" 3050
+        FBCharset               = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
+        DllPath                 = $Config.Firebird.DllPath
 
         # MSSQL Settings
-        MSSQLServer            = $Config.MSSQL.Server
-        MSSQLDatabase          = $Config.MSSQL.Database
-        MSSQLIntSec            = Get-ConfigValue $Config.MSSQL "Integrated Security" $false
-        MSSQLPrefix            = Get-ConfigValue $Config.MSSQL "Prefix" ""
-        MSSQLSuffix            = Get-ConfigValue $Config.MSSQL "Suffix" ""
+        MSSQLServer             = $Config.MSSQL.Server
+        MSSQLDatabase           = $Config.MSSQL.Database
+        MSSQLIntSec             = Get-ConfigValue $Config.MSSQL "Integrated Security" $false
+        MSSQLPrefix             = Get-ConfigValue $Config.MSSQL "Prefix" ""
+        MSSQLSuffix             = Get-ConfigValue $Config.MSSQL "Suffix" ""
 
         # Tables
-        Tables                 = @($Config.Tables)
+        Tables                  = @($Config.Tables)
         
         # Table Overrides (NEU in v2.10)
-        TableOverrides         = @{}
+        TableOverrides          = @{}
 
         # Raw Config für Zugriff auf weitere Properties
-        RawConfig              = $Config
+        RawConfig               = $Config
     }
     
     # TableOverrides laden (falls vorhanden)
@@ -807,7 +807,8 @@ function Get-TableColumnConfig {
     # ID-Spalte bestimmen
     $IdColumn = if ($Override -and $Override.IdColumn) { 
         $Override.IdColumn 
-    } else { 
+    }
+    else { 
         $DefaultIdColumn 
     }
     
@@ -816,7 +817,8 @@ function Get-TableColumnConfig {
     if ($Override -and $Override.TimestampColumn) {
         # Override hat explizite Timestamp-Spalte
         $TimestampColumn = $Override.TimestampColumn
-    } else {
+    }
+    else {
         # Erste gefundene aus der TimestampColumns-Liste verwenden
         foreach ($tsCol in $DefaultTimestampColumns) {
             if ($tsCol -in $ActualColumns) {
@@ -834,7 +836,8 @@ function Get-TableColumnConfig {
     $SyncStrategy = "Incremental"
     if (-not $HasId) {
         $SyncStrategy = "Snapshot"
-    } elseif (-not $HasTimestamp) {
+    }
+    elseif (-not $HasTimestamp) {
         $SyncStrategy = "FullMerge"
     }
     
@@ -846,6 +849,28 @@ function Get-TableColumnConfig {
         SyncStrategy    = $SyncStrategy
         IsOverride      = $IsOverride
     }
+}
+
+#endregion
+
+#region Security Helpers
+
+<#
+.SYNOPSIS
+    Escaped Strings für die Verwendung in Firebird SQL-Statements.
+.DESCRIPTION
+    Verdoppelt einfache Anführungszeichen, um SQL-Injection und Syntaxfehler zu verhindern.
+    Gibt bei leerem Input einen leeren String zurück (kein Fehler), um auch optionale Felder zu unterstützen.
+#>
+function Protect-SqlString {
+    param([string]$InputString)
+    
+    if ([string]::IsNullOrEmpty($InputString)) { 
+        return "" 
+    }
+    
+    # Firebird (und SQL Server) escapen einfache Anführungszeichen durch Verdopplung
+    return $InputString -replace "'", "''"
 }
 
 #endregion
@@ -878,4 +903,5 @@ Export-ModuleMember -Function @(
     # Helpers
     'Write-SyncStatus'
     'ConvertTo-SqlServerType'
+    'Protect-SqlString'
 )
