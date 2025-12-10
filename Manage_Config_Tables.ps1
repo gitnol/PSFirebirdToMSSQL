@@ -53,8 +53,10 @@ if ($Config.Tables) {
 }
 
 # Column Configuration (v2.10)
-$IdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
-$TimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
+$RawIdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
+$IdColumn = Protect-SqlString $RawIdColumn # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
+$RawTimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
+$TimestampColumns = $RawTimestampColumns | ForEach-Object { Protect-SqlString $_ } # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
 
 # -----------------------------------------------------------------------------
 # 2. CREDENTIALS AUFLÖSEN
@@ -269,4 +271,4 @@ if (Test-Path $BackupPath) {
 else {
     Write-Error "Backup fehlgeschlagen. Abbruch."
     exit 4
-}
+}
