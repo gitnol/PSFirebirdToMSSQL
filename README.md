@@ -33,7 +33,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
     - [Column Configuration (NEW in v2.10)](#column-configuration-new-in-v210)
     - [Orphan Cleanup (Deletion Detection)](#orphan-cleanup-deletion-detection)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
-    - [JSON Schema Validation (NEW)](#json-schema-validation-new)
+    - [JSON Schema Validation](#json-schema-validation)
   - [Module Architecture](#module-architecture)
   - [Usage in Custom Scripts](#usage-in-custom-scripts)
   - [Credential Management](#credential-management)
@@ -56,7 +56,8 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
 ## Features
 
 - **High-Speed Transfer**: .NET `SqlBulkCopy` for maximum write performance (staging approach with memory streaming).
-- **Incremental Sync**: Loads only changed data (delta) based on the `GESPEICHERT` column (High Watermark Pattern).
+- **Incremental Sync**: Loads only changed data (delta) based on configurable timestamp columns (High Watermark Pattern).
+- **Dynamic Column Configuration**: Flexible ID and timestamp column names - works with any table structure, not just `ID`/`GESPEICHERT`.
 - **Auto-Environment Setup**: The script checks at startup whether the target database exists. If not, it connects to `master`, **creates the database** automatically, and sets the recovery model to `SIMPLE`.
 - **Auto-Install SP**: Automatically installs or updates the required stored procedure `sp_Merge_Generic` from `sql_server_setup.sql`.
 - **Flexible Naming**: Supports **prefixes** and **suffixes** for target tables (e.g., source `KUNDE` -> target `DWH_KUNDE_V1`).
@@ -65,20 +66,20 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
 - **Parallelization**: Processes multiple tables simultaneously (PowerShell 7+ `ForEach-Object -Parallel`).
 - **Secure Credentials**: Windows Credential Manager instead of plaintext passwords.
 - **GUI Config Manager**: Convenient tool for table selection with metadata preview.
-- **NEW: Module Architecture**: Reusable functions in `SQLSyncCommon.psm1`.
-- **NEW: JSON Schema Validation**: Optional configuration file validation.
-- **NEW: Secure Connection Handling**: No resource leaks through guaranteed cleanup (try/finally).
+- **Module Architecture**: Reusable functions in `SQLSyncCommon.psm1`.
+- **JSON Schema Validation**: Optional configuration file validation.
+- **Secure Connection Handling**: No resource leaks through guaranteed cleanup (try/finally).
 
 ---
 
 ## File Structure
 
 ```text
-SQLSync/
+PSFirebirdToMSSQL/
 ├── SQLSyncCommon.psm1                   # CORE MODULE: Shared functions (MUST be present!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Main script (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # One-time: Store passwords securely
-├── Setup_ScheduledTasks.ps1             # Template for Windows Tasks (adjust paths!)
+├── Setup-ScheduledTasks.ps1             # Template for Windows Tasks (adjust paths!)
 ├── Manage_Config_Tables.ps1             # GUI tool for table management
 ├── Get_Firebird_Schema.ps1              # Helper tool: Data type analysis
 ├── sql_server_setup.sql                 # SQL template for DB & SP (used by main script)
@@ -95,12 +96,12 @@ SQLSync/
 
 ## Prerequisites
 
-| Component              | Requirement                                                                     |
-| :--------------------- | :------------------------------------------------------------------------------ |
-| PowerShell             | Version 7.0 or higher (required for `-Parallel`)                                |
-| Firebird .NET Provider | Automatically installed via NuGet                                               |
-| Firebird Access        | Read permissions on the source database                                         |
-| MSSQL Access           | Permission to create DBs (`db_creator`) or at least `db_owner` on target DB     |
+| Component              | Requirement                                                                 |
+| :--------------------- | :-------------------------------------------------------------------------- |
+| PowerShell             | Version 7.0 or higher (required for `-Parallel`)                            |
+| Firebird .NET Provider | Automatically installed via NuGet                                           |
+| Firebird Access        | Read permissions on the source database                                     |
+| MSSQL Access           | Permission to create DBs (`db_creator`) or at least `db_owner` on target DB |
 
 ---
 
@@ -108,7 +109,7 @@ SQLSync/
 
 ### Step 1: Copy Files
 
-Copy all `.ps1`, `.sql`, `.json`, and especially the `.psm1` files to a common directory (e.g., `E:\SQLSync_Firebird_to_MSSQL\`).
+Copy all `.ps1`, `.sql`, `.json`, and especially the `.psm1` files to a common directory (e.g., `C:\Scripts\PSFirebirdToMSSQL\`).
 
 **Important:** The file `SQLSyncCommon.psm1` must be in the same directory as the scripts!
 
@@ -124,31 +125,36 @@ Copy `config.sample.json` to `config.json` and adjust the values.
     "GlobalTimeout": 7200,
     "RecreateStagingTable": false,
     "ForceFullSync": false,
+    "NumberOfThreads": 4,
     "RunSanityCheck": true,
     "MaxRetries": 3,
     "RetryDelaySeconds": 10,
     "DeleteLogOlderThanDays": 30,
     "CleanupOrphans": false,
-    "OrphanCleanupBatchSize": 50000
+    "OrphanCleanupBatchSize": 50000,
+    "IdColumn": "ID",
+    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE"]
   },
   "Firebird": {
     "Server": "svrerp01",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
     "Port": 3050,
-    "Charset": "UTF8",
-    "DllPath": "C:\\Program Files\\..."
+    "Charset": "UTF8"
   },
   "MSSQL": {
     "Server": "SVRSQL03",
     "Integrated Security": true,
-    "Username": "satest",
-    "Password": "123456",
     "Database": "STAGING",
-    "Prefix": "DWH_",
-    "Suffix": "",
-    "Port": 1433
+    "Prefix": "FB_",
+    "Suffix": ""
   },
-  "Tables": ["EXAMPLETABLE1", "EXAMPLETABLE2"]
+  "Tables": ["BKUNDE", "BLIEF", "BSA"],
+  "TableOverrides": {
+    "LEGACY_ORDERS": {
+      "IdColumn": "ORDER_ID",
+      "TimestampColumn": "CHANGED_AT"
+    }
+  }
 }
 ```
 
@@ -194,15 +200,15 @@ The manager offers a **toggle logic**:
 
 Use the provided script to set up synchronization in the Windows Task Scheduler. The script creates tasks for Daily Diff & Weekly Full.
 
-**WARNING:** The script `Setup_ScheduledTasks.ps1` serves as a template and contains example paths (e.g., `E:\SQLSync_...`).
+**WARNING:** The script `Setup-ScheduledTasks.ps1` serves as a template and contains example paths (e.g., `E:\SQLSync_...`).
 
-1.  Open `Setup_ScheduledTasks.ps1` in an editor.
+1.  Open `Setup-ScheduledTasks.ps1` in an editor.
 2.  Adjust the variables `$ScriptPath`, `$WorkDir`, and config names to your environment.
 3.  Run it as Administrator only after making adjustments.
 
 ```powershell
 # Run as Administrator!
-.\Setup_ScheduledTasks.ps1
+.\Setup-ScheduledTasks.ps1
 ```
 
 ---
@@ -230,14 +236,14 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  1. PRE-FLIGHT CHECK (New in v2.7)                          │
+│  1. PRE-FLIGHT CHECK                                        │
 │     Connect to 'master', Auto-Create DB, Auto-Install SP    │
 ├─────────────────────────────────────────────────────────────┤
 │  2. INITIALIZATION (Load module)                            │
 │     Load config, Get credentials from Credential Manager    │
 ├─────────────────────────────────────────────────────────────┤
 │  3. ANALYSIS (per table, parallel)                          │
-│     Check source schema for ID and GESPEICHERT              │
+│     Check source schema for ID and timestamp columns        │
 │     → Select strategy: Incremental / FullMerge / Snapshot   │
 ├─────────────────────────────────────────────────────────────┤
 │  4. SCHEMA CHECK                                            │
@@ -256,11 +262,11 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 
 ### Sync Strategies
 
-| Strategy        | Condition                            | Behavior                          |
-| :-------------- | :----------------------------------- | :-------------------------------- |
-| **Incremental** | ID + Timestamp column present        | Loads only delta (fastest option) |
-| **FullMerge**   | ID present, no timestamp column      | Loads all, merges by ID           |
-| **Snapshot**    | No ID                                | Truncate & complete insert        |
+| Strategy        | Condition                       | Behavior                          |
+| :-------------- | :------------------------------ | :-------------------------------- |
+| **Incremental** | ID + Timestamp column present   | Loads only delta (fastest option) |
+| **FullMerge**   | ID present, no timestamp column | Loads all, merges by ID           |
+| **Snapshot**    | No ID                           | Truncate & complete insert        |
 
 ---
 
@@ -268,23 +274,24 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 
 ### General Section
 
-| Variable                 | Default  | Description                                                    |
-| :----------------------- | :------- | :------------------------------------------------------------- |
-| `GlobalTimeout`          | 7200     | Timeout in seconds for SQL commands and BulkCopy               |
-| `RecreateStagingTable`   | `false`  | `true` = Recreate staging on each run (schema update)          |
-| `ForceFullSync`          | `false`  | `true` = **Truncate** target table + complete reload           |
-| `RunSanityCheck`         | `true`   | `false` = Skip COUNT comparison                                |
-| `MaxRetries`             | 3        | Retry attempts on error                                        |
-| `RetryDelaySeconds`      | 10       | Wait time between retries                                      |
-| `DeleteLogOlderThanDays` | 30       | Automatically delete logs after X days (0 = Disabled)          |
-| `CleanupOrphans`         | `false`  | Delete orphaned records in target                              |
-| `OrphanCleanupBatchSize` | 50000    | Batch size for ID transfer during cleanup                      |
-| `IdColumn`               | `"ID"`   | Default ID column name for all tables                          |
+| Variable                 | Default           | Description                                              |
+| :----------------------- | :---------------- | :------------------------------------------------------- |
+| `GlobalTimeout`          | 7200              | Timeout in seconds for SQL commands and BulkCopy         |
+| `RecreateStagingTable`   | `false`           | `true` = Recreate staging on each run (schema update)    |
+| `ForceFullSync`          | `false`           | `true` = **Truncate** target table + complete reload     |
+| `NumberOfThreads`        | 4                 | Number of parallel threads for table sync                |
+| `RunSanityCheck`         | `true`            | `false` = Skip COUNT comparison                          |
+| `MaxRetries`             | 3                 | Retry attempts on error                                  |
+| `RetryDelaySeconds`      | 10                | Wait time between retries                                |
+| `DeleteLogOlderThanDays` | 30                | Automatically delete logs after X days (0 = Disabled)    |
+| `CleanupOrphans`         | `false`           | Delete orphaned records in target                        |
+| `OrphanCleanupBatchSize` | 50000             | Batch size for ID transfer during cleanup                |
+| `IdColumn`               | `"ID"`            | Default ID column name for all tables                    |
 | `TimestampColumns`       | `["GESPEICHERT"]` | List of possible timestamp columns (first found is used) |
 
 ### Column Configuration (NEW in v2.10)
 
-The script now supports flexible column configuration for different table structures.
+The script now supports flexible column configuration for different table structures. This makes it compatible with any Firebird database, not just AvERP.
 
 **Global Defaults:**
 
@@ -292,12 +299,22 @@ The script now supports flexible column configuration for different table struct
 {
   "General": {
     "IdColumn": "ID",
-    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE", "CHANGED_AT"]
+    "TimestampColumns": [
+      "GESPEICHERT",
+      "MODIFIED_DATE",
+      "LAST_UPDATE",
+      "CHANGED_AT"
+    ]
   }
 }
 ```
 
+- `IdColumn`: The default primary key column name used for MERGE operations
+- `TimestampColumns`: A list of possible timestamp column names. The script checks each column in order and uses the first one found in the source table.
+
 **Table-Specific Overrides:**
+
+For tables with non-standard column names, use `TableOverrides`:
 
 ```json
 {
@@ -313,12 +330,16 @@ The script now supports flexible column configuration for different table struct
 }
 ```
 
-**Logic:**
+**Resolution Logic:**
 
-1. Check if `TableOverrides[Table]` exists → Use override values
-2. `IdColumn`: Override → Global → "ID" (default)
-3. `TimestampColumn`: Override → First found from `TimestampColumns` → `null`
-4. Strategy: HasId + HasTimestamp → Incremental | HasId → FullMerge | else → Snapshot
+1. Check if `TableOverrides[TableName]` exists → Use override values
+2. `IdColumn`: Override → Global `IdColumn` → `"ID"` (default)
+3. `TimestampColumn`: Override → First found from `TimestampColumns` list → `null`
+4. Strategy selection: HasId + HasTimestamp → Incremental | HasId → FullMerge | else → Snapshot
+
+**Backwards Compatibility:**
+
+Without any configuration, the script uses `"ID"` and `"GESPEICHERT"` as defaults, maintaining full backwards compatibility with existing setups.
 
 ### Orphan Cleanup (Deletion Detection)
 
@@ -332,7 +353,7 @@ When `CleanupOrphans: true` is set, all records in the target that no longer exi
 
 **Limitations:**
 
-- Only works for tables with an `ID` column (not for Snapshot strategy)
+- Only works for tables with an ID column (not for Snapshot strategy)
 - Increases runtime as all IDs must be transferred
 - Not necessary with `ForceFullSync` (table is completely reloaded anyway)
 
@@ -348,7 +369,7 @@ Control naming in the target system.
 - **Prefix**: `DWH_` -> Target table becomes `DWH_KUNDE`
 - **Suffix**: `_V1` -> Target table becomes `KUNDE_V1`
 
-### JSON Schema Validation (NEW)
+### JSON Schema Validation
 
 The file `config.schema.json` can be used for validation to avoid typos in the config:
 
@@ -361,12 +382,13 @@ Test-Json -Json $json -SchemaFile "config.schema.json"
 
 ## Module Architecture
 
-Starting with version 2.8, SQLSync uses a shared PowerShell module (`SQLSyncCommon.psm1`) for reusable functions. This module must always be in the script directory.
+PSFirebirdToMSSQL uses a shared PowerShell module (`SQLSyncCommon.psm1`) for reusable functions. This module must always be in the script directory.
 
 The module centrally provides the following functions:
 
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
 - **Configuration:** `Get-SQLSyncConfig` (including schema validation)
+- **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
 - **Driver Loading:** `Initialize-FirebirdDriver`
 - **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types)
 
@@ -437,7 +459,7 @@ Alternatively, `CleanupOrphans: true` can be used to compare IDs.
 
 ### Task Scheduler Integration (Path Adjustment)
 
-It is recommended to use the script `Setup_ScheduledTasks.ps1` as a template. **Important:** Since the script uses environment variables like `$WorkDir` and `$ScriptPath` with example values, **it must be edited before execution** to point to your actual installation.
+It is recommended to use the script `Setup-ScheduledTasks.ps1` as a template. **Important:** Since the script uses environment variables like `$WorkDir` and `$ScriptPath` with example values, **it must be edited before execution** to point to your actual installation.
 
 Manual call parameters for custom integrations:
 
@@ -508,7 +530,7 @@ Start in: C:\Scripts
 
 ### v2.6 (2025-12-03) - Task Automation
 
-- **New:** `Setup_ScheduledTasks.ps1` for automatic Windows Task Scheduler setup.
+- **New:** `Setup-ScheduledTasks.ps1` for automatic Windows Task Scheduler setup.
 
 ### v2.5 (2025-11-29) - Prefix/Suffix & Fixes
 

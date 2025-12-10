@@ -30,18 +30,20 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Sync-Strategien](#sync-strategien)
   - [Konfigurationsoptionen](#konfigurationsoptionen)
     - [General Sektion](#general-sektion)
+    - [Spalten-Konfiguration (NEU in v2.10)](#spalten-konfiguration-neu-in-v210)
     - [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
-    - [JSON-Schema-Validierung (NEU)](#json-schema-validierung-neu)
+    - [JSON-Schema-Validierung](#json-schema-validierung)
   - [Modul-Architektur](#modul-architektur)
   - [Verwendung in eigenen Skripten](#verwendung-in-eigenen-skripten)
   - [Credential Management](#credential-management)
   - [Logging](#logging)
   - [Wichtige Hinweise](#wichtige-hinweise)
-    - [Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)](#löschungen-werden-im-standard-nicht-synchronisiert-cleanuporphans-option)
+    - [Löschungen werden im Standard nicht synchronisiert (CleanupOrphans Option)](#löschungen-werden-im-standard-nicht-synchronisiert-cleanuporphans-option)
     - [Task Scheduler Integration (Pfadanpassung)](#task-scheduler-integration-pfadanpassung)
   - [Architektur](#architektur)
   - [Changelog](#changelog)
+    - [v2.10 (2025-12-09) - Dynamische Spalten-Konfiguration](#v210-2025-12-09---dynamische-spalten-konfiguration)
     - [v2.9 (2025-12-06) - Orphan-Cleanup (Soft Deletes)](#v29-2025-12-06---orphan-cleanup-soft-deletes)
     - [v2.8 (2025-12-06) - Modul-Architektur \& Bugfixes](#v28-2025-12-06---modul-architektur--bugfixes)
     - [v2.7 (2025-12-04) - Auto-Setup \& Robustness](#v27-2025-12-04---auto-setup--robustness)
@@ -54,7 +56,8 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 ## Features
 
 - **High-Speed Transfer**: .NET `SqlBulkCopy` für maximale Schreibgeschwindigkeit (Staging-Ansatz mit Memory-Streaming).
-- **Inkrementeller Sync**: Lädt nur geänderte Daten (Delta) basierend auf der `GESPEICHERT`-Spalte (High Watermark Pattern).
+- **Inkrementeller Sync**: Lädt nur geänderte Daten (Delta) basierend auf konfigurierbaren Timestamp-Spalten (High Watermark Pattern).
+- **Dynamische Spalten-Konfiguration**: Flexible ID- und Timestamp-Spaltennamen - funktioniert mit jeder Tabellenstruktur, nicht nur `ID`/`GESPEICHERT`.
 - **Auto-Environment Setup**: Das Skript prüft beim Start, ob die Ziel-Datenbank existiert. Falls nicht, verbindet es sich mit `master`, **erstellt die Datenbank** automatisch und setzt das Recovery Model auf `SIMPLE`.
 - **Auto-Installation SP**: Installiert oder aktualisiert die benötigte Stored Procedure `sp_Merge_Generic` automatisch aus der `sql_server_setup.sql`.
 - **Flexible Namensgebung**: Unterstützt **Prefixe** und **Suffixe** für Zieltabellen (z.B. Quelle `KUNDE` -> Ziel `DWH_KUNDE_V1`).
@@ -63,20 +66,20 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
 - **Parallelisierung**: Verarbeitet mehrere Tabellen gleichzeitig (PowerShell 7+ `ForEach-Object -Parallel`).
 - **Sichere Credentials**: Windows Credential Manager statt Klartext-Passwörter.
 - **GUI Config Manager**: Komfortables Tool zur Tabellenauswahl mit Metadaten-Vorschau.
-- **NEU: Modul-Architektur**: Wiederverwendbare Funktionen in `SQLSyncCommon.psm1`.
-- **NEU: JSON-Schema-Validierung**: Optionale Validierung der Konfigurationsdatei.
-- **NEU: Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup (try/finally).
+- **Modul-Architektur**: Wiederverwendbare Funktionen in `SQLSyncCommon.psm1`.
+- **JSON-Schema-Validierung**: Optionale Validierung der Konfigurationsdatei.
+- **Sicheres Connection Handling**: Kein Resource Leak durch garantiertes Cleanup (try/finally).
 
 ---
 
 ## Dateistruktur
 
 ```text
-SQLSync/
+PSFirebirdToMSSQL/
 ├── SQLSyncCommon.psm1                   # KERN-MODUL: Gemeinsame Funktionen (MUSS vorhanden sein!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Hauptskript (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # Einmalig: Passwörter sicher speichern
-├── Setup_ScheduledTasks.ps1             # Vorlage für Windows-Tasks (Pfade anpassen!)
+├── Setup-ScheduledTasks.ps1             # Vorlage für Windows-Tasks (Pfade anpassen!)
 ├── Manage_Config_Tables.ps1             # GUI-Tool zur Tabellenverwaltung
 ├── Get_Firebird_Schema.ps1              # Hilfstool: Datentyp-Analyse
 ├── sql_server_setup.sql                 # SQL-Template für DB & SP (wird vom Hauptskript genutzt)
@@ -100,14 +103,13 @@ SQLSync/
 | Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
 | MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
 
-
 ---
 
 ## Installation
 
 ### Schritt 1: Dateien kopieren
 
-Alle `.ps1`, `.sql`, `.json` und vor allem die `.psm1` Dateien in ein gemeinsames Verzeichnis kopieren (z.B. `E:\SQLSync_Firebird_to_MSSQL\`).
+Alle `.ps1`, `.sql`, `.json` und vor allem die `.psm1` Dateien in ein gemeinsames Verzeichnis kopieren (z.B. `C:\Scripts\PSFirebirdToMSSQL\`).
 
 **Wichtig:** Die Datei `SQLSyncCommon.psm1` muss zwingend im selben Verzeichnis wie die Skripte liegen!
 
@@ -123,31 +125,36 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
     "GlobalTimeout": 7200,
     "RecreateStagingTable": false,
     "ForceFullSync": false,
+    "NumberOfThreads": 4,
     "RunSanityCheck": true,
     "MaxRetries": 3,
     "RetryDelaySeconds": 10,
     "DeleteLogOlderThanDays": 30,
     "CleanupOrphans": false,
-    "OrphanCleanupBatchSize": 50000
+    "OrphanCleanupBatchSize": 50000,
+    "IdColumn": "ID",
+    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE"]
   },
   "Firebird": {
     "Server": "svrerp01",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
     "Port": 3050,
-    "Charset": "UTF8",
-    "DllPath": "C:\\Program Files\\..."
+    "Charset": "UTF8"
   },
   "MSSQL": {
     "Server": "SVRSQL03",
     "Integrated Security": true,
-    "Username": "satest",
-    "Password": "123456",
     "Database": "STAGING",
-    "Prefix": "DWH_",
-    "Suffix": "",
-    "Port": 1433
+    "Prefix": "FB_",
+    "Suffix": ""
   },
-  "Tables": ["EXAMPLETABLE1", "EXAMPLETABLE2"]
+  "Tables": ["BKUNDE", "BLIEF", "BSA"],
+  "TableOverrides": {
+    "LEGACY_ORDERS": {
+      "IdColumn": "ORDER_ID",
+      "TimestampColumn": "CHANGED_AT"
+    }
+  }
 }
 ```
 
@@ -193,17 +200,15 @@ Der Manager bietet eine **Toggle-Logik**:
 
 Nutzen Sie das bereitgestellte Skript, um die Synchronisation im Windows Task Scheduler einzurichten. Das Skript erstellt Aufgaben für Daily Diff & Weekly Full.
 
-**ACHTUNG:** Das Skript `Setup_ScheduledTasks.ps1` dient als Vorlage und enthält Beispielpfade (z.B. `E:\SQLSync_...`).
+**ACHTUNG:** Das Skript `Setup-ScheduledTasks.ps1` dient als Vorlage und enthält Beispielpfade (z.B. `E:\SQLSync_...`).
 
-1.  Öffnen Sie `Setup_ScheduledTasks.ps1` in einem Editor.
+1.  Öffnen Sie `Setup-ScheduledTasks.ps1` in einem Editor.
 2.  Passen Sie die Variablen `$ScriptPath`, `$WorkDir` und die Config-Namen an Ihre Umgebung an.
 3.  Führen Sie es erst dann als Administrator aus.
 
-<!-- end list -->
-
 ```powershell
 # Als Administrator ausführen!
-.\Setup_ScheduledTasks.ps1
+.\Setup-ScheduledTasks.ps1
 ```
 
 ---
@@ -231,14 +236,14 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  1. PRE-FLIGHT CHECK (Neu in v2.7)                          │
+│  1. PRE-FLIGHT CHECK                                        │
 │     Verbindung zu 'master', Auto-Create DB, Auto-Install SP │
 ├─────────────────────────────────────────────────────────────┤
 │  2. INITIALISIERUNG (Modul laden)                           │
 │     Config laden, Credentials aus Credential Manager holen  │
 ├─────────────────────────────────────────────────────────────┤
 │  3. ANALYSE (pro Tabelle, parallel)                         │
-│     Prüft Quell-Schema auf ID und GESPEICHERT               │
+│     Prüft Quell-Schema auf ID- und Timestamp-Spalten        │
 │     → Wählt Strategie: Incremental / FullMerge / Snapshot   │
 ├─────────────────────────────────────────────────────────────┤
 │  4. SCHEMA-CHECK                                            │
@@ -257,11 +262,11 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ### Sync-Strategien
 
-| Strategie       | Bedingung                           | Verhalten                          |
-| :-------------- | :---------------------------------- | :--------------------------------- |
-| **Incremental** | ID + Timestamp-Spalte vorhanden     | Lädt nur Delta (schnellste Option) |
-| **FullMerge**   | ID vorhanden, keine Timestamp-Spalte| Lädt alles, merged per ID          |
-| **Snapshot**    | Keine ID                            | Truncate & vollständiger Insert    |
+| Strategie       | Bedingung                            | Verhalten                          |
+| :-------------- | :----------------------------------- | :--------------------------------- |
+| **Incremental** | ID + Timestamp-Spalte vorhanden      | Lädt nur Delta (schnellste Option) |
+| **FullMerge**   | ID vorhanden, keine Timestamp-Spalte | Lädt alles, merged per ID          |
+| **Snapshot**    | Keine ID                             | Truncate & vollständiger Insert    |
 
 ---
 
@@ -269,23 +274,24 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 
 ### General Sektion
 
-| Variable                 | Standard | Beschreibung                                                   |
-| :----------------------- | :------- | :------------------------------------------------------------- |
-| `GlobalTimeout`          | 7200     | Timeout in Sekunden für SQL-Befehle und BulkCopy               |
-| `RecreateStagingTable`   | `false`  | `true` = Staging bei jedem Lauf neu erstellen (Schema-Update)  |
-| `ForceFullSync`          | `false`  | `true` = **Truncate** der Zieltabelle + vollständige Neuladung |
-| `RunSanityCheck`         | `true`   | `false` = Überspringt COUNT-Vergleich                          |
-| `MaxRetries`             | 3        | Wiederholungsversuche bei Fehler                               |
-| `RetryDelaySeconds`      | 10       | Wartezeit zwischen Retries                                     |
-| `DeleteLogOlderThanDays` | 30       | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)         |
-| `CleanupOrphans`         | `false`  | Verwaiste Datensätze im Ziel löschen                           |
-| `OrphanCleanupBatchSize` | 50000    | Batch-Größe für ID-Transfer beim Cleanup                       |
-| `IdColumn`               | `"ID"`   | Standard-Name der ID-Spalte für alle Tabellen                  |
+| Variable                 | Standard          | Beschreibung                                                       |
+| :----------------------- | :---------------- | :----------------------------------------------------------------- |
+| `GlobalTimeout`          | 7200              | Timeout in Sekunden für SQL-Befehle und BulkCopy                   |
+| `RecreateStagingTable`   | `false`           | `true` = Staging bei jedem Lauf neu erstellen (Schema-Update)      |
+| `ForceFullSync`          | `false`           | `true` = **Truncate** der Zieltabelle + vollständige Neuladung     |
+| `NumberOfThreads`        | 4                 | Anzahl paralleler Threads für Tabellen-Sync                        |
+| `RunSanityCheck`         | `true`            | `false` = Überspringt COUNT-Vergleich                              |
+| `MaxRetries`             | 3                 | Wiederholungsversuche bei Fehler                                   |
+| `RetryDelaySeconds`      | 10                | Wartezeit zwischen Retries                                         |
+| `DeleteLogOlderThanDays` | 30                | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)             |
+| `CleanupOrphans`         | `false`           | Verwaiste Datensätze im Ziel löschen                               |
+| `OrphanCleanupBatchSize` | 50000             | Batch-Größe für ID-Transfer beim Cleanup                           |
+| `IdColumn`               | `"ID"`            | Standard-Name der ID-Spalte für alle Tabellen                      |
 | `TimestampColumns`       | `["GESPEICHERT"]` | Liste möglicher Timestamp-Spalten (erste gefundene wird verwendet) |
 
-### Column Configuration (NEU in v2.10)
+### Spalten-Konfiguration (NEU in v2.10)
 
-Das Skript unterstützt jetzt flexible Spalten-Konfiguration für unterschiedliche Tabellenstrukturen.
+Das Skript unterstützt jetzt flexible Spalten-Konfiguration für unterschiedliche Tabellenstrukturen. Dadurch ist es mit jeder Firebird-Datenbank kompatibel, nicht nur AvERP.
 
 **Globale Defaults:**
 
@@ -293,12 +299,22 @@ Das Skript unterstützt jetzt flexible Spalten-Konfiguration für unterschiedlic
 {
   "General": {
     "IdColumn": "ID",
-    "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE", "CHANGED_AT"]
+    "TimestampColumns": [
+      "GESPEICHERT",
+      "MODIFIED_DATE",
+      "LAST_UPDATE",
+      "CHANGED_AT"
+    ]
   }
 }
 ```
 
-**Tabellenspezifische Overrides:**
+- `IdColumn`: Der Standard-Primärschlüssel-Spaltenname für MERGE-Operationen
+- `TimestampColumns`: Eine Liste möglicher Timestamp-Spaltennamen. Das Skript prüft jede Spalte der Reihe nach und verwendet die erste, die in der Quelltabelle gefunden wird.
+
+**Tabellenspezifische Überschreibungen:**
+
+Für Tabellen mit nicht-standardisierten Spaltennamen verwenden Sie `TableOverrides`:
 
 ```json
 {
@@ -314,12 +330,16 @@ Das Skript unterstützt jetzt flexible Spalten-Konfiguration für unterschiedlic
 }
 ```
 
-**Logik:**
+**Auflösungs-Logik:**
 
-1. Prüfe ob `TableOverrides[Tabelle]` existiert → Override-Werte verwenden
-2. `IdColumn`: Override → Global → "ID" (Default)
-3. `TimestampColumn`: Override → Erste gefundene aus `TimestampColumns` → `null`
-4. Strategie: HasId + HasTimestamp → Incremental | HasId → FullMerge | sonst → Snapshot
+1. Prüfe ob `TableOverrides[Tabellenname]` existiert → Override-Werte verwenden
+2. `IdColumn`: Override → Globale `IdColumn` → `"ID"` (Default)
+3. `TimestampColumn`: Override → Erste gefundene aus `TimestampColumns`-Liste → `null`
+4. Strategiewahl: HasId + HasTimestamp → Incremental | HasId → FullMerge | sonst → Snapshot
+
+**Rückwärtskompatibilität:**
+
+Ohne jegliche Konfiguration verwendet das Skript `"ID"` und `"GESPEICHERT"` als Defaults und bleibt damit vollständig rückwärtskompatibel mit bestehenden Setups.
 
 ### Orphan-Cleanup (Löschungserkennung)
 
@@ -333,7 +353,7 @@ Wenn `CleanupOrphans: true` gesetzt ist, werden nach dem Sync alle Datensätze i
 
 **Einschränkungen:**
 
-- Funktioniert nur bei Tabellen mit `ID`-Spalte (nicht bei Snapshot-Strategie)
+- Funktioniert nur bei Tabellen mit ID-Spalte (nicht bei Snapshot-Strategie)
 - Erhöht die Laufzeit, da alle IDs übertragen werden müssen
 - Nicht nötig bei `ForceFullSync` (Tabelle wird eh komplett neu geladen)
 
@@ -349,7 +369,7 @@ Steuern die Namensgebung im Zielsystem.
 - **Prefix**: `DWH_` -> Zieltabelle wird `DWH_KUNDE`
 - **Suffix**: `_V1` -> Zieltabelle wird `KUNDE_V1`
 
-### JSON-Schema-Validierung (NEU)
+### JSON-Schema-Validierung
 
 Die Datei `config.schema.json` kann zur Validierung verwendet werden, um Tippfehler in der Config zu vermeiden:
 
@@ -362,12 +382,13 @@ Test-Json -Json $json -SchemaFile "config.schema.json"
 
 ## Modul-Architektur
 
-Ab Version 2.8 verwendet SQLSync ein gemeinsames PowerShell-Modul (`SQLSyncCommon.psm1`) für wiederverwendbare Funktionen. Dieses Modul muss immer im Skriptverzeichnis liegen.
+PSFirebirdToMSSQL verwendet ein gemeinsames PowerShell-Modul (`SQLSyncCommon.psm1`) für wiederverwendbare Funktionen. Dieses Modul muss immer im Skriptverzeichnis liegen.
 
 Das Modul stellt zentral folgende Funktionen bereit:
 
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
 - **Configuration:** `Get-SQLSyncConfig` (inkl. Schema-Validierung)
+- **Spalten-Konfiguration:** `Get-TableColumnConfig` (ermittelt ID/Timestamp-Spalten pro Tabelle)
 - **Driver Loading:** `Initialize-FirebirdDriver`
 - **Type Mapping:** `ConvertTo-SqlServerType` (.NET zu SQL Datentypen)
 
@@ -431,14 +452,14 @@ Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 
 ## Wichtige Hinweise
 
-### Löschungen werden im Standard nicht synchronisiert. (CleanupOrphans Option)
+### Löschungen werden im Standard nicht synchronisiert (CleanupOrphans Option)
 
 Der inkrementelle Sync erkennt nur neue/geänderte Datensätze. Gelöschte Datensätze in Firebird bleiben im SQL Server erhalten (Historie). Um dies zu bereinigen, nutzen Sie `ForceFullSync: true` in einem regelmäßigen Wartungs-Task (z.B. Sonntags), der die Zieltabellen leert und neu aufbaut. Aktualisiert auch das Schema.
 Alternativ kann `CleanupOrphans: true` genutzt werden, um IDs abzugleichen.
 
 ### Task Scheduler Integration (Pfadanpassung)
 
-Es wird empfohlen, das Skript `Setup_ScheduledTasks.ps1` als Vorlage zu verwenden. **Wichtig:** Da das Skript Umgebungsvariablen wie `$WorkDir` und `$ScriptPath` mit Beispielwerten belegt, **muss es vor der Ausführung bearbeitet werden**, um auf Ihre tatsächliche Installation zu zeigen.
+Es wird empfohlen, das Skript `Setup-ScheduledTasks.ps1` als Vorlage zu verwenden. **Wichtig:** Da das Skript Umgebungsvariablen wie `$WorkDir` und `$ScriptPath` mit Beispielwerten belegt, **muss es vor der Ausführung bearbeitet werden**, um auf Ihre tatsächliche Installation zu zeigen.
 
 Manuelle Aufruf-Parameter für eigene Integrationen:
 
@@ -478,7 +499,7 @@ Starten in: C:\Scripts
 
 ## Changelog
 
-### v2.10 (2025-12-09) - Dynamic Column Configuration
+### v2.10 (2025-12-09) - Dynamische Spalten-Konfiguration
 
 - **NEU:** `IdColumn` - Globale Konfiguration der ID-Spalte (Standard: "ID")
 - **NEU:** `TimestampColumns` - Liste möglicher Timestamp-Spalten (erste gefundene wird verwendet)
@@ -509,7 +530,7 @@ Starten in: C:\Scripts
 
 ### v2.6 (2025-12-03) - Task Automation
 
-- **Neu:** `Setup_ScheduledTasks.ps1` zur automatischen Einrichtung der Windows-Aufgabenplanung.
+- **Neu:** `Setup-ScheduledTasks.ps1` zur automatischen Einrichtung der Windows-Aufgabenplanung.
 
 ### v2.5 (2025-11-29) - Prefix/Suffix & Fixes
 
