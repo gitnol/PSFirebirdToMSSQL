@@ -255,7 +255,7 @@ try {
 
     if ($NeedUpdate) {
         $Reason = if ($ForceRecreateSP) { "Config (Erzwungen)" } elseif (-not $ProcExists) { "Fehlt" } else { "Veraltet (Parameter: $ParamCount)" }
-        Write-Host "Stored Procedure '{0}' wird aktualisiert (Grund: {1})..." -f $SpName, $Reason -ForegroundColor Yellow
+        Write-Host ("Stored Procedure '{0}' wird aktualisiert (Grund: {1})..." -f $SpName, $Reason) -ForegroundColor Yellow
         
         $SqlFileName = "sql_server_setup.sql"
         $SqlFile = Join-Path $ScriptDir $SqlFileName
@@ -283,19 +283,19 @@ try {
                 catch {
                     # Ignoriere "Database already exists" Fehler, warne bei anderen
                     if ($_.Exception.Message -notmatch "Database.*already exists") {
-                        Write-Host "Warnung beim Ausführen eines SQL-Batch: {0}" -f $_.Exception.Message -ForegroundColor Yellow
+                        Write-Host ("Warnung beim Ausführen eines SQL-Batch: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
                     }
                 }
             }
         }
-        Write-Host "INSTALLIERT: '{0}' erfolgreich aktualisiert." -f $SpName -ForegroundColor Green
+        Write-Host ("INSTALLIERT: '{0}' erfolgreich aktualisiert." -f $SpName) -ForegroundColor Green
     }
     else {
-        Write-Host "OK: '{0}' ist aktuell (4 Parameter)." -f $SpName -ForegroundColor Green
+        Write-Host ("OK: '{0}' ist aktuell (4 Parameter)." -f $SpName) -ForegroundColor Green
     }
 }
 catch {
-    Write-Error "PRE-FLIGHT CHECK (PROCEDURE) FAILED: {0}" -f $_.Exception.Message
+    Write-Error ("PRE-FLIGHT CHECK (PROCEDURE) FAILED: {0}" -f $_.Exception.Message)
     Stop-Transcript
     exit 9
 }
