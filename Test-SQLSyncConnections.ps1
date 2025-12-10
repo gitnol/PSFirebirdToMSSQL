@@ -137,11 +137,17 @@ try {
 '@
     $FbTableCount = $CountCmd.ExecuteScalar()
     
-    # Test-Query auf erste konfigurierte Tabelle
-    $TestTable = $Config.Tables | Select-Object -First 1
-    $TestCmd = $FbConn.CreateCommand()
-    $TestCmd.CommandText = 'SELECT COUNT(*) FROM "{0}"' -f $TestTable
-    $TestCount = $TestCmd.ExecuteScalar()
+    # Test-Query auf erste konfigurierte Tabelle (nur wenn vorhanden)
+    if ($Config.Tables.Count -gt 0) {
+        $TestTable = $Config.Tables | Select-Object -First 1
+        $TestCmd = $FbConn.CreateCommand()
+        $TestCmd.CommandText = 'SELECT COUNT(*) FROM "{0}"' -f $TestTable
+        $TestCount = $TestCmd.ExecuteScalar()
+        Write-Host "  Test-Query:  SELECT COUNT(*) FROM $TestTable = $TestCount" -ForegroundColor White
+    }
+    else {
+        throw "  Test-Query:  (Übersprungen - Keine Tabellen konfiguriert)"
+    }
     
     Write-Host "  Server:      $($Config.FBServer):$($Config.FBPort)" -ForegroundColor White
     Write-Host "  Datenbank:   $($Config.FBDatabase)" -ForegroundColor White
@@ -262,4 +268,4 @@ else {
     }
     Write-Host ""
     exit 1
-}
+}
