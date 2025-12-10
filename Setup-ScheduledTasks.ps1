@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 #Requires -RunAsAdministrator
 
 <#
@@ -27,8 +28,16 @@
 $ScriptPath = "E:\SQLSync_Firebird_to_MSSQL\Sync_Firebird_MSSQL_AutoSchema.ps1"
 $WorkDir = "E:\SQLSync_Firebird_to_MSSQL"
 
-# Pfad zur PowerShell Core (pwsh.exe) ohne Anführungszeichen!
-$PwshPath = "C:\Program Files\PowerShell\7\pwsh.exe" 
+# Prüfen, ob wir wirklich in PowerShell Core (7+) laufen. (Sollte durch Direktive weiter oben schon sichergestellt sein)
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Error "KRITISCH: Dieses Skript muss mit PowerShell 7 (pwsh.exe) ausgeführt werden!"
+    Write-Host "Aktuelle Version: $($PSVersionTable.PSVersion.ToString())" -ForegroundColor Red
+    exit 1
+}
+
+# Sicherer Pfad zur aktuellen Executable (jetzt wissen wir, dass es v7 ist)
+$PwshPath = (Get-Process -Id $PID).Path
+
 if (-not (Test-Path $PwshPath)) { $PwshPath = "pwsh.exe" } # Fallback auf PATH
 
 # Task 1: Daily Diff
