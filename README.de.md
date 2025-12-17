@@ -50,6 +50,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [v2.6 (2025-12-03) - Task Automation](#v26-2025-12-03---task-automation)
     - [v2.5 (2025-11-29) - Prefix/Suffix \& Fixes](#v25-2025-11-29---prefixsuffix--fixes)
     - [v2.1 (2025-11-25) - Secure Credentials](#v21-2025-11-25---secure-credentials)
+  - [⚖ Haftungsausschluss (Disclaimer)](#-haftungsausschluss-disclaimer)
 
 ---
 
@@ -539,3 +540,11 @@ Starten in: C:\Scripts
 ### v2.1 (2025-11-25) - Secure Credentials
 
 - Windows Credential Manager Integration.
+
+---
+
+<a id="-haftungsausschluss-disclaimer"></a>
+## ⚖ Haftungsausschluss (Disclaimer)
+
+**Firebird ist eine eingetragene Marke der Firebird Foundation.**
+Dieses Tool ist Open-Source-Software und ist **nicht** mit der Firebird Foundation verbunden, von ihr unterstützt oder assoziiert.
