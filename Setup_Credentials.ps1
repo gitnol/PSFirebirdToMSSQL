@@ -30,24 +30,49 @@ function Set-StoredCredential {
         [securestring]$Password
     )
     
-    # Nutzt cmdkey.exe (in Windows eingebaut)
+    # Schreibt in-process per CredWrite (Typ Generic, Persist LocalMachine).
+    # Früher: cmdkey /pass:<Passwort> — das Passwort stand dabei in der Kommandozeile des cmdkey-Prozesses
+    # (sichtbar in Prozesslisten, Audit-/EDR-Logs).
+    if (-not ('SQLSyncCredWrite.Util' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace SQLSyncCredWrite {
+    public static class Util {
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct CREDENTIAL {
+            public int Flags; public int Type; public string TargetName; public string Comment;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+            public int CredentialBlobSize; public IntPtr CredentialBlob; public int Persist;
+            public int AttributeCount; public IntPtr Attributes; public string TargetAlias; public string UserName;
+        }
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool CredWrite(ref CREDENTIAL credential, int flags);
+    }
+}
+"@
+    }
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
-    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-    
-    $Result = cmdkey /generic:$Target /user:$Username /pass:$PlainPassword
-    
-    # Passwort aus Speicher löschen
-    $PlainPassword = $null
-    [System.GC]::Collect()
-    
-    return $LASTEXITCODE -eq 0
+    try {
+        $Cred = New-Object SQLSyncCredWrite.Util+CREDENTIAL
+        $Cred.Type = 1          # CRED_TYPE_GENERIC
+        $Cred.Persist = 2       # CRED_PERSIST_LOCAL_MACHINE
+        $Cred.TargetName = $Target
+        $Cred.UserName = $Username
+        $Cred.CredentialBlob = $BSTR
+        $Cred.CredentialBlobSize = $Password.Length * 2
+        return [SQLSyncCredWrite.Util]::CredWrite([ref]$Cred, 0)
+    }
+    finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    }
 }
 
 function Test-StoredCredential {
     param([string]$Target)
-    
-    return [bool]((cmdkey /list) -match $Target)
+
+    # Exakter Treffer auf das Ziel (cmdkey listet generische Einträge als "LegacyGeneric:target=<Ziel>")
+    return [bool]((cmdkey /list) -match "target=$([regex]::Escape($Target))\s*$")
 }
 
 # -----------------------------------------------------------------------------

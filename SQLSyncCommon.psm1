@@ -381,7 +381,17 @@ function New-FirebirdConnectionString {
         [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
     }
 
-    return "User=$Username;Password=$PlainPassword;Database=$Database;DataSource=$Server;Port=$Port;Dialect=3;Charset=$Charset;"
+    # DbConnectionStringBuilder maskiert Werte mit ; = ' " (sonst bricht z. B. ein Passwort mit ";" den String
+    # bzw. kann weitere Schlüssel einschleusen). Schlüsselnamen unverändert.
+    $Builder = New-Object System.Data.Common.DbConnectionStringBuilder
+    $Builder['User'] = $Username
+    $Builder['Password'] = $PlainPassword
+    $Builder['Database'] = $Database
+    $Builder['DataSource'] = $Server
+    $Builder['Port'] = $Port
+    $Builder['Dialect'] = 3
+    $Builder['Charset'] = $Charset
+    return $Builder.ConnectionString
 }
 
 <#
@@ -419,7 +429,12 @@ function New-MSSQLConnectionString {
             $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
             [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
         }
-        return "Server=$Server;Database=$Database;User Id=$Username;Password=$PlainPassword;"
+        $Builder = New-Object System.Data.Common.DbConnectionStringBuilder
+        $Builder['Server'] = $Server
+        $Builder['Database'] = $Database
+        $Builder['User Id'] = $Username
+        $Builder['Password'] = $PlainPassword
+        return $Builder.ConnectionString
     }
 }
 
@@ -463,6 +478,9 @@ function Initialize-FirebirdDriver {
     # Konstanten
     $PackageVersion = "10.3.4"
     $PackageName = "FirebirdSql.Data.FirebirdClient"
+    # SHA-256 der DLL lib\net8.0 aus dem NuGet-Paket 10.3.4 — der Download wird nur geladen, wenn sie übereinstimmt.
+    # Bei einem Versionswechsel PackageVersion und ExpectedSha256 gemeinsam anpassen.
+    $ExpectedSha256 = "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
     $CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$PackageName.$PackageVersion"
     
     # Helper: Admin-Check
@@ -524,6 +542,13 @@ function Initialize-FirebirdDriver {
         }
         catch {
             throw "Download fehlgeschlagen: $($_.Exception.Message)"
+        }
+
+        # Integrität prüfen, bevor die DLL geladen wird
+        $ActualSha256 = (Get-FileHash -Path $ResolvedPath -Algorithm SHA256).Hash
+        if ($ActualSha256 -ne $ExpectedSha256) {
+            Remove-Item -Path $CentralInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+            throw "SHA-256 der heruntergeladenen Treiber-DLL stimmt nicht (erwartet $ExpectedSha256, erhalten $ActualSha256). Treiber wurde NICHT geladen."
         }
     }
 
