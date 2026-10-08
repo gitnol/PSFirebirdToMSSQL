@@ -22,7 +22,7 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.14 (Typmapping mit Precision/Scale, Modulfunktionen im Parallel-Block)
+    Version: 2.15 (Konfig wird gegen config.schema.json geprüft)
 
     Exit-Codes:
     0  = alle Tabellen erfolgreich
@@ -60,20 +60,8 @@ Import-Module $ModulePath -Force
 # -----------------------------------------------------------------------------
 # 2. KONFIGURATIONSDATEI ERMITTELN
 # -----------------------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($ConfigFile)) {
-    $ConfigPath = Join-Path $ScriptDir "config.json"
-}
-else {
-    if (Test-Path $ConfigFile) {
-        $ConfigPath = Convert-Path $ConfigFile
-    }
-    elseif (Test-Path (Join-Path $ScriptDir $ConfigFile)) {
-        $ConfigPath = Join-Path $ScriptDir $ConfigFile
-    }
-    else {
-        $ConfigPath = $ConfigFile
-    }
-}
+$ConfigPath = Resolve-SQLSyncConfigPath -ConfigFile $ConfigFile -ScriptDir $ScriptDir
+$SchemaPath = Join-Path $ScriptDir "config.schema.json"
 
 # -----------------------------------------------------------------------------
 # 3. LOGGING STARTEN
@@ -95,7 +83,7 @@ Write-Host "--------------------------------------------------------" -Foregroun
 # 4. KONFIGURATION LADEN (via Modul)
 # -----------------------------------------------------------------------------
 try {
-    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath
+    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath -SchemaPath $SchemaPath
 }
 catch {
     Write-Error "KRITISCH: $($_.Exception.Message)"

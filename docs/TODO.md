@@ -24,13 +24,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Mittlere Priorität
 
-### I6: Config-Schema-Validierung aktiv + gemeinsame Configpfad-Auflösung
-
-- [ ] Alle Skripte übergeben `-SchemaPath (Join-Path $PSScriptRoot 'config.schema.json')`; Schema-Verstoß → `throw` statt `Write-Warning`
-- [ ] Neue Modulfunktion für die Configpfad-Auflösung (heute in `Sync_Firebird_MSSQL_AutoSchema.ps1` und `Test-SQLSyncConnections.ps1` kopiert)
-- [ ] `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` erhalten `-ConfigFile` (heute fest `config.json`)
-- **DoD:** fehlerhafte Konfig (z. B. `GlobalTimeout: "abc"`) bricht mit Exit 2 und verständlicher Meldung ab; Unit-Tests grün; gemeinsame DoD erfüllt
-
 ### I7: Treiber-Integrität für vorhandene/konfigurierte DLL
 
 - [ ] `Initialize-FirebirdDriver` prüft SHA-256 auch, wenn die DLL bereits in `%ProgramData%\SQLSync\Drivers\...` liegt oder per `DllPath` konfiguriert ist (Abweichung → Abbruch mit Exit 7, Ausnahme nur über expliziten Konfig-Schalter mit eigenem erwarteten Hash)
@@ -61,6 +54,7 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 ## Abgeschlossen
 
+- I6 Konfig gegen `config.schema.json` geprüft (Fail-Fast, Exit 2; Schema-Muster an die Namens-Whitelist angeglichen), gemeinsame Pfadauflösung `Resolve-SQLSyncConfigPath`, `-ConfigFile` für `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` — [ABGESCHLOSSEN 2026-10-09] (Commit siehe `STATE.md`)
 - I5 Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale des Firebird-Schemas, Hauptskript nutzt `ConvertTo-SqlServerType` und `Get-TableColumnConfig` (Modul im Parallel-Block); Integrationslauf mit Werten bis zur 6. Nachkommastelle identisch — [ABGESCHLOSSEN 2026-10-08] (Commit 2d1a7ef)
 - I9 Scheduled-Task-Setup parametrisiert (Installationsordner, Konfigdateien, Tasknamen, Zeitpläne als Parameter mit neutralen Defaults; `-WhatIf` ohne Adminrechte; Option `-RunAsUser`/`-GmsaAccount`); keine internen Begriffe mehr in versionierten Dateien — [ABGESCHLOSSEN 2026-10-08] (Commit 438dd57)
 - I4 SQL-Identifier gehärtet (Whitelist-Validierung in `Get-SQLSyncConfig` inkl. `MSSQL.Database` und 128-Zeichen-Grenze, `[...]`/`QUOTENAME` überall, Metadaten-Abfragen und `sp_Merge_Generic` parametrisiert, `Manage_Config_Tables.ps1` markiert ungültige Namen) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)

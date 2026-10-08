@@ -46,10 +46,10 @@ PSFirebirdToMSSQL/
 ├── Setup-ScheduledTasks.ps1             # Task-Scheduler-Jobs registrieren (Admin; Parameter, -WhatIf, gMSA)
 ├── Test-SQLSyncConnections.ps1          # Verbindungs-/Setup-Diagnose
 ├── Get_Firebird_Schema.ps1              # Schema einer Firebird-Tabelle anzeigen
-├── Manage_Config_Tables.ps1             # Tabellenliste in config.json pflegen (Out-GridView)
+├── Manage_Config_Tables.ps1             # Tabellenliste einer Konfig pflegen (Out-GridView, -ConfigFile)
 ├── Example_Sync_Start.ps1               # Beispiel: zwei Läufe hintereinander
 ├── config.sample.json                   # Beispielkonfiguration (versioniert)
-├── config.schema.json                   # JSON-Schema (versioniert, vom Code derzeit nicht ausgewertet)
+├── config.schema.json                   # JSON-Schema (versioniert, beim Laden jeder Konfig geprüft)
 ├── config.json                          # Lokale Konfiguration (gitignored, kann Secrets enthalten)
 ├── config.json.<yyyyMMdd_HHmmss>.bak    # Backups von Manage_Config_Tables (gitignored)
 ├── README.md / README.de.md / README_alternativ.md   # Nutzerdoku EN / DE / alternative DE-Fassung
@@ -73,7 +73,7 @@ Tests (Pester-5-Harness seit I3, Details in `docs/testing/UNIT_TESTS.md`):
 |---|---|
 | `tests/RequiredModules.psd1` | gepinnte Testabhängigkeit: Pester 5.7.1 |
 | `tests/pester.config.ps1` | Testlauf mit gepinntem Pester und Coverage auf `SQLSyncCommon.psm1` (Ziel 80 %); Exit 1 bei rotem Test oder Coverage unter Ziel |
-| `tests/Unit/SQLSyncCommon.Tests.ps1` | 98 Unit-Tests, jede exportierte Funktion von `SQLSyncCommon.psm1` |
+| `tests/Unit/SQLSyncCommon.Tests.ps1` | 117 Unit-Tests, jede exportierte Funktion von `SQLSyncCommon.psm1` |
 | `tests/Unit/Setup-ScheduledTasks.Tests.ps1` | 13 Unit-Tests für `Setup-ScheduledTasks.ps1`, nur mit `-WhatIf` (Registrierung und Passwortabfrage gemockt) |
 | `tests/coverage.xml` | Coverage-Report, vom Testlauf erzeugt, gitignored |
 
@@ -110,8 +110,8 @@ Nicht vorhanden: `src/`, Build-Output, Modul-Manifest.
   `-Parallel`-Block (dort `Import-Module $using:ModulePath`). Das frühere Duplikat von Typmapping und
   Spalten-/Strategieermittlung im Sync-Skript ist seit v2.14 entfernt; es war vom Modul abgewichen (fehlendes
   `Guid`, `DECIMAL(18,4)` fest).
-- **Kopierte Hilfslogik:** Konfigpfad-Auflösung ist in zwei Skripten kopiert; `Get_Firebird_Schema.ps1` und
-  `Manage_Config_Tables.ps1` lesen fest `config.json` — Inkrement I6.
+- **Kopierte Hilfslogik:** z. B. Konfigpfad-Auflösung selbst nachbauen statt `Resolve-SQLSyncConfigPath` zu nutzen
+  (früher in zwei Skripten kopiert, seit v2.15 im Modul).
 - **Hart codierte Umgebungspfade** (Laufwerke, Installationsordner, Konfignamen) in Skripten — Pfade als Parameter
   mit Default Skriptordner übergeben (Vorbild: `Setup-ScheduledTasks.ps1 -InstallDir`).
 

@@ -51,11 +51,17 @@ SQLSyncCommon.psm1
 sql_server_setup.sql
 Setup_Credentials.ps1
 Test-SQLSyncConnections.ps1
+config.schema.json            (Schema-Prüfung jeder Konfig beim Laden)
 config.sample.json            (Vorlage)
 ```
 
 Optional: `Manage_Config_Tables.ps1`, `Get_Firebird_Schema.ps1`,
-`Setup-ScheduledTasks.ps1`, `config.schema.json`.
+`Setup-ScheduledTasks.ps1`.
+
+`config.schema.json` gehört zu jeder Auslieferung: Alle Skripte prüfen die
+Konfig beim Laden dagegen (Verstoß → Exit 2). Fehlt die Datei, erscheint nur
+die Warnung `Schema-Datei nicht gefunden …` und der Lauf geht ohne
+Schema-Prüfung weiter.
 
 ```powershell
 # Beispiel: Klon aus dem öffentlichen Repo oder Kopie in das Zielverzeichnis
@@ -101,6 +107,15 @@ notepad .\config.json
 Mindestens anzupassen: `Firebird.Server`, `Firebird.Database` (Pfad zur `.FDB`),
 `MSSQL.Server`, `MSSQL.Database`, `MSSQL."Integrated Security"`, `Tables`.
 Alle Schlüssel und Defaults: `architecture/CONFIGURATION.md`.
+
+Nach dem Bearbeiten gegen das Schema prüfen (ohne Datenbankzugriff; `True` = gültig):
+
+```powershell
+Test-Json -Json (Get-Content .\config.json -Raw) -Schema (Get-Content .\config.schema.json -Raw)
+```
+
+Unbekannte Schlüssel (Tippfehler), Zahlen/Bools in Anführungszeichen oder Werte
+außerhalb der Grenzen lassen jedes Skript mit Exit 2 abbrechen.
 
 - **Passwörter NICHT in `config.json` eintragen**, sondern Schritt 5 nutzen.
   Die Felder `Password` in `config.sample.json` sind nur ein unsicherer Fallback
@@ -172,7 +187,7 @@ cmdkey /list:SQLSync*      # Kontrolle (zeigt keine Passwörter)
 Geprüft werden: Firebird-Version, Anzahl Tabellen, Test-`COUNT` auf die erste
 konfigurierte Tabelle; SQL-Server-Version, vorhandene Tabellen, ob
 `sp_Merge_Generic` existiert. Exit-Codes: 0 OK, 1 Modul/Config fehlt oder ein
-Test fehlgeschlagen, 2 Config-Parse, 3 Credentials, 4 Treiber.
+Test fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber.
 
 Hinweis: Fehlt `sp_Merge_Generic`, ist das beim Erst-Setup normal – der erste
 Sync-Lauf installiert sie automatisch aus `sql_server_setup.sql`.
@@ -180,19 +195,23 @@ Sync-Lauf installiert sie automatisch aus `sql_server_setup.sql`.
 ### 7. Tabellen auswählen (optional)
 
 ```powershell
-.\Manage_Config_Tables.ps1
+.\Manage_Config_Tables.ps1                                   # bearbeitet config.json
+.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json
 ```
 
 Liest die Tabellenliste aus Firebird und zeigt sie in `Out-GridView`
 (Desktop-Sitzung nötig). Markierte Tabellen werden in `Tables` hinzugefügt bzw.
-entfernt; vorher wird `config.json.<yyyyMMdd_HHmmss>.bak` angelegt. Arbeitet
-fest auf `config.json` (kein `-ConfigFile`, siehe I6). Die `.bak`-Dateien
-enthalten ggf. dieselben Fallback-Passwörter wie `config.json` – aufräumen.
+entfernt; vorher wird `<Konfigdatei>.<yyyyMMdd_HHmmss>.bak` angelegt. Ohne
+`-ConfigFile` wird `config.json` bearbeitet. Vor dem GridView prüft das Skript
+die Konfig (Schema + Namensregeln, Verstoß → Exit 2, kein Backup); eine Auswahl,
+die alle Tabellen entfernen würde, wird mit Exit 4 abgelehnt. Die `.bak`-Dateien
+enthalten ggf. dieselben Fallback-Passwörter wie die Konfig – aufräumen.
 
 Spaltentypen einer Tabelle vorab prüfen:
 
 ```powershell
-.\Get_Firebird_Schema.ps1 -TableName BKUNDE
+.\Get_Firebird_Schema.ps1 -TableName BKUNDE                      # Verbindung aus config.json
+.\Get_Firebird_Schema.ps1 -TableName BKUNDE -ConfigFile .\config_weekly_full.json
 ```
 
 ### 8. Erster Lauf

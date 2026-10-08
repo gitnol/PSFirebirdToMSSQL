@@ -180,11 +180,16 @@ finally {
   nummerierte Abschnitte gegliedert (`# 1. INITIALISIERUNG …` bis `# 10. LOG ROTATION`) — neue Phasen fügen sich in diese
   Nummerierung ein.
 - **Gemeinsame Logik** gehört in `SQLSyncCommon.psm1`, sobald sie von mehr als einem Skript gebraucht wird
-  (*Bestand weicht ab:* die Configpfad-Auflösung ist dupliziert — Inkrement I6).
+  (z. B. Configpfad-Auflösung `Resolve-SQLSyncConfigPath`, Laden und Prüfen `Get-SQLSyncConfig`).
 - Regionen im Modul mit `#region <Thema>` / `#endregion` (Credential Manager, Credentials Resolution, Connection Strings,
   Firebird Driver, Safe Database Operations, …).
 - Konfiguration als JSON im Root; `config.sample.json` und `config.schema.json` sind versioniert, alle anderen `config*`
   sind per `.gitignore` (verankert mit `/config*`) ausgeschlossen.
+- Jedes Einstiegsskript, das eine Konfig liest, nimmt `-ConfigFile` (aufgelöst mit `Resolve-SQLSyncConfigPath`) und lädt
+  über `Get-SQLSyncConfig -SchemaPath (Join-Path $ScriptDir 'config.schema.json')`; Verstoß → Exit 2.
+- **Neue Konfigschlüssel immer auch in `config.schema.json` ergänzen** (Typ, Grenzen, Beschreibung). Das Schema hat
+  `additionalProperties: false`: ein Schlüssel, der nur in Code und Sample steht, lässt jede Konfig, die ihn nutzt,
+  mit Exit 2 scheitern.
 
 ## 4. Prozessweite Side-Effects — Save/Restore-Pflicht
 
@@ -295,7 +300,7 @@ des Firebird-Treibers (siehe `docs/architecture/DEPENDENCIES.md`).
 ## 8. Dokumentationspflichten (Trigger-Regeln)
 
 ### Neuer Parameter / Konfigurationsschlüssel
-→ `README.md` + `README.de.md` + `config.sample.json` + `config.schema.json` + `docs/architecture/CONFIGURATION.md`
+→ `README.md` + `README.de.md` + `config.sample.json` + `config.schema.json` (Pflicht, sonst Exit 2) + `docs/architecture/CONFIGURATION.md`
 + `docs/features/firebird-mssql-sync.md`; Default in `Get-SQLSyncConfig` eintragen.
 
 ### Neuer / geänderter Exit-Code

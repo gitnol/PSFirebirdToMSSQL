@@ -48,20 +48,7 @@ Import-Module $ModulePath -Force
 # -----------------------------------------------------------------------------
 # 2. KONFIGURATION LADEN
 # -----------------------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($ConfigFile)) {
-    $ConfigPath = Join-Path $ScriptDir "config.json"
-}
-else {
-    if (Test-Path $ConfigFile) {
-        $ConfigPath = Convert-Path $ConfigFile
-    }
-    elseif (Test-Path (Join-Path $ScriptDir $ConfigFile)) {
-        $ConfigPath = Join-Path $ScriptDir $ConfigFile
-    }
-    else {
-        $ConfigPath = $ConfigFile
-    }
-}
+$ConfigPath = Resolve-SQLSyncConfigPath -ConfigFile $ConfigFile -ScriptDir $ScriptDir
 
 if (-not (Test-Path $ConfigPath)) {
     Write-Error "Konfigurationsdatei nicht gefunden: $ConfigPath"
@@ -74,7 +61,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Config: $ConfigPath`n" -ForegroundColor Gray
 
 try {
-    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath
+    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath -SchemaPath (Join-Path $ScriptDir "config.schema.json")
 }
 catch {
     Write-Error "Fehler beim Laden der Konfiguration: $($_.Exception.Message)"

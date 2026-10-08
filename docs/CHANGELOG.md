@@ -12,6 +12,45 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 I6 – Config-Schema-Validierung + gemeinsame Configpfad-Auflösung
+
+### Added
+- `Resolve-SQLSyncConfigPath` (Modul): gemeinsame Pfadauflösung (leer → `config.json` im Skriptordner,
+  existierender Pfad, Name relativ zum Skriptordner)
+- `-ConfigFile` für `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1`
+- 10 Pester-Tests (130 gesamt, Coverage 86,52 %)
+
+### Changed
+- `Get-SQLSyncConfig -SchemaPath`: Schema-Verstoß wirft (vorher nur Warnung) und nennt den JSON-Pfad je
+  Verstoß; Prüfung über `Test-Json -Schema` (in allen PowerShell-7-Versionen verfügbar, `-SchemaFile` ist
+  nicht sicher ab 7.0 belegt); fehlende Schema-Datei → nur Warnung
+- Alle vier Skripte prüfen gegen `config.schema.json` (Exit 2); Sync v2.15
+- `config.schema.json`: Namensmuster an die Identifier-Whitelist angeglichen (vorher nur Großbuchstaben,
+  hätte gültige Namen wie `b_kunde` abgelehnt), `maxLength` 63
+- `Manage_Config_Tables.ps1` v2.1: Startprüfung über `Get-SQLSyncConfig` statt eigener Whitelist-Prüfung;
+  Entfernen der letzten Tabelle wird verweigert (Exit 4)
+
+### Fixed
+- `KNOWN_ISSUES.md` K7 (Schema nie geprüft) und K8 (Hilfsskripte fest auf `config.json`); `MSSQL.Port` → neu K9
+
+### Iterations-Log
+- Vorab geprüft: Alle vorhandenen lokalen Konfigs (inkl. `config.json`) bestehen das Schema → Fail-Fast
+  bricht keine bestehende Konfiguration.
+- Rot: `Resolve-SQLSyncConfigPath` per Stub behavioral rot; Schema-Tests „no exception was thrown";
+  nach Fail-Fast wurden die Angleichungs-Tests (`b_kunde`, `RDB$X`) rot → Schema-Muster korrigiert → grün.
+- Integrationsläufe: schemawidrige Konfig (Typfehler + Tippfehler-Schlüssel) → Sync Exit 2 **vor** jeder
+  DB-Verbindung; gültige Konfig Exit 0; `Test-SQLSyncConnections` mit relativem `-ConfigFile` OK;
+  `Get_Firebird_Schema` mit `-ConfigFile` OK bzw. Exit 2; `Manage_Config_Tables` Exit 2 ohne Backup.
+
+### Confidence / Ungeprüft
+- Nicht getestet: GUI-Pfad von `Manage_Config_Tables.ps1` (Auswahl, Sperre „letzte Tabelle"), nur Parser.
+- Schema-Engine von `Test-Json` hat sich in PowerShell 7.4 geändert; geprüft nur unter 7.6.6.
+- Messfehler korrigiert: `grep -c $'\r$'` zählt in dieser Shell jede Zeile — frühere Aussagen „Datei ist
+  CRLF" waren falsch; tatsächliche CR-Prüfung per `tr -cd '\r' | wc -c`. Commits waren nicht betroffen
+  (Diffs ohne Zeilenende-Änderungen).
+
+---
+
 ## 2026-10-08 I5 – Typmapping-Datentreue + Modulfunktionen im Hauptskript
 
 ### Changed

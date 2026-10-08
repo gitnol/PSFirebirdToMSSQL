@@ -62,8 +62,9 @@ unter ihr. Praesentation kennt keine Datenbank; Persistenz kennt keine HTTP-Code
 | Datenbanklogik (SQL Server) | `sql_server_setup.sql` → `dbo.sp_Merge_Generic` | generisches MERGE (Upsert, kein DELETE) |
 | Werkzeuge | `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`, `Test-SQLSyncConnections.ps1`, `Get_Firebird_Schema.ps1`, `Manage_Config_Tables.ps1` | Einrichtung, Diagnose, Konfigpflege |
 
-**Bekannte Verletzungen:** Die Configpfad-Auflösung ist in zwei Skripten kopiert, `Get_Firebird_Schema.ps1` und
-`Manage_Config_Tables.ps1` sind fest auf `config.json` verdrahtet (S8 → I6). Neue Logik gehört
+**Bekannte Verletzungen:** keine offenen aus dem Katalog. Seit v2.15 lösen alle vier Einstiegsskripte den
+Configpfad über `Resolve-SQLSyncConfigPath` auf und laden über `Get-SQLSyncConfig -SchemaPath` (früher kopiert
+bzw. in den Hilfsskripten fest auf `config.json`, S8). Neue Logik gehört
 ins Modul (testbar, siehe `testing/UNIT_TESTS.md`), das Hauptskript bleibt Orchestrierung. Vorbild:
 Seit v2.14 importiert der `-Parallel`-Block das Modul (`Import-Module $using:ModulePath`) und nutzt
 `ConvertTo-SqlServerType`/`Get-TableColumnConfig`, statt Typmapping und Strategieermittlung zu kopieren.

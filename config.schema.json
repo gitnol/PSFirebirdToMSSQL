@@ -86,7 +86,7 @@
           "type": "string",
           "description": "Standard-Name der ID-Spalte für alle Tabellen",
           "minLength": 1,
-          "pattern": "^[A-Z0-9_]+$",
+          "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
           "default": "ID",
           "examples": ["ID", "PK_ID", "ROW_ID"]
         },
@@ -98,7 +98,7 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$"
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63
           },
           "default": ["GESPEICHERT"],
           "examples": [
@@ -211,13 +211,13 @@
         "Prefix": {
           "type": "string",
           "description": "Prefix für Zieltabellen (z.B. 'DWH_' -> DWH_KUNDE)",
-          "pattern": "^[a-zA-Z0-9_]*$",
+          "pattern": "^[A-Za-z0-9_$]*$",
           "default": ""
         },
         "Suffix": {
           "type": "string",
           "description": "Suffix für Zieltabellen (z.B. '_V1' -> KUNDE_V1)",
-          "pattern": "^[a-zA-Z0-9_]*$",
+          "pattern": "^[A-Za-z0-9_$]*$",
           "default": ""
         }
       },
@@ -232,7 +232,7 @@
         "type": "string",
         "description": "Firebird Tabellenname (case-sensitive)",
         "minLength": 1,
-        "pattern": "^[A-Z0-9_]+$"
+        "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63
       },
       "examples": [
         ["BKUNDE", "BLIEF", "BSA"],
@@ -250,14 +250,14 @@
             "type": "string",
             "description": "Überschreibt die Standard-ID-Spalte für diese Tabelle",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$",
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
             "examples": ["ORDER_ID", "LOG_ID", "ITEM_KEY"]
           },
           "TimestampColumn": {
             "type": "string",
             "description": "Überschreibt die automatische Timestamp-Erkennung für diese Tabelle",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$",
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
             "examples": ["CHANGED_AT", "MODIFIED_DATE", "UPDATE_TS"]
           }
         },

@@ -54,8 +54,15 @@ gepflegt) und `Manage_Config_Tables.ps1` (übernimmt Namen aus den Firebird-Meta
   (`@TableName`, `@ColumnName`, `@IndexName`, `OBJECT_ID(QUOTENAME(@TableName))`);
   `sp_Merge_Generic` wird als `CommandType StoredProcedure` mit Parametern aufgerufen und baut ihr
   dynamisches `MERGE` mit `QUOTENAME`.
-- `Manage_Config_Tables.ps1` prüft `IdColumn`/`TimestampColumns` mit derselben Funktion (Exit 2) und
-  übernimmt Tabellen mit ungültigem Namen nicht (Markierung im GridView).
+- **Schema als weitere Schicht (seit I6 / v2.15, 2026-10-09):** Alle vier Einstiegsskripte laden die
+  Konfig über `Get-SQLSyncConfig -SchemaPath …\config.schema.json`; das Schema ist **vor** der
+  Allow-List aktiv und verlangt für `Tables`, `General.IdColumn`, `General.TimestampColumns` und
+  `TableOverrides.<Tabelle>.IdColumn`/`.TimestampColumn` dasselbe Muster `^[A-Za-z0-9_$]+$` (max. 63),
+  für `MSSQL.Prefix`/`Suffix` `^[A-Za-z0-9_$]*$`. Zusätzlich weist es unbekannte Schlüssel und falsche
+  Typen ab (`additionalProperties: false`). Verstoß → Exit 2 vor jeder Verbindung. Fehlt die
+  Schema-Datei, bleibt nur die Allow-List im Code (Warnung im Log).
+- `Manage_Config_Tables.ps1` (v2.1) prüft die Konfig beim Start über `Get-SQLSyncConfig` (Schema +
+  Allow-List, Exit 2) und übernimmt Tabellen mit ungültigem Namen nicht (Markierung im GridView).
 - Der Inkrement-Filter nutzt einen Parameter (`@LastDate`); Nutzdaten fließen ausschließlich über
   `SqlBulkCopy` (Spaltenmapping nach Name), nicht als SQL-Text.
 - Unit-Tests (Pester) decken gültige/ungültige Namen (u. a. `A"B`, `X;DROP`, `A]B`, `A'B`,
@@ -68,8 +75,8 @@ gepflegt) und `Manage_Config_Tables.ps1` (übernimmt Namen aus den Firebird-Meta
   max. 63 Zeichen (Quelle:
   https://firebirdsql.org/file/documentation/chunk/en/refdocs/fblangref50/fblangref50-structure-identifiers.html ).
 
-**Offene Maßnahme:** **I6** (JSON-Schema-Validierung aktivieren) als zusätzliche Struktur-Prüfung.
-Die GUI-Pfade in `Manage_Config_Tables.ps1` sind nicht automatisiert getestet.
+**Offene Maßnahme:** Die GUI-Pfade in `Manage_Config_Tables.ps1` (Auswahl, Sperre gegen das Entfernen
+der letzten Tabelle) sind nicht automatisiert getestet.
 
 **Restrisiko:** Niedrig – Namen mit Quote-, Klammer-, Semikolon- oder Leerzeichen werden vor jedem
 SQL-Aufruf abgewiesen, und die Namen werden zusätzlich gequotet bzw. als Parameter übergeben. Wer
@@ -284,8 +291,8 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand siehe RUNBOOK) |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
 | S7 | Löschungen nicht repliziert; Orphan-Cleanup nur numerische IDs | K4, K5 | by design / `BACKLOG.md` |
-| S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5 Typmapping/Strategie erledigt, Configpfad-Duplikat → I6 |
-| S9 | `config.schema.json` wird nie geprüft | K7 | I6 |
+| S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5/I6 (erledigt: Typmapping/Strategie I5 2026-10-08, Configpfad `Resolve-SQLSyncConfigPath` I6 2026-10-09) |
+| S9 | `config.schema.json` wird nie geprüft | K7 | I6 (erledigt 2026-10-09; Fail-Fast in allen vier Skripten) |
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
 | S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
 | S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7 | I10 |

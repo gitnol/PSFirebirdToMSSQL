@@ -35,7 +35,7 @@ Repliziert die in der Konfigdatei gelisteten Tabellen einer Firebird-Datenbank
 
 | Parameter | Typ | Pflicht | Default | Validierung | Beschreibung |
 |-----------|-----|---------|---------|-------------|-------------|
-| `-ConfigFile` | `[string]` | Nein | `config.json` im Skriptordner | keine; Auflösung: existierender Pfad → relativ zum Skriptordner → unverändert (führt dann zu exit 2) | Pfad zur JSON-Konfigdatei = Job-Profil. Der Dateiname ohne Endung geht in den Lognamen ein. |
+| `-ConfigFile` | `[string]` | Nein | `config.json` im Skriptordner | Inhalt gegen `config.schema.json` (Verstoß → exit 2); Auflösung per `Resolve-SQLSyncConfigPath`: leer → `config.json` im Skriptordner, existierender Pfad → relativ zum Skriptordner → unverändert (führt dann zu exit 2) | Pfad zur JSON-Konfigdatei = Job-Profil. Der Dateiname ohne Endung geht in den Lognamen ein. |
 
 Kein `-WhatIf`, kein `-Verbose`-Sonderverhalten, keine Umgebungsvariablen.
 Alles Weitere steuert die Konfigdatei.
@@ -80,8 +80,10 @@ Vorbereitung (einmal pro Lauf, sequentiell):
 1. Modul `SQLSyncCommon.psm1` laden (fehlt → exit 1).
 2. Konfigpfad auflösen, Transcript starten:
    `Logs\Sync_<Konfigname>_<yyyy-MM-dd_HHmm>.log`.
-3. `Get-SQLSyncConfig`: laden, Defaults setzen, validieren inkl. Namensregeln
-   (`Assert-SqlIdentifier`; Fehler → exit 2).
+3. `Get-SQLSyncConfig -SchemaPath <Skriptordner>\config.schema.json`: laden, gegen das
+   Schema prüfen (Typen, Pflichtfelder, Grenzen, unbekannte Schlüssel; Meldung mit JSON-Pfad je
+   Verstoß), Defaults setzen, validieren inkl. Namensregeln (`Assert-SqlIdentifier`).
+   Fehler → exit 2, vor jeder Datenbankverbindung. Fehlt die Schema-Datei → nur Warnung.
 4. Credentials auflösen. Firebird: Credential Manager (`Firebird.CredentialTarget`,
    Default `SQLSync_Firebird`) → Konfig-Passwort (Warnung). MSSQL: Integrated
    Security → Credential Manager (`MSSQL.CredentialTarget`, Default `SQLSync_MSSQL`) →
@@ -194,7 +196,7 @@ der MERGE schreibt in die alten Zieltypen. Prüfung und Korrektur je Tabelle:
 |---|---|
 | `0` | Alle Tabellen `Erfolg`; Sanity `OK`, `N/A` oder `WARNUNG (+n)` |
 | `1` | `SQLSyncCommon.psm1` fehlt (kein Log, Transcript noch nicht gestartet) |
-| `2` | Konfiguration fehlt / ungültig |
+| `2` | Konfiguration fehlt / ungültig (Parsefehler, Schema-Verstoß `Konfiguration verletzt das Schema (config.schema.json): …`, Namensregeln) |
 | `5` | Credentials nicht auflösbar |
 | `7` | Firebird-Treiber fehlt / Download, Hash oder Laden fehlgeschlagen |
 | `9` | Pre-Flight (Ziel-DB oder Stored Procedure, inkl. fehlgeschlagener SQL-Batch aus `sql_server_setup.sql`) fehlgeschlagen |
@@ -208,9 +210,9 @@ Hilfsskripte:
 
 | Skript | Exit-Codes |
 |---|---|
-| `Test-SQLSyncConnections.ps1` | 0 OK, 1 Modul/Config fehlt oder ein Test fehlgeschlagen, 2 Config-Parse, 3 Credentials, 4 Treiber |
-| `Get_Firebird_Schema.ps1` | 1 Modul/`config.json` fehlt, 2 Config, 3 Treiber, 4 Analysefehler, 5 Credentials |
-| `Manage_Config_Tables.ps1` | 0 sonst, 1 Modul/Config fehlt, 2 FB-Metadaten oder ungültige `IdColumn`/`TimestampColumns`, 3 Treiber, 4 Backup fehlgeschlagen, 5 Credentials |
+| `Test-SQLSyncConnections.ps1` | 0 OK, 1 Modul/Config fehlt oder ein Test fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber |
+| `Get_Firebird_Schema.ps1` | 0 OK, 1 Modul/Konfigdatei fehlt, 2 Config ungültig (Parse, Schema, Namen), 3 Treiber, 4 Analysefehler, 5 Credentials |
+| `Manage_Config_Tables.ps1` | 0 sonst, 1 Modul/Config fehlt, 2 Config ungültig (Schema, Namen; vor GridView und Backup) oder FB-Metadaten nicht lesbar, 3 Treiber, 4 letzte Tabelle würde entfernt oder Backup fehlgeschlagen, 5 Credentials |
 
 Achtung: Die Codes sind zwischen den Skripten **nicht** einheitlich (Treiber
 = 7 / 4 / 3). I2 hat nur den Sync um die Codes `10`/`11` ergänzt; eine
@@ -247,14 +249,14 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | Exit-Code 0 trotz Tabellenfehlern/Sanity FEHLER; SP-Batch-Fehler nur Warnung | früher kein Exit-Code-Mapping am Skriptende (S1) | behoben in I2 (Exit 10/11/9), abgenommen 2026-10-08 |
 | ~~Tabellen-/Spaltennamen, Prefix/Suffix ungeprüft in SQL interpoliert, teils ohne `[]`~~ | früher fehlende Identifier-Validierung (S2) | behoben in I4 / v2.12 (Allow-List + Klammerung + Parameter), Integrationsläufe 2026-10-08 bestanden |
 | ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Migration per `operations/RUNBOOK.md` |
-| ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat geplant in I6 |
-| `config.schema.json` wird nie geprüft | `-SchemaPath` wird nicht übergeben (S9) | geplant in I6 |
+| ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
+| ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (S9) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
 | Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung | Prüfung nur beim Download (S4) | geplant in I7 |
 | Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung) | striktes `> MAX(ts)` (S6) | geplant in I8; Workaround Weekly Full |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
 | `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10 |
-| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl liegen seit I5 im Modul (unit-getestet), Configpfad folgt mit I6 |
+| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) liegen im Modul (unit-getestet) |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
 
 ---
@@ -271,17 +273,21 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 - Der erste Lauf auf einem neuen Host muss als Administrator laufen (Treiber).
 - `Snapshot`- und `FullMerge (Forced)`-Tabellen sind während des Laufs kurz leer
   (`TRUNCATE` vor dem Befüllen, keine Transaktion um beide Schritte).
-- `Manage_Config_Tables.ps1` und `Get_Firebird_Schema.ps1` arbeiten fest auf
-  `config.json`, nicht auf anderen Job-Profilen (I6).
+- `Manage_Config_Tables.ps1` und `Get_Firebird_Schema.ps1` nehmen ohne
+  `-ConfigFile` die `config.json`; für andere Job-Profile `-ConfigFile` angeben.
+- Neue Konfigschlüssel müssen in `config.schema.json` stehen, sonst bricht jeder
+  Lauf mit dieser Konfig mit Exit 2 ab (`additionalProperties: false`).
+- `config.schema.json` gehört zur Auslieferung; fehlt sie, läuft der Sync nur mit
+  Warnung und ohne Schema-Prüfung.
 
 ---
 
 ## Teststrategie
 
 Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
-mit 107 Pester-5-Tests (insgesamt 120 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
+mit 117 Pester-5-Tests (insgesamt 130 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
-`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 84,42 %, Stand I5)
+`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 86,52 %, Stand I6)
 oder schnell `Invoke-Pester ./tests`. Die Diskriminierung der Tests ist per
 Mutationsprüfung belegt (13 von 13 Mutationen erkannt). Die Einstiegsskripte werden
 weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` und die
@@ -291,6 +297,7 @@ Zusammenfassungstabelle eines Laufs; eine CI gibt es nicht.
 - Integration gegen echte Firebird-/SQL-Server-Instanzen:
   `testing/INTEGRATION_TESTS.md`.
 - Kritische Testfälle: leere `Tables` → Exception; fehlende Konfig → exit 2;
+  schemawidrige Konfig (falscher Typ, unbekannter Schlüssel) → Exception mit JSON-Pfad;
   Strategie-Ermittlung (ID+TS → Incremental, nur ID → FullMerge, keine ID →
   Snapshot, ForceFullSync → FullMerge (Forced)); `TableOverrides` haben Vorrang;
   Sonderzeichen in Passwörtern werden im Connection-String maskiert;

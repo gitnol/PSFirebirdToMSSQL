@@ -8,15 +8,16 @@ und [[FAIL_FAST]].
 
 ## Quellen-Hierarchie (Präzedenz, höchste zuerst)
 
-1. **CLI-Argument `-ConfigFile`** (nur `Sync_Firebird_MSSQL_AutoSchema.ps1` und `Test-SQLSyncConnections.ps1`) —
+1. **CLI-Argument `-ConfigFile`** (alle vier Einstiegsskripte: `Sync_Firebird_MSSQL_AutoSchema.ps1`,
+   `Test-SQLSyncConnections.ps1`, `Get_Firebird_Schema.ps1`, `Manage_Config_Tables.ps1`) —
    wählt **welche** JSON-Datei geladen wird, überschreibt aber keine einzelnen Schlüssel.
-   Auflösung: existierender Pfad → `Convert-Path`; sonst Name relativ zum Skriptordner; sonst Pfad wie angegeben
-   (führt dann zu „Konfigurationsdatei nicht gefunden"). Ohne Parameter: `config.json` im Skriptordner.
+   Auflösung zentral in `Resolve-SQLSyncConfigPath -ConfigFile … -ScriptDir …` (`SQLSyncCommon.psm1`):
+   leer → `<Skriptordner>\config.json`; existierender Pfad → vollständiger Pfad (`Convert-Path`); Name relativ
+   zum Skriptordner → dort; sonst Pfad wie angegeben (führt dann zu „Konfigurationsdatei nicht gefunden").
 2. **Konfigurationsdatei (JSON)** — `config.json` bzw. ein Job-Profil wie `config_weekly_full.json`.
 3. **Code-Defaults** in `Get-SQLSyncConfig` / `Get-ConfigValue` (`SQLSyncCommon.psm1`).
 
 Nicht vorhanden: **Umgebungsvariablen** und **CLI-Overrides einzelner Schlüssel** gibt es nicht.
-`Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` lesen fest `config.json` im Skriptordner (Inkrement I6).
 
 Ein fehlender oder `null`-Schlüssel fällt auf den Code-Default zurück (`Get-ConfigValue`). Listen (`Tables`,
 `TimestampColumns`) werden **ersetzt**, nicht ergänzt.
@@ -36,12 +37,17 @@ Credentials haben eine eigene Reihenfolge (Credential Manager vor `config.json`)
 `Get-SQLSyncConfig` wird einmal zu Beginn jedes Skripts aufgerufen und liefert eine Hashtable mit allen Werten
 (inkl. `RawConfig` = das geparste JSON-Objekt für die Credential-Auflösung).
 
-Tatsächlich geprüft (Fail-Fast per `throw`, im Sync-Skript → Exit-Code 2):
+Reihenfolge: **Schema → Defaults → Validierungen/Namens-Whitelist**. Alle vier Einstiegsskripte übergeben
+`-SchemaPath (Join-Path $ScriptDir 'config.schema.json')`; jeder Verstoß bricht per `throw` ab, die Skripte enden mit
+Exit-Code 2, bevor eine Datenbankverbindung aufgebaut wird (`Manage_Config_Tables.ps1` zusätzlich vor GridView und Backup).
+
+Tatsächlich geprüft (Fail-Fast per `throw` → Exit-Code 2):
 
 | Prüfung | Meldung |
 |---|---|
 | Datei existiert | `Konfigurationsdatei nicht gefunden: <Pfad>` |
 | JSON parsebar | `Fehler beim Parsen der Konfiguration: …` |
+| JSON entspricht `config.schema.json` (Typen, Pflichtfelder, Grenzen, Muster, unbekannte Schlüssel) | `Konfiguration verletzt das Schema (config.schema.json): … bei "/General/GlobalTimeout"; …` (ein Eintrag je Verstoß, jeweils mit JSON-Pfad) |
 | `General.GlobalTimeout > 0` | `GlobalTimeout muss größer als 0 sein.` |
 | `Tables` vorhanden und nicht leer | `Keine Tabellen in der Konfiguration definiert.` |
 | `General.OrphanCleanupBatchSize >= 1000` | `OrphanCleanupBatchSize muss mindestens 1000 sein.` |
@@ -66,19 +72,33 @@ keine Umlaute, keine Leer-, Anführungs-, Klammer- oder Semikolonzeichen) und di
 | `TableOverrides`-Schlüssel (Tabellenname) | nein |
 | `TableOverrides.<Tabelle>.IdColumn`, `.TimestampColumn` | ja (dann gilt der globale Wert) |
 
-Der erste Verstoß bricht das Laden ab; das Sync-Skript endet mit Exit-Code 2, bevor eine Verbindung
+Der erste Verstoß bricht das Laden ab; das Skript endet mit Exit-Code 2, bevor eine Verbindung
 aufgebaut wird. `<Feld>` in der Meldung nennt das betroffene Konfigurationsfeld (bei Overrides z. B.
-`TableOverrides.BSA.IdColumn`). `Manage_Config_Tables.ps1` prüft `General.IdColumn`/`TimestampColumns`
-genauso (Exit 2) und übernimmt Firebird-Tabellen mit ungültigem Namen nicht.
+`TableOverrides.BSA.IdColumn`). `Manage_Config_Tables.ps1` (v2.1) prüft beim Start über `Get-SQLSyncConfig`
+(Schema + Namens-Whitelist, Exit 2) und übernimmt Firebird-Tabellen mit ungültigem Namen nicht.
+
+### Schema-Prüfung (`config.schema.json`, seit v2.15)
+
+- `Get-SQLSyncConfig -SchemaPath` prüft den Dateiinhalt mit `Test-Json -Json … -Schema <Inhalt der Schema-Datei>`
+  (Parameter `-Schema` ist in allen PowerShell-7-Versionen vorhanden). Jeder Verstoß erscheint mit seinem JSON-Pfad,
+  mehrere Verstöße durch `; ` getrennt.
+- Alle Objekte haben `additionalProperties: false`: ein **unbekannter Schlüssel** (Tippfehler wie `ForceFulSync`) ist
+  ein Verstoß, statt still auf den Default zu fallen.
+- Geprüft werden u. a. Typen (String `"4"` statt `4` → Verstoß), Pflichtfelder (`Firebird`, `MSSQL`, `Tables`;
+  `Server`/`Database` in beiden Blöcken) und die Grenzen der Tabelle unten.
+- Die Namensmuster im Schema entsprechen der Whitelist oben: `Tables`, `General.IdColumn`, `General.TimestampColumns`,
+  `TableOverrides.<Tabelle>.IdColumn`/`.TimestampColumn` → `^[A-Za-z0-9_$]+$`, `maxLength` 63;
+  `MSSQL.Prefix`/`Suffix` → `^[A-Za-z0-9_$]*$`. Die Code-Prüfung (`Assert-SqlIdentifier`) bleibt als zweite Schicht,
+  auch für Aufrufer ohne `-SchemaPath`.
+- **Fehlt die Schema-Datei**, gibt `Get-SQLSyncConfig` nur eine Warnung aus
+  (`Schema-Datei nicht gefunden, Konfiguration wird nicht gegen das Schema geprüft: …`) und der Lauf geht weiter —
+  bestehende Installationen ohne die Datei brechen nicht. Die Datei gehört trotzdem zu jeder Auslieferung.
 
 **Nicht geprüft** (bekannte Lücken):
 
-- `config.schema.json` wird **nicht** ausgewertet: `Get-SQLSyncConfig` hat zwar `-SchemaPath`, kein Aufrufer übergibt ihn;
-  zudem würde ein Schemafehler nur als Warnung gemeldet (Inkrement I6). Die Schema-Grenzen in der Tabelle unten sind daher
-  **Soll-Werte**, keine Laufzeitprüfung.
-- Pflichtfelder `Firebird.Server`, `Firebird.Database`, `MSSQL.Server`, `MSSQL.Database` werden nicht explizit geprüft —
-  fehlen sie, scheitert erst der Verbindungsaufbau bzw. der Pre-Flight.
-- Typen werden nicht konvertiert; ein String `"4"` statt `4` wird so weitergereicht.
+- `MSSQL.Port` ist im Schema erlaubt, wird vom Code aber nicht ausgewertet (Inkrement I10).
+- Ohne Schema-Datei (nur Warnung) entfallen Typ-, Pflichtfeld- und Schlüsselprüfung; fehlende Pflichtfelder fallen
+  dann erst beim Verbindungsaufbau bzw. im Pre-Flight auf.
 - Die Hashtable ist **nicht** schreibgeschützt; das Sync-Skript kopiert die Werte jedoch nur in lokale Variablen und
   verändert sie nicht.
 
@@ -109,7 +129,7 @@ genauso (Exit 2) und übernimmt Firebird-Tabellen mit ungültigem Namen nicht.
 
 ## Konfigurations-Tabelle
 
-Defaults aus `Get-SQLSyncConfig`; „Schema" = Grenzen aus `config.schema.json` (derzeit nicht erzwungen).
+Defaults aus `Get-SQLSyncConfig`; „Schema" = Grenzen aus `config.schema.json` (beim Laden erzwungen, Verstoß → Exit 2).
 Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur die Datei.
 
 ### `General`
@@ -128,8 +148,8 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 | `DeleteLogOlderThanDays` | int (Tage) | `30` | FILE | Löscht `Logs\Sync_*.log` älter als n Tage; `0` = Rotation aus. Schema: 0–365 |
 | `CleanupOrphans` | bool | `false` | FILE | Nach dem Merge Datensätze im Ziel löschen, deren ID in Firebird fehlt (nicht bei Snapshot / FullMerge (Forced)) |
 | `OrphanCleanupBatchSize` | int | `50000` | FILE | Batchgröße beim Übertragen der Firebird-IDs in `#SourceIDs_<Tabelle>`. Code: `>= 1000`; Schema: 1000–500000 |
-| `IdColumn` | string | `"ID"` | FILE | Globaler Name der ID-/Primärschlüsselspalte. Tabelle ohne diese Spalte → Strategie Snapshot. Code: Namensregeln (s. o.); Schema: `^[A-Z0-9_]+$` |
-| `TimestampColumns` | string[] | `["GESPEICHERT"]` | FILE | Kandidaten für die Änderungszeitstempel-Spalte; die **erste** in der Tabelle vorhandene wird genutzt. Keine vorhanden → FullMerge. Code: Namensregeln (s. o.) |
+| `IdColumn` | string | `"ID"` | FILE | Globaler Name der ID-/Primärschlüsselspalte. Tabelle ohne diese Spalte → Strategie Snapshot. Code: Namensregeln (s. o.); Schema: `^[A-Za-z0-9_$]+$`, max. 63 |
+| `TimestampColumns` | string[] | `["GESPEICHERT"]` | FILE | Kandidaten für die Änderungszeitstempel-Spalte; die **erste** in der Tabelle vorhandene wird genutzt. Keine vorhanden → FullMerge. Code: Namensregeln (s. o.); Schema: je Eintrag `^[A-Za-z0-9_$]+$`, max. 63 |
 
 ### `Firebird`
 
@@ -154,16 +174,16 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 | `Username` | string | kein | FILE | SQL-Login **nur** für den Klartext-Fallback |
 | `Password` | string | kein | FILE | Unsicherer Fallback, wenn der Credential-Manager-Eintrag (`CredentialTarget`) nicht existiert |
 | `CredentialTarget` | string | `"SQLSync_MSSQL"` | FILE | Name des Credential-Manager-Eintrags, den `Resolve-MSSQLCredentials` liest (nur SQL-Auth); anlegen mit `Setup_Credentials.ps1 -MSSQLTarget …`. Für mehrere SQL Server mit gleichem Login, aber unterschiedlichen Passwörtern, z. B. `SQLSync_MSSQL_sqltest`. Schema: `minLength 1` |
-| `Prefix` | string | `""` | FILE | Präfix des Zieltabellennamens (`<Prefix><Tabelle><Suffix>`); Staging bleibt `STG_<Tabelle>`. Code: Namensregeln (s. o.), Gesamtname ≤ 128 Zeichen; Schema: `^[a-zA-Z0-9_]*$` |
-| `Suffix` | string | `""` | FILE | Suffix des Zieltabellennamens. Code: Namensregeln (s. o.); Schema: `^[a-zA-Z0-9_]*$` |
+| `Prefix` | string | `""` | FILE | Präfix des Zieltabellennamens (`<Prefix><Tabelle><Suffix>`); Staging bleibt `STG_<Tabelle>`. Code: Namensregeln (s. o.), Gesamtname ≤ 128 Zeichen; Schema: `^[A-Za-z0-9_$]*$` |
+| `Suffix` | string | `""` | FILE | Suffix des Zieltabellennamens. Code: Namensregeln (s. o.); Schema: `^[A-Za-z0-9_$]*$` |
 | `Port` | int | (Schema: `1433`) | — | Steht in Sample und Schema, wird vom Code **nicht** ausgewertet (Port ggf. als `host,port` in `Server` angeben; Inkrement I10) |
 
 ### Wurzelebene
 
 | Schlüssel | Typ | Default | Quelle(n) | Beschreibung |
 |---|---|---|---|---|
-| `Tables` | string[] | kein (Pflicht) | FILE | Firebird-Tabellennamen, die synchronisiert werden. Leer → Abbruch. Code: Namensregeln (s. o.); Schema: `^[A-Z0-9_]+$`, eindeutig, mind. 1. Pflege per `Manage_Config_Tables.ps1` |
-| `TableOverrides` | object | `{}` | FILE | Pro Tabelle abweichende Spalten: `{ "<TABELLE>": { "IdColumn": "…", "TimestampColumn": "…" } }`. Override hat Vorrang vor `General.IdColumn` / `General.TimestampColumns`. Schlüssel und Werte: Namensregeln (s. o.) |
+| `Tables` | string[] | kein (Pflicht) | FILE | Firebird-Tabellennamen, die synchronisiert werden. Leer → Abbruch. Code: Namensregeln (s. o.); Schema: `^[A-Za-z0-9_$]+$`, max. 63, eindeutig, mind. 1. Pflege per `Manage_Config_Tables.ps1` |
+| `TableOverrides` | object | `{}` | FILE | Pro Tabelle abweichende Spalten: `{ "<TABELLE>": { "IdColumn": "…", "TimestampColumn": "…" } }`. Override hat Vorrang vor `General.IdColumn` / `General.TimestampColumns`. Schlüssel und Werte: Namensregeln (s. o.); Schema: Werte `^[A-Za-z0-9_$]+$`, max. 63, keine weiteren Schlüssel |
 
 ---
 
@@ -173,7 +193,9 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 - **Konfiguration zur Laufzeit mutieren** (Ausnahme: `Manage_Config_Tables.ps1`, das die Datei bewusst mit Backup neu schreibt).
 - **Magic Defaults im Code** neben `Get-SQLSyncConfig` — Bestand: `$PackageVersion`, `$ExpectedSha256` in
   `Initialize-FirebirdDriver` sind bewusst Code-Konstanten (Integrität), keine Konfigwerte.
-- **Neue Schlüssel nur in `config.sample.json` ergänzen** — Default muss in `Get-SQLSyncConfig`, Grenze in `config.schema.json`.
+- **Neue Schlüssel nur in `config.sample.json` ergänzen** — Default muss in `Get-SQLSyncConfig`, Schlüssel und Grenze in
+  `config.schema.json`; fehlt der Schlüssel im Schema, scheitert jede Konfig, die ihn nutzt, mit Exit 2
+  (`additionalProperties: false`).
 
 ---
 

@@ -6,7 +6,7 @@ Stack: PowerShell 7+ gegen **echte** Firebird- und SQL-Server-Testinstanzen
 > **Stand 2026-10-08:** Es gibt **keine automatisierten Integrationstests** und keine CI.
 > Einziger vorhandener Integrations-/Smoke-Test ist das Diagnoseskript
 > `Test-SQLSyncConnections.ps1`. Der Pester-5-Harness für Unit-Tests ist seit I3 vorhanden
-> (`tests/Unit/SQLSyncCommon.Tests.ps1`, 98 Tests, Pester 5.7.1 gepinnt in
+> (`tests/Unit/SQLSyncCommon.Tests.ps1`, 117 Tests, Pester 5.7.1 gepinnt in
 > `tests/RequiredModules.psd1`, siehe `UNIT_TESTS.md`), deckt aber nur `SQLSyncCommon.psm1`
 > ohne echte Instanzen ab. Die Struktur unten ist der Zielzustand; Integrations-Tests bauen auf
 > diesem Harness auf.
@@ -64,9 +64,14 @@ konfigurierte Tabelle; SQL-Server-Verbindung + Version, Tabellen, Vorhandensein 
 |---|---|
 | 0 | alle Tests OK |
 | 1 | Modul/Konfigdatei fehlt **oder** mindestens ein Test fehlgeschlagen |
-| 2 | Konfiguration nicht parsebar / ungültig |
+| 2 | Konfiguration nicht parsebar / ungültig (inkl. Verstoß gegen `config.schema.json`) |
 | 3 | Credentials nicht auflösbar |
 | 4 | Treiber nicht ladbar |
+
+Manuell belegt am 2026-10-08/09 (Schema-Prüfung, v2.15): schemawidrige Konfig (Typfehler +
+Tippfehler-Schlüssel) → Sync Exit 2 vor jeder DB-Verbindung; gültige Konfig Exit 0;
+`Test-SQLSyncConnections.ps1` mit relativem `-ConfigFile` Exit 0; `Get_Firebird_Schema.ps1 -ConfigFile`
+Exit 0 bzw. Exit 2 bei Schemaverstoß; `Manage_Config_Tables.ps1` mit schemawidriger Konfig Exit 2 ohne Backup.
 
 Bekannte Einschränkung (S12): die Test-Query-Zeile wird doppelt ausgegeben (Korrektur in I10).
 Im Ziel-Harness wird das Skript per Pester aufgerufen und nur der Exit-Code geprüft:
@@ -259,5 +264,5 @@ Invoke-Pester -Container $c -Output Detailed
 | Schreibende Tests ohne `-EnableWriteTests` | Default nicht-destruktiv | Opt-in-Switch |
 | `Setup-ScheduledTasks.ps1` – echte Registrierung (Task Scheduler, Admin-Prüfung zur Laufzeit) | OS-spezifisch, Admin, fragt Windows-Passwort ab | `-WhatIf`-Pfad per Unit-Test (`UNIT_TESTS.md` 4.3); Registrierung als manueller Smoke-Test nach Deployment (`operations/TASK_SCHEDULER.md`), noch nicht durchgeführt |
 | `Setup_Credentials.ps1` (interaktiv, `CredWrite`) | Interaktiv, schreibt in den Credential Manager | Manuell beim Einrichten des Testrechners |
-| `Manage_Config_Tables.ps1` (Out-GridView) | GUI, fest auf `config.json` | Manuell |
+| `Manage_Config_Tables.ps1` (Out-GridView) | GUI (Auswahl, Sperre gegen das Entfernen der letzten Tabelle, Exit 4) | Manuell; die Startprüfung (Exit 2 vor GridView und Backup) ist manuell belegt |
 | Treiber-Download von NuGet | Netz + Admin, einmalig | Manuell beim Einrichten; Hash-Logik per Unit-Test mit Mocks |

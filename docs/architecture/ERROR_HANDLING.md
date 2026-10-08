@@ -77,7 +77,7 @@ Implementiert im Parallel-Block des Sync-Skripts (Abschnitt 8):
 |---|---|---|
 | Alle Tabellen `Erfolg`, Sanity `OK` / `N/A` / `WARNUNG (+n)` | `0` | `ERGEBNIS: OK (Exit-Code 0)` |
 | `SQLSyncCommon.psm1` fehlt | `1` | vor Transcript-Start |
-| Konfiguration fehlt / ungültig (`Get-SQLSyncConfig`) | `2` | inkl. Namensprüfung (seit v2.12): `Ungültiger Name in '<Feld>': …` bei leerem, zu langem (> 63) oder nicht erlaubtem Namen (nur `A-Z`, `a-z`, `0-9`, `_`, `$`) bzw. `Ungültiger Name: Zieltabelle '…' … ist länger als 128 Zeichen.`; Abbruch vor jedem Verbindungsaufbau, Regeln in `docs/architecture/CONFIGURATION.md` |
+| Konfiguration fehlt / ungültig (`Get-SQLSyncConfig`) | `2` | inkl. Schema-Prüfung (seit v2.15): `Konfiguration verletzt das Schema (config.schema.json): … bei "/General/GlobalTimeout"; …` (je Verstoß der JSON-Pfad; Typfehler, fehlende Pflichtfelder, Grenzen, unbekannte Schlüssel/Tippfehler); fehlt die Schema-Datei → nur Warnung, Lauf geht weiter. Inkl. Namensprüfung (seit v2.12): `Ungültiger Name in '<Feld>': …` bei leerem, zu langem (> 63) oder nicht erlaubtem Namen (nur `A-Z`, `a-z`, `0-9`, `_`, `$`) bzw. `Ungültiger Name: Zieltabelle '…' … ist länger als 128 Zeichen.`; Abbruch vor jedem Verbindungsaufbau, Regeln in `docs/architecture/CONFIGURATION.md` |
 | Keine Credentials (`Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials`) | `5` | |
 | Treiber nicht ladbar (`Initialize-FirebirdDriver`, inkl. SHA-256-Abweichung, fehlende Admin-Rechte beim Erst-Download) | `7` | |
 | Pre-Flight: Datenbank prüfen/anlegen über `master` fehlgeschlagen | `9` | z. B. fehlendes `dbcreator`, Server nicht erreichbar |
@@ -96,7 +96,7 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 |---|---|
 | Alle Tests erfolgreich | `0` |
 | Modul oder Konfigdatei fehlt, oder ein Verbindungstest fehlgeschlagen | `1` |
-| Konfiguration nicht parsebar / ungültig | `2` |
+| Konfiguration nicht parsebar / ungültig (inkl. Schema-Verstoß, Namensprüfung) | `2` |
 | Keine Credentials | `3` |
 | Treiber nicht ladbar | `4` |
 
@@ -105,8 +105,8 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Ursache | Exit-Code |
 |---|---|
 | Erfolg | `0` (implizit) |
-| Modul oder `config.json` fehlt | `1` |
-| Konfiguration ungültig | `2` |
+| Modul oder Konfigdatei (`-ConfigFile`, Default `config.json`) fehlt | `1` |
+| Konfiguration ungültig (`Get-SQLSyncConfig`: Parsefehler, Schema-Verstoß, Namensprüfung) | `2` |
 | Treiber nicht ladbar | `3` |
 | Analysefehler (Verbindung, Tabelle nicht vorhanden) | `4` |
 | Keine Credentials | `5` |
@@ -116,10 +116,10 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Ursache | Exit-Code |
 |---|---|
 | Erfolg oder Abbruch durch Benutzer (keine Auswahl, keine Änderung) | `0` |
-| Modul oder `config.json` fehlt | `1` |
-| Firebird-Metadaten nicht lesbar, oder `General.IdColumn`/`TimestampColumns` verletzen die Namensregeln (`Ungültiger Name in '<Feld>': …`) | `2` |
+| Modul oder Konfigdatei (`-ConfigFile`, Default `config.json`) fehlt | `1` |
+| Konfiguration ungültig (Startprüfung über `Get-SQLSyncConfig`: Schema-Verstoß, Namensregeln wie `Ungültiger Name in '<Feld>': …`; vor GridView und Backup, Datei bleibt unverändert), oder Firebird-Metadaten nicht lesbar | `2` |
 | Treiber nicht ladbar | `3` |
-| Backup/Schreiben der Konfiguration fehlgeschlagen | `4` |
+| Auswahl würde alle Tabellen entfernen (`Abbruch: Es würden alle Tabellen entfernt. …`; es wird nichts geschrieben), oder Backup/Schreiben der Konfiguration fehlgeschlagen | `4` |
 | Keine Credentials | `5` |
 
 Firebird-Tabellen mit ungültigem Namen führen nicht zum Abbruch: Sie erscheinen im GridView als
@@ -144,7 +144,7 @@ Inkrement I2 hat nur die Sync-Codes `10`/`11` ergänzt; eine Vereinheitlichung �
 | Zieltabelle: ID-Spalte auf `NOT NULL` ändern | `try { … } catch { }` | nachfolgende PK-Anlage scheitert; nur als `(PK Err: …)` in `Info` | offen (nicht Teil von I2) |
 | Staging-PK anlegen | leeres `catch { }` | Merge ohne Index (Performance) | offen (nicht Teil von I2) |
 | Orphan-Cleanup | Fehler nur in `Info` (`Cleanup-Fehler: …`), Status bleibt `Erfolg` | z. B. nicht-numerische IDs (Temp-Tabelle `BIGINT`) werden nie bereinigt | Backlog |
-| `Get-SQLSyncConfig` mit `-SchemaPath` | Schemafehler nur als `Write-Warning` | kein Fail-Fast (Pfad wird derzeit ohnehin nie übergeben) | I6 |
+| `Get-SQLSyncConfig` mit `-SchemaPath`, Schema-Datei fehlt | nur `Write-Warning` (`Schema-Datei nicht gefunden …`) | Konfig wird nur durch die Code-Prüfungen validiert; bewusst, damit Installationen ohne die Datei nicht brechen | — |
 | Log-Rotation | Fehler nur als Warnung | unkritisch | — |
 
 ---

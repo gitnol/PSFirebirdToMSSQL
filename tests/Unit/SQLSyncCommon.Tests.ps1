@@ -188,6 +188,65 @@ Describe 'Get-SQLSyncConfig' {
     }
 }
 
+Describe 'Resolve-SQLSyncConfigPath' {
+    BeforeAll {
+        $script:Dir = Join-Path $TestDrive 'app'
+        New-Item -ItemType Directory -Path $script:Dir -Force | Out-Null
+        Set-Content (Join-Path $script:Dir 'weekly.json') '{}'
+        $script:Abs = Join-Path $TestDrive 'abs.json'
+        Set-Content $script:Abs '{}'
+    }
+    It 'liefert config.json im Skriptordner, wenn nichts angegeben ist' {
+        Resolve-SQLSyncConfigPath -ConfigFile '' -ScriptDir $script:Dir | Should -Be (Join-Path $script:Dir 'config.json')
+    }
+    It 'löst einen existierenden absoluten Pfad auf' {
+        Resolve-SQLSyncConfigPath -ConfigFile $script:Abs -ScriptDir $script:Dir | Should -Be (Convert-Path $script:Abs)
+    }
+    It 'sucht einen relativen Namen im Skriptordner' {
+        Push-Location $TestDrive
+        try { Resolve-SQLSyncConfigPath -ConfigFile 'weekly.json' -ScriptDir $script:Dir | Should -Be (Join-Path $script:Dir 'weekly.json') }
+        finally { Pop-Location }
+    }
+    It 'gibt einen nicht existierenden Pfad unverändert zurück (Fehler meldet Get-SQLSyncConfig)' {
+        Resolve-SQLSyncConfigPath -ConfigFile 'fehlt.json' -ScriptDir $script:Dir | Should -Be 'fehlt.json'
+    }
+}
+
+Describe 'Get-SQLSyncConfig -SchemaPath (Fail-Fast)' {
+    BeforeAll {
+        $script:Schema = Join-Path $PSScriptRoot '..\..\config.schema.json'
+        $script:Base = '"Firebird":{"Server":"fb","Database":"C:\\db\\test.fdb"},"MSSQL":{"Server":"sql","Database":"STAGING"}'
+    }
+    BeforeEach { $script:CfgPath = Join-Path $TestDrive 'config.schema-test.json' }
+
+    It 'akzeptiert eine schemakonforme Konfiguration' {
+        Set-Content $script:CfgPath ('{' + $script:Base + ',"Tables":["BKUNDE"]}')
+        { Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath $script:Schema } | Should -Not -Throw
+    }
+    It 'wirft bei falschem Typ und nennt den JSON-Pfad' {
+        Set-Content $script:CfgPath ('{"General":{"GlobalTimeout":"abc"},' + $script:Base + ',"Tables":["BKUNDE"]}')
+        { Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath $script:Schema } | Should -Throw '*/General/GlobalTimeout*'
+    }
+    It 'wirft bei unbekanntem Schlüssel (Tippfehler)' {
+        Set-Content $script:CfgPath ('{"General":{"GlobalTimout":7200},' + $script:Base + ',"Tables":["BKUNDE"]}')
+        { Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath $script:Schema } | Should -Throw '*GlobalTimout*'
+    }
+    It 'warnt nur, wenn die Schema-Datei fehlt' {
+        Set-Content $script:CfgPath ('{' + $script:Base + ',"Tables":["BKUNDE"]}')
+        $w = $null
+        { Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath (Join-Path $TestDrive 'kein.schema.json') -WarningVariable w -WarningAction SilentlyContinue } | Should -Not -Throw
+        Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath (Join-Path $TestDrive 'kein.schema.json') -WarningVariable w -WarningAction SilentlyContinue | Out-Null
+        "$w" | Should -BeLike '*Schema*'
+    }
+    It 'akzeptiert im Schema dieselben Namen wie die Identifier-Whitelist (<Name>)' -TestCases @(
+        @{ Name = 'b_kunde' }, @{ Name = 'RDB$X' }
+    ) {
+        param($Name)
+        Set-Content $script:CfgPath ('{' + $script:Base + ',"Tables":["' + $Name + '"],"General":{"IdColumn":"' + $Name + '","TimestampColumns":["' + $Name + '"]},"TableOverrides":{"' + $Name + '":{"IdColumn":"' + $Name + '"}}}')
+        { Get-SQLSyncConfig -ConfigPath $script:CfgPath -SchemaPath $script:Schema } | Should -Not -Throw
+    }
+}
+
 Describe 'Assert-SqlIdentifier' {
     It 'akzeptiert <Name>' -TestCases @(
         @{ Name = 'BKUNDE' }, @{ Name = 'b_kunde_2' }, @{ Name = 'RDB$X' }, @{ Name = ('A' * 63) }

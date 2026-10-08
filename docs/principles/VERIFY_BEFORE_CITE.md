@@ -67,7 +67,8 @@ verifiziert") statt eine sichere Aussage zu formulieren.
   Aussagen aus READMEs/Agent-Hinweisen vor dem Zitieren im Code gegenprüfen.
 - **Konfigschlüssel:** `MSSQL.Port` steht in `config.sample.json`/`config.schema.json`, wird vom
   Code aber nicht verwendet (S12). Schlüssel nur als wirksam zitieren, wenn `Get-SQLSyncConfig`
-  oder ein Skript ihn liest (`grep -n '<Schlüssel>' *.ps1 *.psm1`).
+  oder ein Skript ihn liest (`grep -n '<Schlüssel>' *.ps1 *.psm1`). Dass eine Konfig die
+  Schema-Prüfung besteht (seit v2.15 aktiv), belegt nur Form und Typen, nicht die Wirkung.
 - **Exit-Codes** je Skript aus dem Code belegen (`grep -n 'exit ' <Skript>`), nicht aus der README —
   die Codes unterscheiden sich zwischen Sync, `Test-SQLSyncConnections.ps1`,
   `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1`.

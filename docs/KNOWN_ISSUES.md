@@ -21,8 +21,7 @@ Stand: Code `721d5e0`, aus Code-Analyse abgeleitet (nicht alle Punkte mit echten
 | K4 | Löschungen in Firebird werden im Standardbetrieb nicht repliziert (bewusstes Design, siehe `sql_server_setup.sql`) | Datensatz in Firebird löschen, Incremental-Lauf → bleibt im Ziel | `CleanupOrphans: true` oder Weekly-Full-Lauf mit `ForceFullSync` | Design-Entscheidung (Performance, DWH-Historie) | „nie" (by design) |
 | K5 | Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle `#SourceIDs_<Tabelle>` als `BIGINT` an → bei nicht-numerischen IDs schlägt der Cleanup fehl; der Fehler erscheint nur in der Info-Spalte, Status bleibt „Erfolg" | Tabelle mit `VARCHAR`-ID und `CleanupOrphans: true` | `CleanupOrphans` für diese Tabelle nicht nutzen; Full-Lauf | selten genutzte Option | offen (`BACKLOG.md`) |
 | K6 | Schema-Drift: neue Spalten in Firebird werden weder in Staging noch Ziel automatisch ergänzt → BulkCopy-Fehler oder Spalte fehlt im Ziel | Spalte in Firebird hinzufügen, Incremental-Lauf | `RecreateStagingTable: true` (Staging) und Zieltabelle manuell per `ALTER TABLE` ergänzen | Automatische DDL am Ziel ist riskant | offen (`BACKLOG.md`) |
-| K7 | `config.schema.json` wird nie geprüft (kein Aufrufer übergibt `-SchemaPath` an `Get-SQLSyncConfig`); `MSSQL.Port` aus Sample/Schema wird ignoriert | Ungültigen Typ in `config.json` eintragen → keine Schema-Meldung | Konfig manuell gegen Schema prüfen: `Test-Json -Path config.json -SchemaFile config.schema.json` (PS 7.4+) | — | `I6` / `I10` |
-| K8 | `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` arbeiten fest mit `config.json` im Skriptordner | Zweites Job-Profil (z. B. Weekly-Full-Konfig) mit Manage-Skript bearbeiten wollen | Datei temporär nach `config.json` kopieren | — | `I6` |
+| K9 | `MSSQL.Port` aus Sample/Schema wird vom Code ignoriert (Verbindung nutzt nur `MSSQL.Server`) | Abweichenden Port eintragen → keine Wirkung | Port als `Server,Port` in `MSSQL.Server` angeben | — | `I10` |
 
 ---
 
@@ -33,6 +32,8 @@ Lessons Learned). Danach archivieren oder löschen.
 
 | # | Beschreibung | Behoben in | Commit |
 |---|---|---|---|
+| ~~K7~~ | `config.schema.json` wurde nie geprüft | `I6` (2026-10-09) | siehe `STATE.md` |
+| ~~K8~~ | `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` arbeiteten fest mit `config.json` | `I6` (2026-10-09) | siehe `STATE.md` |
 | ~~K2~~ | `NUMERIC`/`DECIMAL` wurde fest als `DECIMAL(18,4)` angelegt (Rundung ab der 5. Nachkommastelle); Inline-Mapping ohne `Guid`. Altbestand: vorher angelegte Zieltabellen behalten den alten Typ (`operations/RUNBOOK.md`) | `I5` (2026-10-08) | 2d1a7ef |
 | ~~K1~~ | Sync endete immer mit Exit-Code 0, auch bei fehlgeschlagenen Tabellen; SP-Batch-Fehler nur als Warnung | `I2` (2026-10-08) | a082e9d |
 

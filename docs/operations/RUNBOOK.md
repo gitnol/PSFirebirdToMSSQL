@@ -20,11 +20,16 @@ Ablauf im Detail: `features/firebird-mssql-sync.md`.
 # Verbindungen, Treiber, Credentials und sp_Merge_Generic prüfen
 .\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json
 
-# Spaltentypen einer Firebird-Tabelle anzeigen (liest fest config.json)
+# Spaltentypen einer Firebird-Tabelle anzeigen (Default config.json, sonst -ConfigFile)
 .\Get_Firebird_Schema.ps1 -TableName BKUNDE
+.\Get_Firebird_Schema.ps1 -TableName BKUNDE -ConfigFile .\config_weekly_full.json
 
-# Tabellen in config.json hinzufügen/entfernen (Out-GridView, legt .bak an)
+# Tabellen in der Konfig hinzufügen/entfernen (Out-GridView, legt .bak an; Default config.json)
 .\Manage_Config_Tables.ps1
+.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json
+
+# Konfig vor einem Update/nach Handänderung gegen das Schema prüfen (True = gültig)
+Test-Json -Json (Get-Content .\config.json -Raw) -Schema (Get-Content .\config.schema.json -Raw)
 
 # Scheduled Tasks manuell anstoßen / Status
 Start-ScheduledTask -TaskName SQLSync_Firebird_Daily_Diff
@@ -114,7 +119,35 @@ Kleine Abweichungen während laufender Firebird-Schreiblast sind möglich, da
 `COUNT` nach dem Merge separat gelesen wird. Bleibt die Abweichung über mehrere
 Läufe stehen, handeln.
 
+### „Konfiguration verletzt das Schema" (exit 2)
+
+Log: `KRITISCH: Konfiguration verletzt das Schema (config.schema.json): … bei "/General/GlobalTimeout"; …`
+— ein Eintrag je Verstoß, jeweils mit dem JSON-Pfad des betroffenen Schlüssels. Alle vier Skripte
+(Sync, `Test-SQLSyncConnections.ps1`, `Get_Firebird_Schema.ps1`, `Manage_Config_Tables.ps1`) brechen
+damit ab, **bevor** eine Datenbankverbindung aufgebaut wird; es wurde nichts geschrieben
+(`Manage_Config_Tables.ps1` auch kein Backup).
+
+1. JSON-Pfad lesen und die Stelle in der Konfigdatei des Job-Profils aufsuchen.
+2. Typische Ursachen korrigieren:
+   - `Value is "string" but should be "integer"` (bzw. `boolean`): Anführungszeichen entfernen
+     (`"GlobalTimeout": 7200`, `"ForceFullSync": true`).
+   - `All values fail against the false schema`: unbekannter Schlüssel — meist ein **Tippfehler**
+     (z. B. `ForceFulSync`). Schreibweise mit `config.sample.json` vergleichen.
+   - Wert außerhalb der Grenzen (z. B. `GlobalTimeout` < 60) oder fehlendes Pflichtfeld
+     (`Firebird.Server`, `MSSQL.Database`, `Tables`): Grenzen in `architecture/CONFIGURATION.md`.
+3. Erneut prüfen, ohne Datenbankzugriff:
+   `Test-Json -Json (Get-Content <Konfig> -Raw) -Schema (Get-Content .\config.schema.json -Raw)` → `True`.
+4. Lauf manuell wiederholen, Exit 0 prüfen.
+
+Meldung `Schema-Datei nicht gefunden, Konfiguration wird nicht gegen das Schema geprüft: …` (nur Warnung,
+Lauf geht weiter): `config.schema.json` fehlt im Skriptordner — aus dem Release nachliefern
+(`operations/DEPLOYMENT.md`).
+
 ### „Ungültiger Name in …" (Sync exit 2)
+
+Die meisten Namensfehler meldet bereits die Schema-Prüfung (Abschnitt oben, Pfad z. B. `/Tables/0`).
+Die folgenden Meldungen erscheinen für Prüfungen, die das Schema nicht abdeckt (Schlüssel in
+`TableOverrides`, Gesamtlänge des Zieltabellennamens) oder wenn die Schema-Datei fehlt.
 
 Log: `KRITISCH: Ungültiger Name in '<Feld>': '<Name>' (erlaubt sind nur A-Z, a-z, 0-9, _ und $).`
 (bzw. `… ist länger als 63 Zeichen.`, `… leer.` oder
@@ -252,7 +285,7 @@ schreibt.
    sind betroffen (Spalten `Precision`/`Scale`, `Vorschlag SQL`):
 
    ```powershell
-   .\Get_Firebird_Schema.ps1 -TableName BKUNDE   # liest fest config.json
+   .\Get_Firebird_Schema.ps1 -TableName BKUNDE   # Default config.json, sonst -ConfigFile <Konfig>
    ```
 
 3. Korrigieren – eine der beiden Varianten:
@@ -352,6 +385,7 @@ Ausführlich: `operations/SETUP.md` und `operations/DEPLOYMENT.md`.
 - [ ] PowerShell 7 auf dem Host
 - [ ] Treiber einmalig als Administrator geladen
 - [ ] Konfigdateien je Job-Profil angelegt, keine Passwörter darin
+- [ ] `config.schema.json` liegt im Skriptordner; jede Konfig besteht `Test-Json … -Schema …`
 - [ ] `Setup_Credentials.ps1` unter dem Task-Konto ausgeführt
 - [ ] `Test-SQLSyncConnections.ps1` endet mit Exit 0
 - [ ] Manueller Lauf: alle Tabellen `Erfolg` / Sanity `OK`

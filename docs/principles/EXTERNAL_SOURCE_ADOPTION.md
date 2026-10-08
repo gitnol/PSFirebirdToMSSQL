@@ -186,7 +186,7 @@ Externe Quellen in diesem Projekt und ihr Status:
 | Quelle | Provenance | Verifikation | Status |
 |---|---|---|---|
 | `FirebirdSql.Data.FirebirdClient` 10.3.4 (NuGet, `lib\net8.0`) | Version + Download-URL in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) | SHA-256 der heruntergeladenen DLL gegen festen Wert | Teilweise: vorhandene oder per `DllPath` konfigurierte DLL wird **ohne** Hash geladen (S4 → I7). Versionswechsel = `PackageVersion` und `ExpectedSha256` gemeinsam ändern. |
-| `config.schema.json` (JSON-Schema-Draft, im Repo gepflegt) | Herkunft/Erstellungsweg nicht dokumentiert | **keine** — wird nie validiert (S9) | Offen → I6 (Schema-Validierung aktiv, Fail-Fast); Schema und `Get-SQLSyncConfig`-Defaults müssen dabei gegeneinander geprüft werden. |
+| `config.schema.json` (JSON-Schema-Draft, im Repo gepflegt) | Herkunft/Erstellungsweg nicht dokumentiert | `Get-SQLSyncConfig -SchemaPath` validiert jede Konfig beim Laden (`Test-Json -Schema`, Fail-Fast, Exit 2); Unit-Tests gegen das echte Schema; alle vorhandenen lokalen Konfigs am 2026-10-09 gegen das Schema geprüft | Erledigt (I6 / v2.15, S9). Namensmuster an die Identifier-Whitelist angeglichen. Bei neuen Schlüsseln Schema, Sample und `Get-SQLSyncConfig`-Defaults gemeinsam pflegen. |
 | `.github/copilot-instructions.md` | Agent-Hinweise, ohne Datum | keine | Veraltet (S12) → I10; bis dahin nicht als Quelle übernehmen. |
 
 Neue externe Artefakte (z. B. ein Typ-Mapping aus Firebird-Doku, ein Wechsel auf

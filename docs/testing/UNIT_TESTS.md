@@ -1,12 +1,12 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
-> **Stand 2026-10-08: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 120 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (107) – jede exportierte
+> **Stand 2026-10-09: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
+> 130 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (117) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
-> die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-08:
-> 84,42 % von 353 Kommandos, Stand I5). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
+> die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-09:
+> 86,52 % von 371 Kommandos, Stand I6). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
 > (Modul 13 von 13, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
 > Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
 > (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
@@ -37,7 +37,7 @@ Import-Module Pester -RequiredVersion $req.Pester.RequiredVersion -Force
   ├── pester.config.ps1                # vorhanden: Lauf mit Coverage, Exit 1 bei Rot/Coverage < Ziel
   ├── coverage.xml                     # erzeugt von pester.config.ps1, gitignored
   ├── Unit/
-  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 107 Tests, alle exportierten Modulfunktionen
+  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 117 Tests, alle exportierten Modulfunktionen
   │   └── Setup-ScheduledTasks.Tests.ps1  # vorhanden: 13 Tests, nur -WhatIf
   ├── Integration/                     # noch nicht vorhanden, siehe INTEGRATION_TESTS.md
   └── helpers/
@@ -302,12 +302,13 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-08 (120 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 107, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-09 (130 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 117, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
 | `Get-SyncExitCode` | Ja | Exit 0/10/11, Vorrang 10 vor 11, Sanity `WARNUNG`, `FailOnSanityError = false`, keine bzw. zu wenige Ergebnisse |
-| `Get-SQLSyncConfig` | Ja | Defaults (u. a. `GlobalTimeout`, `FailOnSanityError`), Validierungen (`GlobalTimeout`, `Tables`, `OrphanCleanupBatchSize`, fehlende Datei, ungültiges JSON), Namensprüfung je Feld (`Tables`, `IdColumn`, `TimestampColumns`, `MSSQL.Database`, Prefix/Suffix, `TableOverrides`-Schlüssel und -Spalten → throw), Grenze Zieltabellenname 128 Zeichen, `TimestampColumns` als Array, TableOverrides, Credential-Targets aus der Konfiguration |
+| `Get-SQLSyncConfig` | Ja | Defaults (u. a. `GlobalTimeout`, `FailOnSanityError`), Validierungen (`GlobalTimeout`, `Tables`, `OrphanCleanupBatchSize`, fehlende Datei, ungültiges JSON), Namensprüfung je Feld (`Tables`, `IdColumn`, `TimestampColumns`, `MSSQL.Database`, Prefix/Suffix, `TableOverrides`-Schlüssel und -Spalten → throw), Grenze Zieltabellenname 128 Zeichen, `TimestampColumns` als Array, TableOverrides, Credential-Targets aus der Konfiguration; mit `-SchemaPath` gegen das echte `config.schema.json`: schemakonforme Konfig läuft durch, falscher Typ wirft mit JSON-Pfad, unbekannter Schlüssel (Tippfehler) wirft, fehlende Schema-Datei nur Warnung, Schema akzeptiert dieselben Namen wie die Whitelist (`b_kunde`, `RDB$X`) |
+| `Resolve-SQLSyncConfigPath` | Ja | leer → `config.json` im Skriptordner, existierender absoluter Pfad, relativer Name im Skriptordner, nicht existierender Pfad unverändert |
 | `Assert-SqlIdentifier` | Ja | Gültige Namen (inkl. `_`, `$`, Ziffern, 63 Zeichen) laufen durch; ungültige werfen `Ungültiger Name in '<Feld>'`: `A"B`, `X;DROP`, `A]B`, `A'B`, Leerzeichen, `-`, leer (ohne `-AllowEmpty`), 64 Zeichen; leer mit `-AllowEmpty` erlaubt |
 | `Get-ConfigValue` | Ja | Wert vorhanden, Default bei fehlendem Wert, `false` wird nicht durch den Default ersetzt |
 | `Get-TableColumnConfig` | Ja | Strategiewahl Incremental / FullMerge / Snapshot, Override-Vorrang, Fallback bei fehlender Override-Spalte |
@@ -320,7 +321,7 @@ Ist-Stand 2026-10-08 (120 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Write-SyncStatus` | Ja, mit `Mock Write-Host` | Format `[Tabelle] Text` und Farbe je Level |
 | `Initialize-FirebirdDriver` | Teilweise, mit Mocks (siehe 4.2) | `DllPath` vorhanden → kein Download; ohne Admin und ohne Treiber → throw ohne Download |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
-| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), die Configpfad-Auflösung ist noch dupliziert (I6) |
+| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`) und die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) |
 
 Querschnittlich: Edge Cases (leeres Array, `$null`, Sonderzeichen in Tabellennamen und
 Passwörtern, Identifier-Allow-List `^[A-Za-z0-9_$]+$` mit Quote-, Klammer- und Semikolon-Fällen).
@@ -356,7 +357,7 @@ Invoke-Pester -Configuration $Config
   Gate in Skripten und einer späteren CI verwendbar.
 - Coverage nur auf `SQLSyncCommon.psm1`; die Einstiegsskripte gehen nicht in die Coverage ein
   (auch nicht `Setup-ScheduledTasks.ps1`, dessen Tests nur den `-WhatIf`-Pfad abdecken).
-- Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos, I3), nach I5 84,42 % (353), Ziel 80 %. Das Ziel wird nur
+- Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos, I3), nach I5 84,42 % (353), nach I6 86,52 % (371), Ziel 80 %. Das Ziel wird nur
   angehoben, nie abgesenkt.
 - `tests/coverage.xml` ist ein Laufartefakt und steht in `.gitignore`.
 

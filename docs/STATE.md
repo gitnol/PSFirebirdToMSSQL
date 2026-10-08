@@ -1,9 +1,9 @@
 # Aktueller Projektstatus – PSFirebirdToMSSQL
 
-Zuletzt aktualisiert: 2026-10-08
+Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I5 – Typmapping-Datentreue (2026-10-08)
-**Nächster Schritt:** I6 – Config-Schema-Validierung + gemeinsame Configpfad-Auflösung
+**Letztes abgeschlossenes Inkrement:** I6 – Config-Schema-Validierung (2026-10-09)
+**Nächster Schritt:** Reflexion (Phase 1c), danach I7 – Treiber-Integrität
 **Nächste Reflexion:** bei Abschluss von I6 (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
@@ -11,10 +11,10 @@ Zuletzt aktualisiert: 2026-10-08
 
 ## Nächster Schritt
 
-**I6 – Config-Schema-Validierung + gemeinsame Configpfad-Auflösung.** `config.schema.json` wird
-von keinem Skript geprüft (K7), `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` lesen fest
-`config.json` (K8). Alle Skripte übergeben `-SchemaPath`, Schema-Verstoß → Exit 2; neue Modulfunktion
-für die Pfadauflösung, `-ConfigFile` auch für die Hilfsskripte. Nach I6 ist die Reflexion fällig.
+**Reflexion (Phase 1c, fällig nach I6), danach I7 – Treiber-Integrität.** `Initialize-FirebirdDriver`
+prüft SHA-256 bisher nur beim Download; eine vorhandene oder per `DllPath` konfigurierte DLL wird
+ungeprüft geladen. Dafür den inneren Admin-Check als mockbare Modulfunktion herausziehen (macht auch
+den Download-/Hash-Pfad unit-testbar).
 
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -22,9 +22,9 @@ Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenban
 `config_i4test_incr.json` (gitignored, Log-Rotation darin aus). Aufräumen, wenn nicht mehr
 gebraucht: Datenbank `STAGING_I2TEST` auf SQL-Testserver und Test-Task `SQLSync_I2_Abnahme`.
 
-Code-Stand: Sync-Skript v2.14 (Typmapping mit Precision/Scale, Modul im Parallel-Block), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
+Code-Stand: Sync-Skript v2.15 (Schema-Prüfung Fail-Fast; Typmapping mit Precision/Scale), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
 gequotet/parametrisiert), optionale Konfigschlüssel `General.FailOnSanityError`,
-`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (120,
+`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (130,
 Coverage-Gate 80 %); keine CI.
 
 ---
@@ -38,6 +38,7 @@ Coverage-Gate 80 %); keine CI.
 | I3 | Pester-Testharness: 74 Unit-Tests für alle exportierten Modulfunktionen, Pester 5.7.1 gepinnt, Coverage-Gate 80 % | 2026-10-08 | a082e9d |
 | I4 | SQL-Identifier gehärtet: Whitelist-Validierung (Fail-Fast), `[...]`/`QUOTENAME` überall, parametrisierte Metadaten-Abfragen und SP-Aufruf | 2026-10-08 | a082e9d |
 | I5 | Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale; Hauptskript nutzt Modulfunktionen (Typmapping, Strategie) | 2026-10-08 | 2d1a7ef |
+| I6 | Konfig gegen `config.schema.json` geprüft (Fail-Fast), gemeinsame Pfadauflösung, `-ConfigFile` für Hilfsskripte | 2026-10-09 | wird nachgetragen |
 | I9 | Scheduled-Task-Setup parametrisiert (neutrale Defaults, `-WhatIf`, Dienstkonto/gMSA); keine internen Begriffe mehr im Repo | 2026-10-08 | 438dd57 |
 
 ---
@@ -46,7 +47,6 @@ Coverage-Gate 80 %); keine CI.
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I6 | Config-Schema-Validierung aktiv (Fail-Fast) + gemeinsame Configpfad-Auflösung | Mittel |
 | I7 | Treiber-Integrität: SHA-256-Prüfung auch für vorhandene/konfigurierte DLL | Mittel |
 | I8 | Inkrementelles Wasserzeichen mit Überlappungsfenster | Mittel |
 | I10 | Doku-/Repo-Drift beheben (copilot-instructions, READMEs, Kleinigkeiten) | Niedrig |

@@ -53,7 +53,7 @@ in den obigen Ordner kopieren und den SHA-256 manuell mit `Get-FileHash` verglei
 | `advapi32.dll` (`CredRead`, `CredWrite`, `CredFree`) via `Add-Type` | Windows Credential Manager lesen/schreiben | `SQLSyncCommon.psm1` (`Get-StoredCredential`), `Setup_Credentials.ps1` |
 | Modul `ScheduledTasks` (`Register-ScheduledTask`, `New-ScheduledTaskTrigger`, …) | Tasks anlegen | `Setup-ScheduledTasks.ps1` |
 | `Out-GridView` | Tabellenauswahl | `Manage_Config_Tables.ps1` (benötigt Desktop-Sitzung; in PS 7 auf Windows verfügbar) |
-| `Test-Json` | JSON-Schema-Validierung | `Get-SQLSyncConfig` (nur mit `-SchemaPath`, derzeit nicht aufgerufen) |
+| `Test-Json` | JSON-Schema-Validierung | `Get-SQLSyncConfig -SchemaPath` (alle vier Einstiegsskripte; Parameter `-Schema` mit Schema-Inhalt statt `-SchemaFile`, in allen PS-7-Versionen vorhanden) |
 
 ---
 

@@ -142,16 +142,20 @@ function Get-SQLSyncConfig {
         throw "Fehler beim Parsen der Konfiguration: $($_.Exception.Message)"
     }
 
-    # Optional: Schema-Validierung (PowerShell 6+)
-    if ($SchemaPath -and (Test-Path $SchemaPath)) {
-        try {
-            $ValidationResult = Test-Json -Json $JsonContent -SchemaFile $SchemaPath -ErrorAction Stop
-            if (-not $ValidationResult) {
-                throw "Konfiguration entspricht nicht dem Schema."
-            }
+    # Schema-Validierung (Fail-Fast). -Schema (String) statt -SchemaFile: in allen PowerShell-7-Versionen vorhanden.
+    if ($SchemaPath) {
+        if (-not (Test-Path $SchemaPath -PathType Leaf)) {
+            # Fehlende Schema-Datei bricht bestehende Installationen nicht, ist aber sichtbar
+            Write-Warning "Schema-Datei nicht gefunden, Konfiguration wird nicht gegen das Schema geprüft: $SchemaPath"
         }
-        catch {
-            Write-Warning "Schema-Validierung fehlgeschlagen: $($_.Exception.Message)"
+        else {
+            $SchemaErrors = $null
+            $IsValid = Test-Json -Json $JsonContent -Schema (Get-Content -Path $SchemaPath -Raw) `
+                -ErrorAction SilentlyContinue -ErrorVariable SchemaErrors
+            if (-not $IsValid) {
+                $Details = @($SchemaErrors | ForEach-Object { $_.Exception.Message }) -join "; "
+                throw "Konfiguration verletzt das Schema ($([System.IO.Path]::GetFileName($SchemaPath))): $Details"
+            }
         }
     }
 
@@ -241,6 +245,32 @@ function Get-SQLSyncConfig {
     }
 
     return $Result
+}
+
+<#
+.SYNOPSIS
+    Löst den Pfad der Konfigurationsdatei auf (gemeinsam für alle Skripte).
+
+.DESCRIPTION
+    Reihenfolge: leer -> <ScriptDir>\config.json; existierender Pfad -> vollständiger Pfad;
+    Name relativ zum Skriptordner -> <ScriptDir>\<Name>; sonst unverändert
+    (die Fehlermeldung "nicht gefunden" kommt dann aus Get-SQLSyncConfig).
+#>
+function Resolve-SQLSyncConfigPath {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [string]$ConfigFile,
+
+        [Parameter(Mandatory)]
+        [string]$ScriptDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ConfigFile)) { return (Join-Path $ScriptDir "config.json") }
+    if (Test-Path $ConfigFile -PathType Leaf) { return (Convert-Path $ConfigFile) }
+    $InScriptDir = Join-Path $ScriptDir $ConfigFile
+    if (Test-Path $InScriptDir -PathType Leaf) { return $InScriptDir }
+    return $ConfigFile
 }
 
 <#
@@ -1033,6 +1063,7 @@ Export-ModuleMember -Function @(
     'Get-SQLSyncConfig'
     'Get-ConfigValue'
     'Get-TableColumnConfig'
+    'Resolve-SQLSyncConfigPath'
     
     # Connection Strings
     'New-FirebirdConnectionString'

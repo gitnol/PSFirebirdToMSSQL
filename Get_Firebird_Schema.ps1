@@ -10,8 +10,14 @@
 .PARAMETER TableName
     Der Name der zu analysierenden Tabelle (z.B. BARTIKEL).
 
+.PARAMETER ConfigFile
+    Optional. Konfigurationsdatei (Default: config.json im Skriptordner); relativ zum Skriptordner oder absolut.
+
 .EXAMPLE
     .\Get_Firebird_Schema.ps1 -TableName "BAUF"
+
+.EXAMPLE
+    .\Get_Firebird_Schema.ps1 -TableName "BAUF" -ConfigFile "config_weekly_full.json"
 
 .LINK
     https://github.com/gitnol/PSFirebirdToMSSQL
@@ -22,7 +28,10 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$TableName
+    [string]$TableName,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ConfigFile
 )
 
 # -----------------------------------------------------------------------------
@@ -39,15 +48,15 @@ Import-Module $ModulePath -Force
 # 1. KONFIGURATION LADEN
 # -----------------------------------------------------------------------------
 $ScriptDir = $PSScriptRoot
-$ConfigPath = Join-Path $ScriptDir "config.json"
+$ConfigPath = Resolve-SQLSyncConfigPath -ConfigFile $ConfigFile -ScriptDir $ScriptDir
 
-if (-not (Test-Path $ConfigPath)) { 
-    Write-Error "config.json fehlt!" 
-    exit 1 
+if (-not (Test-Path $ConfigPath)) {
+    Write-Error "Konfigurationsdatei nicht gefunden: $ConfigPath"
+    exit 1
 }
 
 try {
-    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath
+    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath -SchemaPath (Join-Path $ScriptDir "config.schema.json")
 }
 catch {
     Write-Error "Fehler beim Laden der Konfiguration: $($_.Exception.Message)"

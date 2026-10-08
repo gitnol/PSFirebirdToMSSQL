@@ -34,7 +34,8 @@ D:\Apps\SQLSync\
     sql_server_setup.sql
     Setup_Credentials.ps1, Test-SQLSyncConnections.ps1, Get_Firebird_Schema.ps1,
     Manage_Config_Tables.ps1, Setup-ScheduledTasks.ps1, Example_Sync_Start.ps1
-    config.schema.json, config.sample.json
+    config.schema.json             (Pflicht: Schema-Prüfung beim Laden; fehlt sie → nur Warnung)
+    config.sample.json
     config_<Profil>.json           (lokal, nie im Repo)
     Logs\                          (wird automatisch angelegt)
 ```
@@ -87,7 +88,7 @@ Einstiegsskripte und eine CI gibt es nicht.
 | 2. Sicherung | Zielverzeichnis ohne `Logs\` sichern, z. B. `Compress-Archive -Path D:\Apps\SQLSync\*.ps*, D:\Apps\SQLSync\*.sql, D:\Apps\SQLSync\*.json -DestinationPath D:\Backup\SQLSync_<Datum>.zip` (enthält Konfigs – Archiv wie Secrets behandeln) | Archiv vorhanden |
 | 3. Läufe pausieren | `Disable-ScheduledTask -TaskName SQLSync_Firebird_Daily_Diff, SQLSync_Firebird_Weekly_Full`; laufende Instanz abwarten (`Get-ScheduledTask ... State`) | State `Disabled`, keine `pwsh`-Sync-Prozesse |
 | 4. Dateien ersetzen | Skripte, Modul, `sql_server_setup.sql`, `config.schema.json`, `config.sample.json` überschreiben. **Eigene `config_*.json` nicht überschreiben.** | Datei-Zeitstempel |
-| 5. Konfig abgleichen | `config.sample.json` mit eigenen Konfigs vergleichen; neue Schlüssel haben Defaults in `Get-SQLSyncConfig`, müssen also nur bei Abweichung ergänzt werden | – |
+| 5. Konfig abgleichen | `config.sample.json` mit eigenen Konfigs vergleichen; neue Schlüssel haben Defaults in `Get-SQLSyncConfig`, müssen also nur bei Abweichung ergänzt werden. **Jede produktive Konfig gegen das neue Schema prüfen** (seit v2.15 bricht ein Verstoß mit Exit 2 ab): `Test-Json -Json (Get-Content <cfg> -Raw) -Schema (Get-Content config.schema.json -Raw)` | Ausgabe `True` je Konfig; bei `False`/Fehlermeldung Konfig korrigieren (`operations/RUNBOOK.md`, „Konfiguration verletzt das Schema“), **bevor** die Tasks wieder aktiviert werden |
 | 6. Stored Procedure | Automatisch: Pre-Flight installiert `sp_Merge_Generic` neu, wenn sie fehlt oder nicht 4 Parameter hat. Hat sich `sql_server_setup.sql` geändert, die Parameteranzahl aber nicht → einmal mit `RecreateStoredProcedure: true` laufen lassen (Einmal-Konfig, `operations/RUNBOOK.md`) | Log: `INSTALLIERT:` bzw. `OK: ... ist aktuell (4 Parameter)`; kein `PRE-FLIGHT CHECK (PROCEDURE) FAILED` (ein fehlgeschlagener SQL-Batch bricht seit v2.11 mit Exit 9 ab) |
 | 7. Schema-Änderung im Code | Wenn sich Typmapping/Staging-Aufbau geändert hat: einmal mit `RecreateStagingTable: true` laufen lassen. Zieltabellen werden nie automatisch geändert (S11) | Zusammenfassung |
 | 8. Testlauf | `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil>`; danach manueller Sync-Lauf mit dem Daily-Profil | Beide Exit 0 (Sync: Zeile `ERGEBNIS: OK (Exit-Code 0)`); alle Tabellen `Erfolg`, Sanity `OK` |
@@ -133,6 +134,7 @@ bleiben dabei erhalten (TRUNCATE + MERGE statt DROP).
 - [ ] `LastTaskResult` des nächsten geplanten Laufs `0x0` (`0xA`/`0xB` = Tabellen-/Sanity-Fehler, `operations/MONITORING.md`); Sanity `WARNUNG` zusätzlich im Log prüfen
 - [ ] Beim Update auf Sync v2.11: Neuer Schlüssel `General.FailOnSanityError` (Default `true`) – bewusst entscheiden, ob Sanity `FEHLER` den Task als fehlgeschlagen melden soll
 - [ ] Beim Update von `Setup-ScheduledTasks.ps1` (parametrisierte Fassung): bestehende Tasks bleiben unverändert. Erst beim Neuanlegen `-InstallDir`, `-DailyConfigFile` und `-WeeklyConfigFile` explizit übergeben und vorher mit `-WhatIf` prüfen – die Defaults (Skriptordner, `config.json`, `config_weekly_full.json`) entsprechen nicht den früher fest eingetragenen Namen
+- [ ] Beim Update auf Sync v2.15: `config.schema.json` liegt im Zielverzeichnis (fehlt sie, meldet der Lauf nur `Schema-Datei nicht gefunden …` und prüft ohne Schema). Vorher alle produktiven Konfigs mit `Test-Json … -Schema …` prüfen (Update-Schritt 5): unbekannte Schlüssel (Tippfehler), Werte als String statt Zahl/Bool oder Werte außerhalb der Schema-Grenzen (z. B. `GlobalTimeout` < 60) führen sonst zu Exit 2. `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` kennen jetzt `-ConfigFile`
 - [ ] Beim Update auf Sync v2.14: Altbestand prüfen. Der Sync ändert keine bestehenden Tabellen – Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` und runden Werte mit mehr als 4 Nachkommastellen weiter. Betroffene Spalten per `INFORMATION_SCHEMA.COLUMNS` (`decimal`, Precision 18, Scale 4) suchen, mit `Get_Firebird_Schema.ps1 -TableName <Tabelle>` abgleichen und korrigieren (`operations/RUNBOOK.md`, „Nachkommastellen im Ziel gerundet“)
 
 ---

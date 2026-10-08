@@ -68,7 +68,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
 - **Secure Credentials**: Windows Credential Manager instead of plaintext passwords.
 - **GUI Config Manager**: Convenient tool for table selection with metadata preview.
 - **Module Architecture**: Reusable functions in `SQLSyncCommon.psm1`.
-- **JSON Schema Validation**: Optional configuration file validation.
+- **JSON Schema Validation**: Every script checks the configuration against `config.schema.json` when loading (fail-fast, exit code 2).
 - **Secure Connection Handling**: No resource leaks through guaranteed cleanup (try/finally).
 
 ---
@@ -88,7 +88,7 @@ PSFirebirdToMSSQL/
 ├── Test-SQLSyncConnections.ps1          # Connection test
 ├── config.json                          # Credentials & settings (git-ignored)
 ├── config.sample.json                   # Configuration template
-├── config.schema.json                   # JSON schema for validation (optional)
+├── config.schema.json                   # JSON schema, checked on every config load
 ├── .gitignore                           # Protects config.json
 └── Logs/                                # Log files (created automatically)
 ```
@@ -192,12 +192,16 @@ Start the GUI manager to select tables:
 
 ```powershell
 .\Manage_Config_Tables.ps1
+# another job profile:
+.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json
 ```
 
 The manager offers a **toggle logic**:
 
 - Selected tables that are _not_ in the config -> Will be **added**.
 - Selected tables that are _already_ in the config -> Will be **removed**.
+
+Before the GridView opens, the configuration is validated (schema + naming rules; violation → exit 2, no backup). A selection that would remove the last table is rejected (exit 4), so a config without tables is never written. `Get_Firebird_Schema.ps1 -TableName <table>` also accepts `-ConfigFile`.
 
 ### Step 7: Automatic Task Scheduling (Optional)
 
@@ -393,15 +397,24 @@ Control naming in the target system.
 
 Table and column names (`Tables`, `General.IdColumn`, `General.TimestampColumns`, `TableOverrides` keys and values) as well as `MSSQL.Database`, `MSSQL.Prefix` and `MSSQL.Suffix` may only contain `A-Z`, `a-z`, `0-9`, `_` and `$`, with at most 63 characters (Firebird limit). Prefix + table + suffix must not exceed 128 characters (SQL Server limit). Empty values are allowed only for `MSSQL.Database`, Prefix/Suffix and the override columns.
 
-Violations stop the sync while loading the configuration (exit code 2, message `Ungültiger Name in '<field>': …`) before any database connection is opened. `Manage_Config_Tables.ps1` does not offer Firebird tables with invalid names.
+Violations stop the sync while loading the configuration (exit code 2; message from the schema check `Konfiguration verletzt das Schema …`, or `Ungültiger Name in '<field>': …` from the code check) before any database connection is opened. `Manage_Config_Tables.ps1` does not offer Firebird tables with invalid names.
 
 ### JSON Schema Validation
 
-The file `config.schema.json` can be used for validation to avoid typos in the config:
+Since v2.15 every script (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `Test-SQLSyncConnections.ps1`, `Get_Firebird_Schema.ps1`, `Manage_Config_Tables.ps1`) validates the configuration against `config.schema.json` when loading it (`Get-SQLSyncConfig -SchemaPath`). Any violation stops the script with exit code 2 before a database connection is opened, e.g.:
+
+```
+Konfiguration verletzt das Schema (config.schema.json): ... bei "/General/GlobalTimeout"; ...
+```
+
+Each violation names its JSON path. Wrong types (`"7200"` instead of `7200`), missing required fields, values outside the limits and **unknown keys** (typos such as `ForceFulSync`, because the schema uses `additionalProperties: false`) are detected. New configuration keys must therefore always be added to the schema as well.
+
+`config.schema.json` is part of every installation. If it is missing, only a warning is shown and the run continues without the schema check.
+
+Check a configuration manually (e.g. before an update), without database access:
 
 ```powershell
-$json = Get-Content "config.json" -Raw
-Test-Json -Json $json -SchemaFile "config.schema.json"
+Test-Json -Json (Get-Content .\config.json -Raw) -Schema (Get-Content .\config.schema.json -Raw)
 ```
 
 ---
@@ -413,7 +426,7 @@ PSFirebirdToMSSQL uses a shared PowerShell module (`SQLSyncCommon.psm1`) for reu
 The module centrally provides the following functions:
 
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
-- **Configuration:** `Get-SQLSyncConfig` (including schema validation)
+- **Configuration:** `Get-SQLSyncConfig` (including fail-fast schema validation), `Resolve-SQLSyncConfigPath` (shared `-ConfigFile` resolution)
 - **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
 - **Driver Loading:** `Initialize-FirebirdDriver`
 - **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types; `Decimal` with precision/scale from the Firebird schema). Since v2.14 the parallel sync block imports the module and uses `ConvertTo-SqlServerType` and `Get-TableColumnConfig` directly
@@ -492,7 +505,7 @@ All output is automatically written to a log file:
 |---|---|
 | 0 | All tables synchronized successfully |
 | 1 | `SQLSyncCommon.psm1` not found |
-| 2 | Configuration error (incl. invalid table/column names) |
+| 2 | Configuration error (incl. schema violation and invalid table/column names) |
 | 5 | Credentials not found |
 | 7 | Firebird driver could not be loaded |
 | 9 | Pre-flight (database / `sp_Merge_Generic`) failed |
@@ -551,6 +564,14 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.15 (2026-10-09) - Schema Validation Active
+- `Get-SQLSyncConfig -SchemaPath` now validates fail-fast against `config.schema.json` (`Test-Json -Schema`, available in all PowerShell 7 versions): error `Konfiguration verletzt das Schema (config.schema.json): …` with the JSON path of each violation; unknown keys (typos) are detected. If the schema file is missing, only a warning is shown
+- All four scripts pass `-SchemaPath`; a violation ends them with exit code 2 before any database connection (`Manage_Config_Tables.ps1` also before GridView and backup)
+- New module function `Resolve-SQLSyncConfigPath` replaces the copied `-ConfigFile` resolution in the sync and test scripts
+- `Get_Firebird_Schema.ps1` and `Manage_Config_Tables.ps1` have a new `-ConfigFile` parameter (previously fixed to `config.json`). `Manage_Config_Tables.ps1` v2.1 validates via `Get-SQLSyncConfig` on start and refuses to remove the last table (exit 4)
+- `config.schema.json`: name patterns aligned with the identifier whitelist (`Tables`, `IdColumn`, `TimestampColumns`, override columns `^[A-Za-z0-9_$]+$`, max. 63; Prefix/Suffix `^[A-Za-z0-9_$]*$`)
+- **Existing installations:** deploy `config.schema.json` and check every productive config before the update: `Test-Json -Json (Get-Content <cfg> -Raw) -Schema (Get-Content config.schema.json -Raw)`
 
 ### v2.14 (2026-10-08) - Precision/Scale for DECIMAL
 - `ConvertTo-SqlServerType` has new parameters `-Precision`/`-Scale` (values `NumericPrecision`/`NumericScale` from `GetSchemaTable`, DBNull allowed): `Decimal` becomes `DECIMAL(p,s)`; precision > 38 is capped at 38; precision missing but scale known → `DECIMAL(38,s)`; both missing → previous fallback `DECIMAL(18,4)`. Other types unchanged
