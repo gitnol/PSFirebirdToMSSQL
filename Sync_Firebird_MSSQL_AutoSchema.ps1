@@ -140,7 +140,7 @@ catch {
 # 6. TREIBER LADEN & CONNECTION STRINGS
 # -----------------------------------------------------------------------------
 try {
-    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir
+    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir -ExpectedSha256 $Config.DllSha256
 }
 catch {
     Write-Error "KRITISCH: $($_.Exception.Message)"

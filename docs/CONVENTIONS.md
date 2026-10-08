@@ -198,7 +198,7 @@ Bestand in diesem Projekt:
 
 | Stelle | Mutation | Status |
 |---|---|---|
-| `Initialize-FirebirdDriver` | `[Net.ServicePointManager]::SecurityProtocol = Tls12` vor dem NuGet-Download | wird **nicht** zurückgesetzt (in PS 7 für `Invoke-WebRequest` wirkungslos; bei Gelegenheit entfernen oder Save/Restore) |
+| `Initialize-FirebirdDriver` | `[Net.ServicePointManager]::SecurityProtocol = Tls12` vor dem NuGet-Download | erfüllt: alter Wert in `$PreviousProtocol` gesichert, im `finally` des Download-Blocks wiederhergestellt (seit I7) |
 | `Get-StoredCredential` | `Add-Type` für `CredManager.Util` | durch Typ-Existenz-Check (`'CredManager.Util' -as [type]`) gegen Doppel-Laden geschützt |
 | `Initialize-FirebirdDriver` | `Add-Type -Path <DLL>` | durch Assembly-Check (`[AppDomain]::CurrentDomain.GetAssemblies()`) geschützt; nicht entladbar |
 | Sync-Skript | `Start-Transcript` | muss auf **jedem** Exit-Pfad mit `Stop-Transcript` beendet werden (Bestand: ja, vor jedem `exit`) |
@@ -241,7 +241,8 @@ finally {
 - [ ] Neue SQL-Bezeichner aus der Konfiguration in `"…"` (Firebird) bzw. `[…]`/`QUOTENAME` (SQL Server)
 - [ ] `-ExecutionPolicy Bypass` nur im Task-Scheduler-Aufruf (`Setup-ScheduledTasks.ps1`) — nie im Quellcode
 - [ ] Keine Passwörter / Connection Strings in `Write-Host`, `Write-Error` oder Exception-Messages (Transcript landet in `Logs\`)
-- [ ] Neue/aktualisierte Treiber-DLL: `PackageVersion` **und** `ExpectedSha256` in `Initialize-FirebirdDriver` gemeinsam ändern
+- [ ] Treiber-Versionswechsel: `$PackageVersion`, `$DownloadUrl` **und beide** Hashes in `$KnownSha256` (`lib\net8.0`, `lib\netstandard2.1`; selbst aus dem offiziellen NuGet-Paket berechnet) in `Initialize-FirebirdDriver` gemeinsam ändern; Unit-Tests mit den Hashes anpassen; nie einen Hash aus einer Fehlermeldung übernehmen
+- [ ] Neue DLL-Ladewege (`Add-Type -Path`) nur nach SHA-256-Prüfung
 - [ ] Prozessweite State-Mutationen haben Save/Restore (Sektion 4)
 - [ ] `Export-ModuleMember` bleibt eine **explizite Liste**
 

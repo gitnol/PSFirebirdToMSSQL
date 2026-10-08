@@ -2,8 +2,8 @@
 
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I6 – Config-Schema-Validierung (2026-10-09)
-**Nächster Schritt:** I7 – Treiber-Integrität (SHA-256 auch für vorhandene/konfigurierte DLL)
+**Letztes abgeschlossenes Inkrement:** I7 – Treiber-Integrität (2026-10-09)
+**Nächster Schritt:** I8 – Inkrementelles Wasserzeichen mit Überlappungsfenster
 **Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (geplant I7, I8, I10; I9 ist vorgezogen erledigt) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
@@ -11,10 +11,9 @@ Zuletzt aktualisiert: 2026-10-09
 
 ## Nächster Schritt
 
-**I7 – Treiber-Integrität.** Reflexion nach I6 erledigt (2026-10-09). `Initialize-FirebirdDriver`
-prüft SHA-256 bisher nur beim Download; eine vorhandene oder per `DllPath` konfigurierte DLL wird
-ungeprüft geladen. Dafür den inneren Admin-Check als mockbare Modulfunktion herausziehen (macht auch
-den Download-/Hash-Pfad unit-testbar).
+**I8 – Wasserzeichen mit Überlappungsfenster.** Der Incremental-Extrakt liest strikt `> MAX(ts)` der
+Zieltabelle (K3): gleiche Zeitstempel aus späteren Commits gehen bis zum nächsten Full-Lauf verloren. Neuer
+Konfigschlüssel `General.IncrementalOverlapMinutes`; das MERGE ist idempotent.
 
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -24,7 +23,7 @@ gebraucht: Datenbank `STAGING_I2TEST` auf SQL-Testserver und Test-Task `SQLSync_
 
 Code-Stand: Sync-Skript v2.15 (Schema-Prüfung Fail-Fast; Typmapping mit Precision/Scale), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
 gequotet/parametrisiert), optionale Konfigschlüssel `General.FailOnSanityError`,
-`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (130,
+`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (138,
 Coverage-Gate 80 %); keine CI.
 
 ---
@@ -39,6 +38,7 @@ Coverage-Gate 80 %); keine CI.
 | I4 | SQL-Identifier gehärtet: Whitelist-Validierung (Fail-Fast), `[...]`/`QUOTENAME` überall, parametrisierte Metadaten-Abfragen und SP-Aufruf | 2026-10-08 | a082e9d |
 | I5 | Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale; Hauptskript nutzt Modulfunktionen (Typmapping, Strategie) | 2026-10-08 | 2d1a7ef |
 | I6 | Konfig gegen `config.schema.json` geprüft (Fail-Fast), gemeinsame Pfadauflösung, `-ConfigFile` für Hilfsskripte | 2026-10-09 | c5f94f0 |
+| I7 | Treiber-Integrität: SHA-256-Prüfung jeder DLL vor dem Laden, Ausnahme nur über `Firebird.DllSha256` | 2026-10-09 | wird nachgetragen |
 | I9 | Scheduled-Task-Setup parametrisiert (neutrale Defaults, `-WhatIf`, Dienstkonto/gMSA); keine internen Begriffe mehr im Repo | 2026-10-08 | 438dd57 |
 
 ---
@@ -47,7 +47,6 @@ Coverage-Gate 80 %); keine CI.
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I7 | Treiber-Integrität: SHA-256-Prüfung auch für vorhandene/konfigurierte DLL | Mittel |
 | I8 | Inkrementelles Wasserzeichen mit Überlappungsfenster | Mittel |
 | I10 | Doku-/Repo-Drift beheben (copilot-instructions, READMEs, Kleinigkeiten) | Niedrig |
 
@@ -57,7 +56,7 @@ Coverage-Gate 80 %); keine CI.
 
 | Risiko / Blocker | Auswirkung | Mitigation / Nächster Schritt | Owner | Status |
 |---|---|---|---|---|
-| Firebird-Server < 5.0.4 von CVE-2026-34232 betroffen (unauthentifizierter Absturz, CVSS 7.5); mindestens ein intern eingesetzter Server betroffen (Hosts/Versionen nur in `docs/local/ENVIRONMENT.md`) | Jeder, der Port 3050 erreicht, kann den Firebird-Server zum Absturz bringen → ERP und Sync stehen | Firebird-Server auf ≥ 5.0.4 aktualisieren (Server-Betrieb, außerhalb dieses Repos); Port 3050 per Firewall auf nötige Hosts beschränken; Details `security/DEPENDENCY_AUDIT.md` | Betreiber Firebird-Server | offen |
+| Firebird-Server < 5.0.4 von CVE-2026-34232 (unauthentifizierter Absturz, CVSS 7.5) und CVE-2026-40342 (Codeausführung über `CREATE FUNCTION`, CVSS 9.9) betroffen; mindestens ein intern eingesetzter Server betroffen (Hosts/Versionen nur in `docs/local/ENVIRONMENT.md`) | Absturz von ERP und Sync; bei Sync-Konto mit `CREATE FUNCTION`-Recht (z. B. SYSDBA) macht ein Credential-Leak Codeausführung auf dem Datenbankserver möglich | Firebird-Server auf ≥ 5.0.4 aktualisieren (Server-Betrieb); Port 3050 per Firewall einschränken; für den Sync ein reines Lesekonto statt SYSDBA anlegen (`security/THREAT_MODEL.md`) | Betreiber Firebird-Server | offen |
 | v2.12 noch nicht auf dem produktiven Sync-Server | Dort bleiben fehlgeschlagene Tabellen unbemerkt (Exit 0), Identifier ungeprüft | Branch `docs/i1-baseline` mergen und deployen (`operations/DEPLOYMENT.md`); vorher produktive Konfigs mit `Get-SQLSyncConfig` prüfen (neue Namensregeln); Tasks nur bei Bedarf neu anlegen – dann Installationsordner und Konfignamen explizit übergeben (Aufruf in `docs/local/ENVIRONMENT.md`) | Betreiber | offen |
 | Neue Exit-Codes 10/11 lassen Tasks „fehlschlagen", die bisher „erfolgreich" waren | Häufige Sanity-„FEHLER" bei laufenden Schreibzugriffen in Firebird (Zählung nach dem Merge) könnten Fehlalarme auslösen | Nach Deployment Task-Historie beobachten; bei Fehlalarmen `FailOnSanityError: false` im Daily-Profil | Betreiber | offen |
 | Altbestand: vor v2.14 angelegte Zieltabellen haben `DECIMAL(18,4)` und runden weiter (der Sync ändert keine bestehenden Tabellen) | Nachkommastellen > 4 im Ziel weiterhin gerundet | Nach Deployment betroffene Spalten prüfen und Zieltabellen anpassen bzw. neu aufbauen (`operations/RUNBOOK.md`) | Betreiber | offen |

@@ -84,7 +84,7 @@ catch {
 # 4. TREIBER LADEN
 # -----------------------------------------------------------------------------
 try {
-    $null = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir
+    $null = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir -ExpectedSha256 $Config.DllSha256
 }
 catch {
     Write-Error "Fehler beim Laden des Firebird-Treibers: $($_.Exception.Message)"

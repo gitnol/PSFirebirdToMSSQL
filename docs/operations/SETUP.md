@@ -34,7 +34,41 @@ geladen, siehe Schritt 4). `System.Data.SqlClient` ist in PowerShell 7 enthalten
 
 Pragmatisch: `db_owner` auf der Ziel-DB, plus `dbcreator`, wenn die DB
 automatisch angelegt werden soll (siehe auch README.de.md). Firebird: nur
-Leserechte auf die konfigurierten Tabellen.
+Leserechte auf die konfigurierten Tabellen – empfohlen ist ein eigenes
+Lesekonto statt `SYSDBA` (siehe „Firebird-Lesekonto anlegen“).
+
+### Firebird-Lesekonto anlegen (Empfehlung)
+
+Der Sync liest in Firebird nur (`SELECT`). Ein Konto mit Admin- oder DDL-Rechten
+(`SYSDBA`, `CREATE FUNCTION`) ist unnötig und gefährlich: Über CVE-2026-40342
+(CVSS 9.9, Firebird-Server < 5.0.4 / < 4.0.7 / < 3.0.14) kann ein Konto mit
+`CREATE FUNCTION` Code als OS-Konto des Firebird-Servers ausführen – ein Leck der
+Sync-Credentials würde zur Codeausführung auf dem ERP-Datenbankserver
+(`security/THREAT_MODEL.md` Bedrohung 5 und 6). Deshalb zusätzlich den Server auf
+≥ 5.0.4 (bzw. ≥ 4.0.7 / ≥ 3.0.14) aktualisieren.
+
+Anlage durch den Firebird-Administrator (Firebird 3 oder neuer; Name und Passwort
+frei wählbar):
+
+```sql
+-- als SYSDBA, verbunden mit der ERP-Datenbank
+CREATE USER SQLSYNC_READ PASSWORD '<starkes Passwort>';
+-- je konfigurierter Tabelle (Liste aus "Tables" der Konfig)
+GRANT SELECT ON <TABELLE> TO USER SQLSYNC_READ;
+COMMIT;
+```
+
+- Keine DDL- oder Metadatenrechte erteilen (kein `GRANT CREATE FUNCTION …`, keine
+  Rolle `RDB$ADMIN`). Ob angemeldete Benutzer auf der eingesetzten Firebird-Version
+  ohne explizites Recht Metadaten anlegen dürfen, hängt von Version und
+  Datenbankrechten ab (nicht verifiziert) – deshalb ist das Server-Update die
+  eigentliche Behebung, das Lesekonto begrenzt den Schaden.
+- Neue Tabellen in `Tables` brauchen jeweils ein eigenes `GRANT SELECT`; fehlt es,
+  scheitert die Tabelle im Sync (Status `Fehler`, Exit 10).
+- Das Konto mit `Setup_Credentials.ps1` unter dem Task-Konto hinterlegen
+  (Schritt 5); `Firebird.User` in der Konfig wird dann nicht benötigt.
+- Kontrolle: `.\Test-SQLSyncConnections.ps1` (Firebird-Test-`COUNT`) und ein
+  Testlauf des Syncs.
 
 ---
 
@@ -141,10 +175,43 @@ cd D:\Apps\SQLSync
 .\Test-SQLSyncConnections.ps1     # lädt den Treiber und testet gleich die Verbindungen
 ```
 
-Alternative ohne Internet: DLL (net8.0) manuell ablegen und `Firebird.DllPath`
-setzen. Achtung: eine per `DllPath` oder bereits in `%ProgramData%` liegende DLL
-wird **ohne** Hash-Prüfung geladen (S4, geplant in I7) – Schreibrechte auf
-diese Ordner auf Administratoren beschränken.
+**Hash-Prüfung:** Jede DLL wird vor dem Laden per SHA-256 geprüft – der frische
+Download ebenso wie eine bereits in `%ProgramData%` liegende oder per
+`Firebird.DllPath` konfigurierte DLL. Zulässig sind nur die Original-DLLs aus dem
+NuGet-Paket 10.3.4 (`lib\net8.0` bzw. `lib\netstandard2.1`; Hashes in
+`architecture/DEPENDENCIES.md`). Bei Abweichung bricht der Lauf vor jeder
+Datenbankverbindung ab (`SHA-256 der Treiber-DLL … stimmt nicht … Treiber wurde
+NICHT geladen`, Sync Exit 7, Test-Skript Exit 4) – Vorgehen in
+`operations/RUNBOOK.md`. Erfolgreich: `[Driver] Firebird .NET Provider geladen
+(SHA-256 geprüft): …`.
+
+Alternative ohne Internet: Original-DLL (net8.0) aus dem offiziellen NuGet-Paket
+10.3.4 manuell ablegen und `Firebird.DllPath` setzen – sie wird genauso geprüft.
+Eine **andere** Treiberversion nur mit `Firebird.DllSha256` (erwarteter Hash,
+selbst aus dem offiziellen Paket berechnet); dann gilt ausschließlich dieser Hash
+(`architecture/CONFIGURATION.md`).
+
+**NTFS-Rechte prüfen:** `%ProgramData%\SQLSync\Drivers` darf nur für
+Administratoren (und `SYSTEM`) beschreibbar sein; normale Benutzer und das
+Task-Konto brauchen nur Lesen/Ausführen. Die Hash-Prüfung verhindert das Laden
+einer ausgetauschten DLL, die Rechte verhindern den Austausch.
+
+```powershell
+icacls "$env:ProgramData\SQLSync\Drivers"
+# Erwartet: Schreib-/Vollzugriff (F, M, W) nur für BUILTIN\Administrators und NT AUTHORITY\SYSTEM;
+# BUILTIN\Users bzw. das Task-Konto höchstens (RX)
+```
+
+Hinweis (am 2026-10-09 auf einem Entwicklerrechner gemessen): Die Standardrechte von `%ProgramData%` vererben `BUILTIN\Users`
+das Anlegen neuer Dateien und Ordner (`(WD,AD,WEA,WA)`). Zeigt `icacls` das, die
+Vererbung für den Treiberordner brechen und die Rechte explizit setzen (als
+Administrator; SIDs statt Namen, damit es sprachunabhängig ist):
+
+```powershell
+icacls "$env:ProgramData\SQLSync\Drivers" /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX"
+```
+
+Gleiches gilt für den Skriptordner und einen per `DllPath` genutzten Ordner.
 
 ### 5. Credentials hinterlegen
 

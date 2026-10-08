@@ -185,7 +185,7 @@ Externe Quellen in diesem Projekt und ihr Status:
 
 | Quelle | Provenance | Verifikation | Status |
 |---|---|---|---|
-| `FirebirdSql.Data.FirebirdClient` 10.3.4 (NuGet, `lib\net8.0`) | Version + Download-URL in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) | SHA-256 der heruntergeladenen DLL gegen festen Wert | Teilweise: vorhandene oder per `DllPath` konfigurierte DLL wird **ohne** Hash geladen (S4 → I7). Versionswechsel = `PackageVersion` und `ExpectedSha256` gemeinsam ändern. |
+| `FirebirdSql.Data.FirebirdClient` 10.3.4 (NuGet, `lib\net8.0`) | Version + Download-URL in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) | SHA-256 **jeder** DLL vor dem Laden (Download, vorhanden, `DllPath`) gegen die Original-Hashes `lib\net8.0`/`lib\netstandard2.1`, am 2026-10-09 aus dem offiziellen Paket von nuget.org nachgerechnet | Erledigt (I7, S4). Grenze: bereits in der Sitzung geladene Assembly wird nicht geprüft. Versionswechsel = `$PackageVersion`, `$DownloadUrl` und beide Hashes in `$KnownSha256` gemeinsam ändern; abweichende DLL nur mit `Firebird.DllSha256`. |
 | `config.schema.json` (JSON-Schema-Draft, im Repo gepflegt) | Herkunft/Erstellungsweg nicht dokumentiert | `Get-SQLSyncConfig -SchemaPath` validiert jede Konfig beim Laden (`Test-Json -Schema`, Fail-Fast, Exit 2); Unit-Tests gegen das echte Schema; alle vorhandenen lokalen Konfigs am 2026-10-09 gegen das Schema geprüft | Erledigt (I6 / v2.15, S9). Namensmuster an die Identifier-Whitelist angeglichen. Bei neuen Schlüsseln Schema, Sample und `Get-SQLSyncConfig`-Defaults gemeinsam pflegen. |
 | `.github/copilot-instructions.md` | Agent-Hinweise, ohne Datum | keine | Veraltet (S12) → I10; bis dahin nicht als Quelle übernehmen. |
 

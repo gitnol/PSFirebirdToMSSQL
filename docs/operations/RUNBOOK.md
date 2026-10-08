@@ -170,8 +170,9 @@ wird; es wurde nichts geschrieben.
 ### Firebird-Treiber fehlt / lässt sich nicht laden (Sync exit 7)
 
 Log: `Der Firebird-Treiber fehlt in C:\ProgramData\SQLSync\Drivers\... Bitte einmalig als ADMINISTRATOR ausführen.`
-oder `SHA-256 der heruntergeladenen Treiber-DLL stimmt nicht ...` oder
-`Fehler beim Laden der Assembly`.
+oder `Fehler beim Laden der Assembly` oder `Download fehlgeschlagen: ...`.
+(`Test-SQLSyncConnections.ps1` endet hier mit Exit 4, `Get_Firebird_Schema.ps1` und
+`Manage_Config_Tables.ps1` mit Exit 3.)
 
 ```powershell
 # Ist der Treiber da?
@@ -181,12 +182,42 @@ Get-ChildItem "$env:ProgramData\SQLSync\Drivers" -Recurse -Filter FirebirdSql.Da
 .\Test-SQLSyncConnections.ps1
 ```
 
-- SHA-256-Fehler: Download manipuliert oder Proxy liefert andere Datei – **nicht**
-  umgehen; Netzwerk/Proxy klären, Ordner
-  `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4` löschen,
-  erneut als Admin ausführen.
-- Kein Internet: DLL manuell bereitstellen und `Firebird.DllPath` setzen (wird
-  ohne Hash-Prüfung geladen, S4/I7).
+- Kein Internet: Original-DLL aus dem offiziellen NuGet-Paket 10.3.4 manuell
+  bereitstellen und `Firebird.DllPath` setzen; sie wird vor dem Laden genauso per
+  SHA-256 geprüft.
+
+### „SHA-256 der Treiber-DLL … stimmt nicht“ (Sync exit 7)
+
+Log: `SHA-256 der Treiber-DLL (vorhanden) stimmt nicht: <Pfad> (erhalten <Hash>, erlaubt <Hash> / <Hash>). Treiber wurde NICHT geladen.`
+bzw. `(Download)`. Der Lauf bricht **vor** jeder Datenbankverbindung ab; es wurden keine Daten
+verändert. (`Test-SQLSyncConnections.ps1` Exit 4, `Get_Firebird_Schema.ps1` und
+`Manage_Config_Tables.ps1` Exit 3.)
+
+Ursache: Die DLL ist nicht die Original-DLL aus dem NuGet-Paket 10.3.4.
+- `(vorhanden)`: Die Datei in `%ProgramData%\SQLSync\Drivers\…` oder hinter `Firebird.DllPath` wurde
+  ausgetauscht oder verändert – **möglicher Manipulationsversuch** – oder bewusst durch eine andere
+  Treiberversion ersetzt.
+- `(Download)`: Proxy/Filter liefert eine andere Datei oder der Download wurde manipuliert; der
+  Ordner wurde bereits verworfen.
+
+Vorgehen:
+1. **Nicht** einfach den „erhaltenen“ Hash als `Firebird.DllSha256` übernehmen – damit würde genau
+   die verdächtige Datei freigegeben.
+2. Bei `(vorhanden)` ohne bekannte, bewusste Änderung: als Sicherheitsvorfall behandeln
+   (`docs/operations/INCIDENT_RESPONSE.md`, P1) – Datei vor dem Löschen sichern.
+3. Ordner löschen und den Treiber als Administrator neu laden (Download von nuget.org mit Prüfung):
+   ```powershell
+   Remove-Item "$env:ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4" -Recurse -Force
+   .\Test-SQLSyncConnections.ps1     # in einer Administrator-pwsh
+   ```
+   Bei `DllPath`: die Datei aus dem offiziellen Paket von nuget.org neu beziehen und ersetzen.
+4. NTFS-Rechte auf den Treiberordner prüfen (`icacls "$env:ProgramData\SQLSync\Drivers"`,
+   `docs/operations/SETUP.md` Schritt 4).
+5. Bei `(Download)` wiederholt: Netzwerk/Proxy klären, nicht umgehen.
+6. Wird **bewusst** eine andere Treiberversion eingesetzt: deren Hash selbst aus dem offiziellen
+   Paket berechnen (`Get-FileHash -Algorithm SHA256`) und als `Firebird.DllSha256` eintragen; dann
+   gilt nur dieser Hash (`docs/architecture/CONFIGURATION.md`).
+7. Lauf wiederholen; Log muss `[Driver] Firebird .NET Provider geladen (SHA-256 geprüft): …` zeigen.
 
 ### Credential fehlt (Sync exit 5)
 

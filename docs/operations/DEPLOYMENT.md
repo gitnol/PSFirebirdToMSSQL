@@ -50,8 +50,11 @@ Updates erhalten):
 
 Rechte: Schreibzugriff auf das Zielverzeichnis und `%ProgramData%\SQLSync`
 nur für Administratoren und das Task-Konto (das Konto braucht Schreibrecht auf
-`Logs\`). Wer dort schreiben darf, kann Code im Kontext des Sync-Kontos
-ausführen (S4).
+`Logs\`). Wer in den Skriptordner schreiben darf, kann Code im Kontext des
+Sync-Kontos ausführen. Eine ausgetauschte Treiber-DLL in `%ProgramData%` oder
+hinter `DllPath` wird seit I7 per SHA-256 erkannt und nicht geladen (Exit 7);
+die Rechte bleiben trotzdem die erste Schutzschicht (Prüfung per `icacls`,
+`operations/SETUP.md` Schritt 4).
 
 ---
 
@@ -59,8 +62,9 @@ ausführen (S4).
 
 Kein Build-Schritt. Artefakt = die versionierten Dateien eines Git-Commits
 bzw. Tags. Lock-Files gibt es nicht; die einzige externe Abhängigkeit (Treiber
-10.3.4) ist im Code per Version und SHA-256 festgenagelt
-(`SQLSyncCommon.psm1`, `Initialize-FirebirdDriver`).
+10.3.4) ist im Code per Version, Download-URL und den SHA-256-Werten beider
+Original-DLLs (`lib\net8.0`, `lib\netstandard2.1`) festgenagelt
+(`SQLSyncCommon.psm1`, `Initialize-FirebirdDriver`); geprüft wird bei jedem Laden.
 
 Vor dem Deployment (manuell, keine CI vorhanden):
 
@@ -94,7 +98,10 @@ Einstiegsskripte und eine CI gibt es nicht.
 | 8. Testlauf | `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil>`; danach manueller Sync-Lauf mit dem Daily-Profil | Beide Exit 0 (Sync: Zeile `ERGEBNIS: OK (Exit-Code 0)`); alle Tabellen `Erfolg`, Sanity `OK` |
 | 9. Läufe aktivieren | `Enable-ScheduledTask -TaskName SQLSync_Firebird_Daily_Diff, SQLSync_Firebird_Weekly_Full` | nächster geplanter Lauf im Log prüfen |
 
-Treiber-Update: Version und SHA-256 stehen in `Initialize-FirebirdDriver`.
+Treiber-Update: Version, Download-URL und beide SHA-256-Werte stehen in
+`Initialize-FirebirdDriver` und werden gemeinsam geändert (`CONVENTIONS.md` 6).
+Nur eine DLL tauschen, ohne den Code zu ändern, geht ausschließlich mit
+`Firebird.DllSha256` (Hash selbst aus dem offiziellen Paket berechnen).
 Nach Code-Update auf eine neue Treiberversion lädt der erste Lauf **als
 Administrator** den neuen Treiber in einen neuen Versionsordner (sonst exit 7).
 Da `.ps1`-Dateien aus `git clone` oder Download kommen können:

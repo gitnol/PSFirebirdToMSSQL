@@ -1,6 +1,6 @@
 # Externe Abhängigkeiten – PSFirebirdToMSSQL
 
-Jede Abhängigkeit, die explizit installiert, geladen oder aufgerufen wird. Stand: 2026-10-08.
+Jede Abhängigkeit, die explizit installiert, geladen oder aufgerufen wird. Stand: 2026-10-09.
 
 ---
 
@@ -26,11 +26,20 @@ und — geplant — `PSScriptAnalyzer` für Gate 1. Installation mit `-Scope Cur
 
 **Treiber-Integrität:**
 
-- Beim **Download** wird die DLL gegen SHA-256 `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05` geprüft;
-  bei Abweichung wird der Ordner gelöscht und abgebrochen (seit Commit 721d5e0).
-- Eine über `Firebird.DllPath` konfigurierte oder bereits in `%ProgramData%` liegende DLL wird **ohne** Hash-Prüfung
-  per `Add-Type` geladen (Inkrement I7). Schreibrechte auf diese Ordner daher auf Administratoren beschränken.
-- Ist die Assembly in der Session bereits geladen, wird sie wiederverwendet (keine Versionsprüfung).
+- **Jede** DLL wird vor `Add-Type` per SHA-256 geprüft – frischer Download, bereits in `%ProgramData%` liegende DLL
+  und über `Firebird.DllPath` konfigurierte DLL (seit I7; vorher nur der Download). Zulässig sind die Original-Hashes
+  aus dem NuGet-Paket 10.3.4:
+  - `lib\net8.0`: `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`
+  - `lib\netstandard2.1`: `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A`
+- Abweichung → `throw "SHA-256 der Treiber-DLL (vorhanden|Download) stimmt nicht … Treiber wurde NICHT geladen."`,
+  Sync-Exit-Code 7. Bei einer Download-Abweichung wird der Ordner verworfen.
+- Abweichende DLL (z. B. andere Treiberversion): erwarteten Hash per `Firebird.DllSha256` (Konfig) bzw.
+  `-ExpectedSha256` (Parameter) vorgeben; dann gilt **nur** dieser Hash. Alle vier Einstiegsskripte reichen ihn durch.
+- `ServicePointManager.SecurityProtocol` (TLS 1.2) wird nur für den Download gesetzt und danach wiederhergestellt.
+- Schreibrechte auf `%ProgramData%\SQLSync\Drivers` weiterhin auf Administratoren beschränken (Prüfung:
+  `docs/operations/SETUP.md`).
+- Grenze: Ist die Assembly in der Session bereits geladen (z. B. durch ein anderes Modul), wird sie ohne Hash- und
+  Versionsprüfung wiederverwendet.
 
 **Erstinstallation (einmalig, als Administrator):**
 
@@ -41,8 +50,9 @@ pwsh -NoProfile -File .\Test-SQLSyncConnections.ps1
 Get-ChildItem "$env:ProgramData\SQLSync\Drivers" -Recurse -Filter FirebirdSql.Data.FirebirdClient.dll
 ```
 
-Offline-Server: NuGet-Paket 10.3.4 auf einem anderen Rechner beziehen, `lib\net8.0\FirebirdSql.Data.FirebirdClient.dll`
-in den obigen Ordner kopieren und den SHA-256 manuell mit `Get-FileHash` vergleichen.
+Offline-Server: NuGet-Paket 10.3.4 auf einem anderen Rechner von nuget.org beziehen,
+`lib\net8.0\FirebirdSql.Data.FirebirdClient.dll` in den obigen Ordner kopieren (oder per `Firebird.DllPath` angeben).
+Der Sync prüft den Hash beim Laden selbst; eine manuelle Gegenprobe mit `Get-FileHash -Algorithm SHA256` ist optional.
 
 ---
 
@@ -95,7 +105,8 @@ es gelten Treiber-/Server-Defaults) — offen, siehe `docs/security/THREAT_MODEL
 
 ## Upgrade-Hinweise
 
-- **FirebirdClient:** `$PackageVersion`, Download-URL und `$ExpectedSha256` in `Initialize-FirebirdDriver` **gemeinsam** ändern;
+- **FirebirdClient:** `$PackageVersion`, `$DownloadUrl` und beide Hashes in `$KnownSha256` (`lib\net8.0` und
+  `lib\netstandard2.1`, aus dem offiziellen Paket selbst berechnet) in `Initialize-FirebirdDriver` **gemeinsam** ändern;
   neuer Zielordner entsteht automatisch (versionierter Pfad). Typzuordnung (`GetSchemaTable().DataType`) nach Upgrade mit
   `Get_Firebird_Schema.ps1` gegenprüfen; bei Major-Versionen kann sich das minimale .NET-Target ändern.
 - **System.Data.SqlClient → Microsoft.Data.SqlClient:** Namespace und Default `Encrypt=True` (ab 4.0) ändern sich —

@@ -12,6 +12,45 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 I7 – Treiber-Integrität
+
+### Changed
+- `Initialize-FirebirdDriver`: **jede** DLL wird vor `Add-Type` per SHA-256 geprüft — frischer Download,
+  bereits vorhandene DLL in `%ProgramData%` und per `Firebird.DllPath` konfigurierte DLL (vorher nur Download).
+  Zulässig sind die Original-Hashes von `lib\net8.0` und `lib\netstandard2.1` aus dem NuGet-Paket 10.3.4
+- Admin-Check als Modulfunktion `Test-SQLSyncIsAdministrator` (in Tests mockbar)
+- `ServicePointManager.SecurityProtocol` wird nur für den Download gesetzt und danach wiederhergestellt
+
+### Added
+- Optionaler Konfigschlüssel `Firebird.DllSha256` / Parameter `-ExpectedSha256` für eine abweichende DLL
+  (dann gilt nur dieser Hash); Schema-Muster `^[A-Fa-f0-9]{64}$`; alle vier Skripte reichen ihn durch
+- 10 Pester-Tests (138 gesamt), darunter Download-/Admin-Pfad per Mock
+
+### Security
+- Ungeprüftes Laden einer vorhandenen/konfigurierten Treiber-DLL geschlossen (Threat Model Bedrohung 3, S4)
+  — praktisch relevant: auf einem Entwicklerrechner gemessen dürfen normale Benutzer im Treiberordner unter
+  `%ProgramData%` Dateien anlegen (vererbt `WD,AD`); eine dort abgelegte fremde DLL wäre bisher ungeprüft geladen
+  worden. ACL-Härtung als Empfehlung in `operations/SETUP.md`.
+- Security-Currency-Sweep (Ereignis-Auslöser): Treiber 10.3.4 weiterhin aktuell, kein Client-Advisory;
+  **neuer Befund CVE-2026-40342** (Firebird-Server < 5.0.4, CVSS 9.9: Codeausführung über `CREATE FUNCTION`)
+  — Empfehlung Server-Update und Lesekonto statt SYSDBA für den Sync (Risiko in `STATE.md`)
+
+### Iterations-Log
+- Referenz-Hashes aus dem offiziellen Paket von nuget.org nachgerechnet (Download in eigenes Scratch-Verzeichnis,
+  nur gehasht): `net8.0` = bisheriger Code-Wert, `netstandard2.1` neu; beide identisch mit der lokal
+  installierten Paketkopie.
+- Rot: „DLL mit falschem Hash wird NICHT geladen" behavioral rot („no exception was thrown") = Lücke S4;
+  übrige neue Fälle strukturell rot (Parameter/Funktion fehlten) → Grün mit Implementierung.
+- Integrationslauf: Original-DLL über `DllPath` → „geladen (SHA-256 geprüft)", Exit 0; manipulierte Kopie
+  (1 Byte angehängt) → Sync Exit 7 vor jeder DB-Verbindung.
+
+### Confidence / Ungeprüft
+- Echter Download-Pfad (ohne vorhandene DLL, mit Adminrechten) nicht live gelaufen — nur per Mock.
+- Grenze: ist die Assembly in der Sitzung bereits geladen, wird sie ohne Prüfung weiterverwendet.
+- `-ExpectedSha256` für eine andere Treiberversion nur per Unit-Test geprüft.
+
+---
+
 ## 2026-10-09 Reflexion nach I6 (Phase 1c)
 
 ### Changed

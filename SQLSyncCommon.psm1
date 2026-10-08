@@ -185,6 +185,7 @@ function Get-SQLSyncConfig {
         FBPort                  = Get-ConfigValue $Config.Firebird "Port" 3050
         FBCharset               = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
         DllPath                 = $Config.Firebird.DllPath
+        DllSha256               = Get-ConfigValue $Config.Firebird "DllSha256" $null
 
         # MSSQL Settings
         MSSQLServer             = $Config.MSSQL.Server
@@ -497,26 +498,32 @@ function New-MSSQLConnectionString {
 
 <#
 .SYNOPSIS
-    Lädt den Firebird .NET Treiber.
-
-.PARAMETER DllPath
-    Konfigurierter Pfad zur DLL.
-
-.PARAMETER ScriptDir
-    Skript-Verzeichnis für relative Pfade.
-
-.OUTPUTS
-    Der aufgelöste Pfad zur DLL.
+    Prüft, ob die aktuelle Sitzung Administratorrechte hat (eigene Funktion, damit in Tests mockbar).
 #>
+function Test-SQLSyncIsAdministrator {
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 <#
 .SYNOPSIS
-    Lädt den Firebird .NET Treiber (Version 10.3.4).
+    Lädt den Firebird .NET Treiber (Version 10.3.4) – nur nach SHA-256-Prüfung.
     Installiert ihn bei Bedarf systemweit in C:\ProgramData (benötigt Admin-Rechte).
+
+.DESCRIPTION
+    Jede DLL wird vor Add-Type gegen ihren SHA-256 geprüft – egal ob frisch heruntergeladen,
+    bereits in %ProgramData% vorhanden oder per DllPath konfiguriert. Zulässig sind die
+    Original-Hashes der DLLs lib\net8.0 und lib\netstandard2.1 aus dem NuGet-Paket 10.3.4.
+    Eine andere DLL (z. B. andere Treiberversion) wird nur mit explizit erwartetem Hash
+    (-ExpectedSha256, Konfig: Firebird.DllSha256) geladen; dann gilt ausschließlich dieser Hash.
 
 .PARAMETER DllPath
     Optional: Ein expliziter Pfad zur DLL (überschreibt die Automatik).
 .PARAMETER ScriptDir
     Optional: Skript-Verzeichnis für relative Pfade.
+.PARAMETER ExpectedSha256
+    Optional: erwarteter SHA-256 der DLL (64 Hex-Zeichen). Ersetzt die eingebauten Original-Hashes.
 
 .OUTPUTS
     Der aufgelöste Pfad zur DLL.
@@ -525,27 +532,32 @@ function Initialize-FirebirdDriver {
     [CmdletBinding()]
     param(
         [string]$DllPath,
-        [string]$ScriptDir
+        [string]$ScriptDir,
+        [string]$ExpectedSha256
     )
 
-    # Konstanten
+    # Konstanten – bei einem Versionswechsel PackageVersion, Download-URL und Hashes gemeinsam anpassen
     $PackageVersion = "10.3.4"
     $PackageName = "FirebirdSql.Data.FirebirdClient"
-    # SHA-256 der DLL lib\net8.0 aus dem NuGet-Paket 10.3.4 — der Download wird nur geladen, wenn sie übereinstimmt.
-    # Bei einem Versionswechsel PackageVersion und ExpectedSha256 gemeinsam anpassen.
-    $ExpectedSha256 = "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
+    $DownloadUrl = "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg"
+    # SHA-256 der Original-DLLs aus dem NuGet-Paket 10.3.4 (lib\net8.0 bzw. lib\netstandard2.1)
+    $KnownSha256 = @(
+        "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
+        "8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A"
+    )
+    $AllowedSha256 = if ($ExpectedSha256) { @($ExpectedSha256.ToUpperInvariant()) } else { $KnownSha256 }
     $CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$PackageName.$PackageVersion"
-    
-    # Helper: Admin-Check
-    function Test-IsAdministrator {
-        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-        return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    function Assert-DriverHash([string]$Path, [string]$Origin) {
+        $Actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash
+        if ($Actual -notin $AllowedSha256) {
+            throw ("SHA-256 der Treiber-DLL ({0}) stimmt nicht: {1} (erhalten {2}, erlaubt {3}). Treiber wurde NICHT geladen." -f $Origin, $Path, $Actual, ($AllowedSha256 -join " / "))
+        }
     }
 
     # --- SCHRITT A: Prüfen, ob Assembly schon geladen ist (Verhindert Fehler) ---
-    $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | 
-    Where-Object { $_.GetName().Name -eq $PackageName } | 
+    $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |
+    Where-Object { $_.GetName().Name -eq $PackageName } |
     Select-Object -First 1
 
     if ($LoadedAssembly) {
@@ -575,8 +587,8 @@ function Initialize-FirebirdDriver {
     # --- SCHRITT C: Installieren (wenn Datei fehlt) ---
     if (-not $ResolvedPath) {
         Write-Host "Firebird Treiber ($PackageVersion) nicht gefunden." -ForegroundColor Yellow
-        
-        if (-not (Test-IsAdministrator)) {
+
+        if (-not (Test-SQLSyncIsAdministrator)) {
             throw "Der Firebird-Treiber fehlt in $CentralInstallDir. Bitte einmalig als ADMINISTRATOR ausführen."
         }
 
@@ -584,25 +596,34 @@ function Initialize-FirebirdDriver {
         if (-not (Test-Path $CentralInstallDir)) { New-Item -ItemType Directory -Path $CentralInstallDir -Force | Out-Null }
 
         $ZipPath = Join-Path $CentralInstallDir "package.zip"
+        # Prozessweite Einstellung nur für den Download ändern und danach wiederherstellen
+        $PreviousProtocol = [Net.ServicePointManager]::SecurityProtocol
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg" -OutFile $ZipPath -ErrorAction Stop
+            Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -ErrorAction Stop
             Expand-Archive -Path $ZipPath -DestinationPath $CentralInstallDir -Force
             Remove-Item -Path $ZipPath -Force -ErrorAction SilentlyContinue
-            
+
             # Neu aufgelöster Pfad
             $ResolvedPath = Join-Path $CentralInstallDir "lib\net8.0\$PackageName.dll"
         }
         catch {
             throw "Download fehlgeschlagen: $($_.Exception.Message)"
         }
-
-        # Integrität prüfen, bevor die DLL geladen wird
-        $ActualSha256 = (Get-FileHash -Path $ResolvedPath -Algorithm SHA256).Hash
-        if ($ActualSha256 -ne $ExpectedSha256) {
-            Remove-Item -Path $CentralInstallDir -Recurse -Force -ErrorAction SilentlyContinue
-            throw "SHA-256 der heruntergeladenen Treiber-DLL stimmt nicht (erwartet $ExpectedSha256, erhalten $ActualSha256). Treiber wurde NICHT geladen."
+        finally {
+            [Net.ServicePointManager]::SecurityProtocol = $PreviousProtocol
         }
+
+        # Integrität des Downloads prüfen; bei Abweichung den Ordner verwerfen
+        try { Assert-DriverHash $ResolvedPath "Download" }
+        catch {
+            Remove-Item -Path $CentralInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+            throw
+        }
+    }
+    else {
+        # Vorhandene bzw. konfigurierte DLL: vor dem Laden ebenfalls prüfen (S4)
+        Assert-DriverHash $ResolvedPath "vorhanden"
     }
 
     # --- SCHRITT D: Laden ---
@@ -612,7 +633,7 @@ function Initialize-FirebirdDriver {
 
     try {
         Add-Type -Path $ResolvedPath
-        Write-Host "[Driver] Firebird .NET Provider geladen: $ResolvedPath" -ForegroundColor DarkGray
+        Write-Host "[Driver] Firebird .NET Provider geladen (SHA-256 geprüft): $ResolvedPath" -ForegroundColor DarkGray
     }
     catch {
         # Falls Add-Type trotz Vorab-Check fehlschlägt (sehr selten)

@@ -6,16 +6,16 @@ Verbindet sich mit `architecture/DEPENDENCIES.md` (Was ist drin?) und
 
 ---
 
-## Bestand (Stand 2026-10-08)
+## Bestand (Stand 2026-10-09)
 
 | Abhängigkeit | Version / Fundort | Quelle | Bemerkung |
 |---|---|---|---|
 | PowerShell | ≥ 7.0 (`#Requires -Version 7.0`); auf dem Entwicklungsrechner 7.6.6 gemessen | Microsoft (MSI/winget) | Produktiver Sync-Host: Version dort mit `$PSVersionTable` erfassen (offen) |
 | .NET Runtime | durch PowerShell 7 mitgeliefert | Microsoft | Treiber nutzt `lib\net8.0` → PowerShell-Version mit .NET ≥ 8 nötig |
-| FirebirdSql.Data.FirebirdClient | 10.3.4, `lib\net8.0`, SHA-256 `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05` | NuGet, Download in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) nach `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\` | Version + Hash fest im Code; Hash wird nur beim Download geprüft (S4, I7) |
+| FirebirdSql.Data.FirebirdClient | 10.3.4; SHA-256 `lib\net8.0` `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`, `lib\netstandard2.1` `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A` | NuGet, Download in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) nach `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\` | Version + beide Hashes fest im Code; seit I7 wird **jede** DLL vor dem Laden geprüft (Download, vorhanden, `DllPath`), Abweichung → Exit 7. Andere Version nur mit `Firebird.DllSha256` |
 | System.Data.SqlClient | in PowerShell 7 enthalten (auf dem Entwicklungsrechner Assembly-Version 4.6.1.6) | Microsoft | **Von Microsoft abgekündigt** zugunsten `Microsoft.Data.SqlClient`; nur noch Sicherheitsfixes, kein Feature-Support. Migration im Backlog |
 | Windows-APIs | `advapi32.dll` `CredRead`/`CredWrite`/`CredFree` per `Add-Type`-C#; `cmdkey.exe`; Task Scheduler (ScheduledTasks-Modul); `Out-GridView` | Betriebssystem | Patchstand über Windows Update |
-| Firebird-Server | 2.5+ / 3.x laut README; eingesetzte Versionen je Host: nur in `docs/local/ENVIRONMENT.md` (nicht öffentlich), mit `Test-SQLSyncConnections.ps1` auslesen | Betreiber | **Versionen < 5.0.4 sind von CVE-2026-34232 betroffen** (DoS, siehe Sweep-Protokoll) → Update auf ≥ 5.0.4 empfohlen (bzw. ≥ 4.0.7 / ≥ 3.0.14). Firebird 2.5 ist End-of-Life – falls im Einsatz, als Risiko führen |
+| Firebird-Server | 2.5+ / 3.x laut README; eingesetzte Versionen je Host: nur in `docs/local/ENVIRONMENT.md` (nicht öffentlich), mit `Test-SQLSyncConnections.ps1` auslesen | Betreiber | **Versionen < 5.0.4 / < 4.0.7 / < 3.0.14 sind von CVE-2026-34232 (DoS) und CVE-2026-40342 (CVSS 9.9, Codeausführung über `CREATE FUNCTION` / `ENGINE`-Path-Traversal) betroffen** (siehe Sweep-Protokoll) → Update auf ≥ 5.0.4 empfohlen (bzw. ≥ 4.0.7 / ≥ 3.0.14); für den Sync ein reines Lesekonto statt `SYSDBA`. Firebird 2.5 ist End-of-Life – falls im Einsatz, als Risiko führen |
 | MS SQL Server | 2017+ nötig (`STRING_AGG`, `CREATE OR ALTER` in `sql_server_setup.sql`); Version mit `Test-SQLSyncConnections.ps1` auslesen | Betreiber | Support-Lebenszyklus der eingesetzten Version prüfen |
 
 Zur Laufzeit keine Module aus der PowerShell Gallery, keine Python-/Node-/NuGet-Projektdateien.
@@ -25,6 +25,17 @@ Einzige Entwicklungsabhängigkeit ist Pester für `tests/Unit/`, gepinnt auf 5.7
 ---
 
 ## Sweep-Protokoll
+
+### 2026-10-09 – Ereignis-Auslöser (I7, Treiber-Integrität)
+
+| Prüfgegenstand | Ergebnis | Quelle |
+|---|---|---|
+| FirebirdSql.Data.FirebirdClient 10.3.4 | Weiterhin aktuelle stabile Version; kein Client-Advisory gefunden | https://www.nuget.org/packages/FirebirdSql.Data.FirebirdClient |
+| Original-Hashes der Treiber-DLLs | Aus dem offiziellen Paket 10.3.4 von nuget.org nachgerechnet: `lib\net8.0` `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`, `lib\netstandard2.1` `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A`. Beide sind die einzigen eingebauten zulässigen Werte in `Initialize-FirebirdDriver` | https://www.nuget.org/packages/FirebirdSql.Data.FirebirdClient |
+| Firebird-Server | **Neuer Befund:** CVE-2026-40342 (CVSS 9.9) – ein authentifizierter Benutzer mit `CREATE FUNCTION` kann über einen präparierten `ENGINE`-Namen (Path Traversal) eine beliebige Bibliothek laden → Codeausführung als OS-Konto des Firebird-Servers; betroffen < 5.0.4 / < 4.0.7 / < 3.0.14. Bezug: Ist das Sync-Konto `SYSDBA` oder hat es `CREATE FUNCTION`, wird ein Credential-Leak zur Codeausführung auf dem ERP-Datenbankserver. Empfehlung: Server ≥ 5.0.4 (behebt auch CVE-2026-34232) und ein reines Lesekonto (nur `SELECT` auf die konfigurierten Tabellen, keine DDL/`CREATE FUNCTION`) statt `SYSDBA`. Bewertung: `THREAT_MODEL.md` Bedrohung 5 und 6 | https://nvd.nist.gov/vuln/detail/CVE-2026-40342 , https://osv.dev/vulnerability/CVE-2026-40342 |
+
+Offen aus diesem Sweep: Server-Update (Schweregrad Critical) und Umstellung auf ein
+Firebird-Lesekonto beim Betreiber anstoßen.
 
 ### 2026-10-08 – Ereignis-Auslöser (I4, SQL-Identifier-Härtung)
 
@@ -45,7 +56,7 @@ anstoßen (Schweregrad High → innerhalb des aktuellen Inkrements klären).
 | Auslöser | Pflicht? |
 |---|---|
 | Vor jedem Release / Tag | Ja |
-| Bei Änderung der Treiber-Version (`$PackageVersion` + `$ExpectedSha256` in `Initialize-FirebirdDriver`) | Ja, inkl. neuem Hash aus offizieller Quelle |
+| Bei Änderung der Treiber-Version (`$PackageVersion`, `$DownloadUrl` und `$KnownSha256` in `Initialize-FirebirdDriver`) oder bei Nutzung von `Firebird.DllSha256` | Ja, inkl. neuer Hashes aus offizieller Quelle |
 | Nach Sicherheitsmeldung (CVE/Advisory) für PowerShell, .NET, SqlClient, FirebirdClient, Firebird- oder SQL-Server | Ja, sofort |
 | Web-Advisory-/Best-Practice-Sweep für Base+Stack | Auf Zeit-Kadenz (Default 14 Tage, Marker im `STATE.md`-Kopf; nächster: 2026-10-22) + Pflicht vor Release — `principles/SECURITY_CURRENCY.md` |
 | Regelmäßiger Sweep | Empfohlen: monatlich |
@@ -59,7 +70,7 @@ anstoßen (Schweregrad High → innerhalb des aktuellen Inkrements klären).
 | PowerShell-Version | `$PSVersionTable.PSVersion` bzw. `pwsh -v` | Versionsnummer | Gegen aktuelle Releases/Advisories auf `github.com/PowerShell/PowerShell` abgleichen |
 | .NET-Runtime | `[System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription` | z. B. `.NET 9.0.x` | Gegen .NET-Security-Releases abgleichen |
 | SqlClient | `[System.Data.SqlClient.SqlConnection].Assembly.GetName().Version` | Assembly-Version | Abkündigung beachten |
-| Treiber-Integrität | `Get-FileHash "$env:ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\FirebirdSql.Data.FirebirdClient.dll" -Algorithm SHA256` | Hash | Muss `7DB04371…CBC05` entsprechen (voller Wert oben); manuell, bis I7 umgesetzt ist |
+| Treiber-Integrität | `Get-FileHash "$env:ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\FirebirdSql.Data.FirebirdClient.dll" -Algorithm SHA256` | Hash | Muss `7DB04371…CBC05` (`lib\net8.0`) bzw. `8176C7D5…A323A` (`lib\netstandard2.1`) entsprechen (volle Werte oben); der Sync prüft das seit I7 bei jedem Laden selbst – der Befehl dient der manuellen Gegenprobe |
 | Treiber-Advisories | GitHub Advisory Database (`github.com/advisories?query=FirebirdSql.Data.FirebirdClient`) und NuGet-Paketseite (Hinweis „vulnerable" / „deprecated") | Advisory-Liste | Kein lokales Projekt → `dotnet list package --vulnerable` nicht anwendbar |
 | Firebird-/MSSQL-Serverversion | `.\Test-SQLSyncConnections.ps1 -ConfigFile <Konfig>` | Versionszeilen beider Server | Gegen Firebird-Release-Notes und Microsoft-Lifecycle prüfen |
 | Statische Analyse (Härtung) | `Invoke-ScriptAnalyzer -Path . -Recurse` (PSScriptAnalyzer) | Regelverletzungen | Kein CVE-Scanner, aber Best-Practice-Ergänzung; CI-Einbindung im Backlog |
@@ -79,8 +90,8 @@ anstoßen (Schweregrad High → innerhalb des aktuellen Inkrements klären).
 | Low | Backlog; bei nächstem Major-Upgrade mitziehen |
 
 Mitigation kann auch sein: Nutzung der verwundbaren Funktion entfernen, falls Update nicht möglich
-ist. Bei einem Treiber-Update gilt: neue Version **und** neuen SHA-256 gemeinsam im Code ändern,
-den Hash aus dem offiziellen NuGet-Paket selbst berechnen und im Commit dokumentieren.
+ist. Bei einem Treiber-Update gilt: neue Version, Download-URL **und** beide SHA-256-Werte gemeinsam im Code
+ändern, die Hashes aus dem offiziellen NuGet-Paket selbst berechnen und im Commit dokumentieren.
 
 ---
 
@@ -99,8 +110,9 @@ Datei.
   `colors.js`, `xz-utils`).
 - **GitHub Dependabot allein** — erkennt hier nichts: Der Treiber wird zur Laufzeit per URL geladen,
   nicht über eine Paketdatei deklariert.
-- **SHA-256 beim Download allein** — schützt gegen manipulierte Downloads, nicht gegen bekannte
-  Schwachstellen in genau dieser Version und nicht gegen eine nachträglich ausgetauschte DLL (S4).
+- **SHA-256-Prüfung allein** — schützt (seit I7 für jede geladene DLL) gegen manipulierte Downloads
+  und nachträglich ausgetauschte DLLs, nicht aber gegen bekannte Schwachstellen in genau dieser
+  Version und nicht gegen eine in der Sitzung bereits geladene Assembly.
 - **Einmaliger Audit beim Projektstart** — Audits müssen wiederholt werden, weil neue CVEs ständig
   erscheinen.
 - **Scanner-Lauf allein** — findet keine Härtungs-Best-Practices und keine Advisories ohne

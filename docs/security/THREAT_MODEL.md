@@ -1,6 +1,6 @@
 # Threat Model & Mitigationen – PSFirebirdToMSSQL
 
-Stand: 2026-10-08 (Initialisierung, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
+Stand: 2026-10-09 (I7; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,
 `sql_server_setup.sql`, `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`,
 `Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I10 entsprechen
@@ -18,7 +18,7 @@ Netzwerk-Schnittstelle nach außen, keine Benutzereingaben zur Laufzeit außer d
 |---|---|---|
 | Konfigurationsdatei (`config*.json`) → Skript | Tabellen-/Spaltennamen, Server, ggf. Klartext-Passwort | Wer Schreibrecht auf den Skriptordner hat, steuert SQL und Ziele |
 | Firebird-Metadaten → `Manage_Config_Tables.ps1` → `config.json` | Tabellennamen aus `RDB$RELATIONS` | Vertrauen in den Firebird-Admin |
-| Internet (NuGet CDN) → `%ProgramData%\SQLSync\Drivers\...` | Treiber-DLL | Nur beim Download per SHA-256 geprüft |
+| Internet (NuGet CDN) → `%ProgramData%\SQLSync\Drivers\...` | Treiber-DLL | Jede DLL wird vor dem Laden per SHA-256 geprüft (Download, vorhanden, `DllPath`; seit I7) |
 | Firebird → MSSQL | Nutzdaten (ERP, inkl. personenbezogener Daten) | Werte werden per `SqlBulkCopy` übertragen, nicht als SQL-Text |
 
 **Prompt-Injection:** Im analysierten Code wurden keine Prompt-Injection- oder Anweisungstexte
@@ -135,27 +135,50 @@ realistische Werte zeigt, hängt der Schutz an Betriebsdisziplin.
 2. `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\...`,
 3. `...\lib\netstandard2.1\...`.
 
-Nur eine **frisch heruntergeladene** DLL wird gegen den SHA-256-Wert geprüft. Eine bereits
-vorhandene DLL in einem der Kandidatenpfade – oder ein manipulierter `DllPath` – wird **ohne**
-Hash-Prüfung geladen. Wer Schreibrechte auf `%ProgramData%\SQLSync\Drivers\...`, den Skriptordner
-oder die Konfigurationsdatei hat, kann so Code im Kontext des Sync-Kontos (mit Zugriff auf beide
-Datenbanken und den Credential Manager dieses Kontos) ausführen.
+Vor I7 (Repo-Stand bis v2.15) wurde nur eine **frisch heruntergeladene** DLL gegen den SHA-256-Wert geprüft; eine
+bereits vorhandene DLL in einem der Kandidatenpfade – oder ein manipulierter `DllPath` – wurde
+**ungeprüft** geladen. Wer Schreibrechte auf `%ProgramData%\SQLSync\Drivers\...`, den Skriptordner
+oder die Konfigurationsdatei hat, hätte so Code im Kontext des Sync-Kontos (mit Zugriff auf beide
+Datenbanken und den Credential Manager dieses Kontos) ausführen können. Seit I7 (2026-10-09)
+mitigiert, siehe unten.
 
 **Aktuelle Mitigation (im Code vorhanden):**
 - Fest gepinnte Paketversion 10.3.4, Download nur über HTTPS (TLS 1.2) von `globalcdn.nuget.org`.
-- SHA-256-Prüfung der heruntergeladenen `lib\net8.0`-DLL gegen
-  `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`; bei Abweichung wird das
-  Verzeichnis gelöscht und nicht geladen (seit 721d5e0).
-- Download nur mit Administratorrechten; `%ProgramData%`-Unterordner erbt standardmäßig
-  restriktive Schreibrechte (nicht vom Code gesetzt, nicht verifiziert).
+  `ServicePointManager.SecurityProtocol` wird nur für den Download gesetzt und danach
+  wiederhergestellt (seit I7).
+- **Seit I7 (2026-10-09):** `Initialize-FirebirdDriver` prüft **jede** DLL vor `Add-Type` per
+  SHA-256 – frischer Download, bereits vorhandene DLL in `%ProgramData%\SQLSync\Drivers\…` und per
+  `Firebird.DllPath` konfigurierte DLL. Zulässig sind nur die Original-Hashes aus dem NuGet-Paket
+  10.3.4 (am 2026-10-09 aus dem offiziellen Paket von nuget.org nachgerechnet):
+  - `lib\net8.0`: `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`
+  - `lib\netstandard2.1`: `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A`
+- Abweichung → `throw` „SHA-256 der Treiber-DLL (vorhanden|Download) stimmt nicht … Treiber wurde
+  NICHT geladen“ → Sync Exit 7 (`Test-SQLSyncConnections.ps1` 4, `Get_Firebird_Schema.ps1` und
+  `Manage_Config_Tables.ps1` 3), **vor** jeder Datenbankverbindung. Bei einer Download-Abweichung
+  wird der Ordner verworfen.
+- Abweichende DLL (andere Treiberversion) nur mit explizit erwartetem Hash: Konfigschlüssel
+  `Firebird.DllSha256` (Schema `^[A-Fa-f0-9]{64}$`) bzw. Parameter `-ExpectedSha256`; dann gilt
+  ausschließlich dieser Hash. Alle vier Skripte reichen ihn durch.
+- Download nur mit Administratorrechten (`Test-SQLSyncIsAdministrator`); `%ProgramData%`-Unterordner
+  erbt standardmäßig restriktive Schreibrechte (nicht vom Code gesetzt; Prüfung per `icacls` in
+  `docs/operations/SETUP.md`).
+- Unit-Tests: Download-, Admin- und Hash-Pfad per Mock (8 Treiber-Fälle). Echter Lauf am
+  2026-10-09: Original-DLL über `DllPath` → „geladen (SHA-256 geprüft)“, Exit 0; manipulierte Kopie
+  (1 Byte angehängt) → Exit 7 vor jeder DB-Verbindung.
 - `*.dll` und `*.nupkg` sind gitignored.
 
-**Offene Maßnahme:** **I7** – SHA-256-Prüfung auch für bereits vorhandene und per `DllPath`
-konfigurierte DLLs (Fail-Fast bei Abweichung oder dokumentierte Allowlist mehrerer Hashes).
-Prüfung der aktuellen Advisories zum Treiber: `docs/security/DEPENDENCY_AUDIT.md`.
+**Offene Maßnahme / Grenze:** Ist die Assembly `FirebirdSql.Data.FirebirdClient` in der Sitzung
+bereits geladen (z. B. durch ein anderes Modul im selben PowerShell-Prozess), wird sie **ohne**
+Prüfung weiterverwendet. Im Task-Scheduler-Betrieb (`pwsh -NoProfile`, frischer Prozess) tritt das
+nicht auf. Wer Schreibzugriff auf die Konfiguration hat, kann über `Firebird.DllSha256` einen
+eigenen Hash vorgeben – das ist eine Rechte-Frage (Bedrohung 5, Skriptordner nur für Admins und das
+Sync-Konto beschreibbar). Prüfung der aktuellen Advisories zum Treiber:
+`docs/security/DEPENDENCY_AUDIT.md`.
 
-**Restrisiko:** Mittel – Ausnutzung setzt lokalen Schreibzugriff voraus, die Auswirkung ist aber
-vollständige Code-Ausführung mit Datenbankzugriff.
+**Restrisiko:** Niedrig – eine ausgetauschte DLL in `%ProgramData%` oder hinter `DllPath` wird nicht
+mehr geladen (Fail-Fast, Exit 7). Code-Ausführung über den Treiber verlangt jetzt Schreibzugriff
+auf die Konfiguration **und** einen Ablageort der DLL oder eine in der Sitzung vorgeladene Assembly;
+beides setzt bereits weitgehende lokale Rechte voraus.
 
 ---
 
@@ -216,7 +239,10 @@ gerundete Nachkommastellen bei gleicher Zeilenzahl).
 - Der Lauf benötigt DDL in der Ziel-DB (`CREATE/DROP TABLE`, `TRUNCATE`, `CREATE OR ALTER
   PROCEDURE`, PK-Anlage) und Bulk-Insert. Zusammen mit Bedrohung 1 vergrößert das den Schaden.
 - Firebird-Fallback-Benutzer ist `SYSDBA`, wenn `Firebird.User` fehlt (`Resolve-FirebirdCredentials`)
-  – Vollzugriff auf die ERP-Datenbank, obwohl nur lesend gearbeitet wird.
+  – Vollzugriff auf die ERP-Datenbank, obwohl nur lesend gearbeitet wird. Seit CVE-2026-40342
+  (Bedrohung 6) wiegt das schwerer: Ein Konto mit `CREATE FUNCTION` (z. B. `SYSDBA`) kann auf einem
+  ungepatchten Firebird-Server Code als OS-Konto des Servers ausführen; ein Leck der
+  Sync-Credentials würde damit zur Codeausführung auf dem ERP-Datenbankserver.
 - `Setup-ScheduledTasks.ps1` registriert die Tasks per Default unter dem **aktuellen interaktiven
   Benutzer** mit gespeichertem Windows-Passwort (`Register-ScheduledTask -User ... -Password ...`)
   und startet `pwsh -NoProfile -ExecutionPolicy Bypass`. Die Credential-Manager-Einträge sind an
@@ -237,7 +263,8 @@ gerundete Nachkommastellen bei gleicher Zeilenzahl).
 
 **Offene Maßnahme:** Betrieb (ohne Code-Änderung umsetzbar): Tasks auf Dienstkonto oder gMSA
 umstellen (Default bleibt der aufrufende Benutzer); Datenbank vorab anlegen und `dbcreator` entziehen; dediziertes
-Firebird-Konto mit reinen `SELECT`-Rechten statt `SYSDBA`; MSSQL-Login auf `db_ddladmin` +
+Firebird-**Lesekonto** statt `SYSDBA` (nur `SELECT` auf die konfigurierten Tabellen, keine DDL,
+kein `CREATE FUNCTION` – Begründung CVE-2026-40342, Anleitung `docs/operations/SETUP.md`); MSSQL-Login auf `db_ddladmin` +
 `db_datawriter` + `db_datareader` der Ziel-DB beschränken; Skriptordner nur für Admins und das
 Sync-Konto beschreibbar. Details: `docs/operations/TASK_SCHEDULER.md`,
 `docs/security/AUTHENTICATION.md`.
@@ -247,7 +274,7 @@ Code ableitbar).
 
 ---
 
-## 6. Denial of Service des Firebird-Servers (CVE-2026-34232)
+## 6. Schwachstellen des Firebird-Servers (CVE-2026-34232, CVE-2026-40342)
 
 **Gefahr:** Am 2026-10-08 (Security-Sweep, Ereignis-Auslöser) gefunden: CVE-2026-34232
 (CVSS 7.5, GHSA-7jq3-6j3c-5cm2) – ein unauthentifizierter Angreifer kann den Firebird-Server über ein
@@ -257,22 +284,38 @@ Mindestens ein intern eingesetzter Firebird-Server ist betroffen (Details nur in
 ERP-Firebird ist nicht bekannt. Wirkung auf dieses Projekt: Verfügbarkeit – während eines Absturzes
 schlagen Extrakt und Sanity Check fehl (Exit 10), und das ERP selbst ist ebenfalls nicht verfügbar.
 Die Schwachstelle liegt im Server, nicht im Sync-Code; für den Client-Treiber
-`FirebirdSql.Data.FirebirdClient` 10.3.4 wurde kein CVE gefunden.
+`FirebirdSql.Data.FirebirdClient` 10.3.4 wurde kein CVE gefunden (erneut geprüft 2026-10-09).
+
+**Neu am 2026-10-09 (Security-Sweep, Ereignis-Auslöser I7):** CVE-2026-40342 (CVSS 9.9) – ein
+**authentifizierter** Benutzer mit dem Recht `CREATE FUNCTION` kann über einen präparierten
+`ENGINE`-Namen (Path Traversal) eine beliebige Bibliothek laden und damit Code als OS-Konto des
+Firebird-Servers ausführen. Betroffen sind ebenfalls Firebird-Server < 5.0.4, < 4.0.7 und
+< 3.0.14 (Quellen: https://nvd.nist.gov/vuln/detail/CVE-2026-40342 ,
+https://osv.dev/vulnerability/CVE-2026-40342 ). Bezug zum Projekt: Das Sync-Konto hat Zugangsdaten
+zum Firebird-Server (Credential Manager oder Klartext-Fallback, Bedrohung 2). Ist es `SYSDBA` oder
+hat es `CREATE FUNCTION`, wird ein Credential-Leak zur Codeausführung auf dem ERP-Datenbankserver
+(Vertraulichkeit, Integrität und Verfügbarkeit).
 
 **Aktuelle Mitigation (im Code vorhanden):**
 - Keine im Code möglich. Der Sync erkennt den Ausfall (Tabellenstatus `Fehler`, Exit 10) und
   wiederholt pro Tabelle (`MaxRetries`).
+- Der Sync liest nur (`SELECT`); er braucht weder DDL noch `CREATE FUNCTION` in Firebird – ein
+  Lesekonto ist ohne Code-Änderung möglich (`Firebird.CredentialTarget` bzw. `Firebird.User`).
 - Ob der Firebird-Port nur im internen Netz erreichbar ist, ist nicht aus dem Code ableitbar
   (nicht verifiziert).
 
-**Offene Maßnahme (Betrieb):** Firebird-Server auf ≥ 5.0.4 (bzw. ≥ 4.0.7 / ≥ 3.0.14) aktualisieren,
-zuerst Testserver, dann produktiven ERP-Server; produktive Version mit
-`Test-SQLSyncConnections.ps1` erfassen. Bis dahin Firebird-Port per Firewall auf die benötigten
-Clients beschränken. Nachverfolgung in `docs/security/DEPENDENCY_AUDIT.md`.
+**Offene Maßnahme (Betrieb):** Firebird-Server auf ≥ 5.0.4 (bzw. ≥ 4.0.7 / ≥ 3.0.14) aktualisieren –
+behebt beide CVEs –, zuerst Firebird-Testserver, dann produktiven ERP-Server; produktive Version mit
+`Test-SQLSyncConnections.ps1` erfassen. Für den Sync ein reines Firebird-Lesekonto statt `SYSDBA`
+einrichten (nur `SELECT` auf die konfigurierten Tabellen, keine DDL, kein `CREATE FUNCTION`;
+Bedrohung 5, `docs/operations/SETUP.md`). Bis zum Update Firebird-Port per Firewall auf die
+benötigten Clients beschränken. Nachverfolgung in `docs/security/DEPENDENCY_AUDIT.md`.
 
-**Restrisiko:** Mittel – bis zum Server-Update kann jeder Host mit Netzzugang zum Firebird-Port den
-Server abstürzen lassen; die Schwachstelle betrifft laut Beschreibung die Verfügbarkeit (Absturz),
-nicht das Auslesen oder Verändern von Daten.
+**Restrisiko:** Hoch, solange der Server ungepatcht ist **und** der Sync `SYSDBA` (oder ein Konto
+mit `CREATE FUNCTION`) nutzt – dann reicht ein Leck der Sync-Credentials für Codeausführung auf
+dem ERP-Datenbankserver (CVE-2026-40342). Mit Lesekonto sinkt es auf Mittel: CVE-2026-34232 erlaubt
+weiterhin jedem Host mit Netzzugang zum Firebird-Port, den Server abstürzen zu lassen
+(Verfügbarkeit). Nach dem Server-Update: Niedrig.
 
 ---
 
@@ -287,7 +330,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S1 | Sync endet mit Exit 0 trotz Tabellenfehlern; SP-Batch-Fehler nur Warnung | K1 | I2 (erledigt, abgenommen 2026-10-08) |
 | S2 | SQL-Identifier ungeprüft in SQL interpoliert | — | I4 (erledigt 2026-10-08) |
 | S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
-| S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 |
+| S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 (erledigt 2026-10-09) |
 | S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand siehe RUNBOOK) |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
 | S7 | Löschungen nicht repliziert; Orphan-Cleanup nur numerische IDs | K4, K5 | by design / `BACKLOG.md` |
@@ -320,5 +363,7 @@ Eval-Szenarien des Template-Repos, nicht diese Schwachstellen.
   oder auf sensible Ressourcen zugreift (neue Konfigurationsschlüssel, neue SQL-Statements,
   neue Downloads).
 - Neue Bedrohungen als ADR dokumentieren, wenn sie eine Architekturentscheidung auslösen.
-- Letzter Security-Sweep: 2026-10-08 (Ereignis-Auslöser I4, Ergebnis Bedrohung 1 und 6).
+- Letzter Security-Sweep: 2026-10-09 (Ereignis-Auslöser I7 – Treiber-Integrität; Ergebnis:
+  FirebirdClient 10.3.4 weiterhin aktuell ohne Client-Advisory, neu CVE-2026-40342 in Bedrohung 6,
+  Lesekonto-Empfehlung in Bedrohung 5). Vorheriger Sweep: 2026-10-08 (I4, Bedrohung 1 und 6).
   Nächster Security-Sweep (Web-Advisories, `principles/SECURITY_CURRENCY.md`): 2026-10-22.

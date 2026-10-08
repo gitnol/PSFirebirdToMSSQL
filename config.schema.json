@@ -145,6 +145,11 @@
           "type": "string",
           "description": "Pfad zur FirebirdSql.Data.FirebirdClient.dll"
         },
+        "DllSha256": {
+          "type": "string",
+          "description": "Erwarteter SHA-256 einer abweichenden Treiber-DLL (DllPath); ohne Angabe gelten nur die Original-Hashes der Version 10.3.4",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
         "User": {
           "type": "string",
           "description": "Firebird Benutzername (Fallback wenn Credential Manager leer)",

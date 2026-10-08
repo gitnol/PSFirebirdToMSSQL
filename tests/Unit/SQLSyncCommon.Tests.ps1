@@ -525,30 +525,91 @@ Describe 'Write-SyncStatus' {
     }
 }
 
-Describe 'Initialize-FirebirdDriver' {
+Describe 'Initialize-FirebirdDriver (Integrität, I7)' {
     BeforeAll {
         $script:DriverLoaded = [bool]([AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'FirebirdSql.Data.FirebirdClient' })
-        $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        # Offizielle SHA-256 der DLLs aus dem NuGet-Paket 10.3.4 (am 2026-10-09 aus dem Paket von nuget.org nachgerechnet)
+        $script:HashNet8 = '7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05'
+        $script:HashNetStd21 = '8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A'
+        $script:Dll = 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll'
     }
-    It 'lädt eine vorhandene DllPath-DLL ohne Download' {
-        if ($script:DriverLoaded) { Set-ItResult -Skipped -Because 'Treiber ist in dieser Session bereits geladen (frische pwsh-Session nötig)'; return }
-        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+    BeforeEach {
+        if ($script:DriverLoaded) { Set-ItResult -Skipped -Because 'Treiber ist in dieser Session bereits geladen (frische pwsh-Session nötig)' }
         Mock -ModuleName SQLSyncCommon Add-Type { }
         Mock -ModuleName SQLSyncCommon Invoke-WebRequest { throw 'darf nicht aufgerufen werden' }
-        $p = Initialize-FirebirdDriver -DllPath 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll' 6>$null
-        $p | Should -Be 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll'
+        Mock -ModuleName SQLSyncCommon Expand-Archive { }
+        Mock -ModuleName SQLSyncCommon New-Item { }
+        Mock -ModuleName SQLSyncCommon Remove-Item { }
+    }
+
+    It 'lädt eine vorhandene DllPath-DLL mit Original-Hash (<Name>) ohne Download' -TestCases @(
+        @{ Name = 'net8.0'; Hash = '7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05' }
+        @{ Name = 'netstandard2.1'; Hash = '8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A' }
+    ) {
+        param($Name, $Hash)
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $Hash } }
+        Initialize-FirebirdDriver -DllPath $script:Dll 6>$null | Should -Be $script:Dll
         Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 1 -Exactly
         Should -Invoke Invoke-WebRequest -ModuleName SQLSyncCommon -Times 0 -Exactly
     }
+    It 'lädt eine vorhandene DLL mit falschem Hash NICHT' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = ('0' * 64) } }
+        { Initialize-FirebirdDriver -DllPath $script:Dll 6>$null } | Should -Throw '*SHA-256*'
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
+    }
+    It 'akzeptiert eine abweichende DLL nur mit explizit erwartetem Hash (-ExpectedSha256)' {
+        $Custom = 'AB' * 32
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $Custom } }
+        Initialize-FirebirdDriver -DllPath $script:Dll -ExpectedSha256 $Custom.ToLower() 6>$null | Should -Be $script:Dll
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 1 -Exactly
+    }
+    It 'lehnt mit -ExpectedSha256 auch den Original-Hash ab, wenn er nicht dem erwarteten entspricht' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $script:HashNet8 } }
+        { Initialize-FirebirdDriver -DllPath $script:Dll -ExpectedSha256 ('AB' * 32) 6>$null } | Should -Throw '*SHA-256*'
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
+    }
     It 'wirft ohne Adminrechte, wenn der Treiber fehlt, und lädt nichts herunter' {
-        if ($script:DriverLoaded) { Set-ItResult -Skipped -Because 'Treiber ist in dieser Session bereits geladen'; return }
-        # Der innere Admin-Check ist nicht mockbar (docs/testing/UNIT_TESTS.md 4.2); als Admin liefe der Download-Pfad.
-        if ($script:IsAdmin) { Set-ItResult -Skipped -Because 'läuft mit Adminrechten – Download-Pfad nicht unit-testbar'; return }
         Mock -ModuleName SQLSyncCommon Test-Path { $false }
-        Mock -ModuleName SQLSyncCommon Add-Type { }
-        Mock -ModuleName SQLSyncCommon Invoke-WebRequest { throw 'darf nicht aufgerufen werden' }
+        Mock -ModuleName SQLSyncCommon Test-SQLSyncIsAdministrator { $false }
         { Initialize-FirebirdDriver -DllPath '' 6>$null } | Should -Throw '*ADMINISTRATOR*'
         Should -Invoke Invoke-WebRequest -ModuleName SQLSyncCommon -Times 0 -Exactly
         Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
+    }
+    It 'lädt als Admin herunter und lädt die DLL bei passendem Hash' {
+        $script:Downloaded = $false
+        Mock -ModuleName SQLSyncCommon Test-SQLSyncIsAdministrator { $true }
+        Mock -ModuleName SQLSyncCommon Invoke-WebRequest { $script:Downloaded = $true }
+        Mock -ModuleName SQLSyncCommon Test-Path { $script:Downloaded }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $script:HashNet8 } }
+        Initialize-FirebirdDriver -DllPath '' 6>$null | Should -BeLike '*lib\net8.0\FirebirdSql.Data.FirebirdClient.dll'
+        Should -Invoke Invoke-WebRequest -ModuleName SQLSyncCommon -Times 1 -Exactly
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 1 -Exactly
+    }
+    It 'verwirft einen Download mit falschem Hash und lädt nichts' {
+        $script:Downloaded = $false
+        Mock -ModuleName SQLSyncCommon Test-SQLSyncIsAdministrator { $true }
+        Mock -ModuleName SQLSyncCommon Invoke-WebRequest { $script:Downloaded = $true }
+        Mock -ModuleName SQLSyncCommon Test-Path { $script:Downloaded }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = ('0' * 64) } }
+        { Initialize-FirebirdDriver -DllPath '' 6>$null } | Should -Throw '*SHA-256*'
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
+        Should -Invoke Remove-Item -ModuleName SQLSyncCommon -ParameterFilter { $Recurse } -Times 1
+    }
+}
+
+Describe 'Get-SQLSyncConfig: Firebird.DllSha256' {
+    It 'übernimmt einen erwarteten Hash aus der Konfiguration' {
+        $p = Join-Path $TestDrive 'cfg.dllhash.json'
+        Set-Content $p ('{"Firebird":{"Server":"fb","Database":"C:\\db\\t.fdb","DllSha256":"' + ('AB' * 32) + '"},"MSSQL":{"Server":"s","Database":"STAGING"},"Tables":["T"]}')
+        (Get-SQLSyncConfig -ConfigPath $p -SchemaPath (Join-Path $PSScriptRoot '..\..\config.schema.json')).DllSha256 | Should -Be ('AB' * 32)
+    }
+    It 'lehnt im Schema einen Wert ab, der kein SHA-256 ist' {
+        $p = Join-Path $TestDrive 'cfg.dllhash.bad.json'
+        Set-Content $p '{"Firebird":{"Server":"fb","Database":"C:\\db\\t.fdb","DllSha256":"xyz"},"MSSQL":{"Server":"s","Database":"STAGING"},"Tables":["T"]}'
+        { Get-SQLSyncConfig -ConfigPath $p -SchemaPath (Join-Path $PSScriptRoot '..\..\config.schema.json') } | Should -Throw '*DllSha256*'
     }
 }

@@ -121,7 +121,7 @@ aufgebaut wird. `<Feld>` in der Meldung nennt das betroffene Konfigurationsfeld 
 - Das Sync-Skript lädt die Konfiguration **einmal** (Abschnitt 4) und überträgt die Werte in lokale Variablen;
   im Parallel-Block werden sie per `$using:` gelesen.
 - Modulfunktionen erhalten Werte als Parameter (`New-FirebirdConnectionString -Server … -Port …`,
-  `Initialize-FirebirdDriver -DllPath …`). Ausnahme: `Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials` bekommen
+  `Initialize-FirebirdDriver -DllPath … -ExpectedSha256 …`). Ausnahme: `Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials` bekommen
   das rohe JSON-Objekt (`RawConfig`).
 - Werte werden zur Laufzeit nicht verändert.
 
@@ -159,7 +159,8 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 | `Database` | string | kein | FILE | Pfad zur `.FDB`-Datei auf dem Server (Schema: Pflicht, Endung `.fdb`/`.FDB`) |
 | `Port` | int | `3050` | FILE | TCP-Port |
 | `Charset` | string | `"UTF8"` | FILE | Verbindungs-Zeichensatz. Schema: `UTF8`, `ISO8859_1`, `WIN1252`, `NONE` |
-| `DllPath` | string | kein | FILE | Optionaler Pfad zur Treiber-DLL (absolut oder relativ zum Skriptordner); hat Vorrang vor `%ProgramData%`. Wird **ohne** Hash-Prüfung geladen (Inkrement I7) |
+| `DllPath` | string | kein | FILE | Optionaler Pfad zur Treiber-DLL (absolut oder relativ zum Skriptordner); hat Vorrang vor `%ProgramData%`. Wird vor dem Laden per SHA-256 geprüft (Original-Hashes des Pakets 10.3.4 bzw. `DllSha256`); Abweichung → Exit 7 |
+| `DllSha256` | string | kein | FILE | Optional: erwarteter SHA-256 der Treiber-DLL, nur für eine abweichende DLL (z. B. andere Treiberversion). Ist er gesetzt, gilt **ausschließlich** dieser Hash statt der eingebauten Original-Hashes. Wird von allen vier Einstiegsskripten an `Initialize-FirebirdDriver -ExpectedSha256` durchgereicht. Schema: `^[A-Fa-f0-9]{64}$`. Hash nur aus einer offiziellen Quelle selbst berechnen, nie aus einer Fehlermeldung übernehmen |
 | `User` | string | `"SYSDBA"` | FILE | Benutzer **nur** für den Klartext-Fallback (Credential Manager liefert eigenen Benutzer) |
 | `Password` | string | kein | FILE | Unsicherer Fallback, wenn der Credential-Manager-Eintrag (`CredentialTarget`) nicht existiert |
 | `CredentialTarget` | string | `"SQLSync_Firebird"` | FILE | Name des Credential-Manager-Eintrags, den `Resolve-FirebirdCredentials` liest; anlegen mit `Setup_Credentials.ps1 -FirebirdTarget …`. Schema: `minLength 1` |
@@ -191,8 +192,9 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 
 - **Konfigwerte im Parallel-Block neu aus der Datei lesen** statt per `$using:` — erzeugt inkonsistente Läufe.
 - **Konfiguration zur Laufzeit mutieren** (Ausnahme: `Manage_Config_Tables.ps1`, das die Datei bewusst mit Backup neu schreibt).
-- **Magic Defaults im Code** neben `Get-SQLSyncConfig` — Bestand: `$PackageVersion`, `$ExpectedSha256` in
-  `Initialize-FirebirdDriver` sind bewusst Code-Konstanten (Integrität), keine Konfigwerte.
+- **Magic Defaults im Code** neben `Get-SQLSyncConfig` — Bestand: `$PackageVersion`, `$DownloadUrl` und `$KnownSha256` in
+  `Initialize-FirebirdDriver` sind bewusst Code-Konstanten (Integrität), keine Konfigwerte; `Firebird.DllSha256` ist nur
+  die Ausnahme für eine bewusst abweichende DLL.
 - **Neue Schlüssel nur in `config.sample.json` ergänzen** — Default muss in `Get-SQLSyncConfig`, Schlüssel und Grenze in
   `config.schema.json`; fehlt der Schlüssel im Schema, scheitert jede Konfig, die ihn nutzt, mit Exit 2
   (`additionalProperties: false`).

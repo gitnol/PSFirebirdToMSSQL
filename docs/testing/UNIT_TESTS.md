@@ -1,7 +1,7 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
 > **Stand 2026-10-09: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 130 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (117) – jede exportierte
+> 138 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (125) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
@@ -226,42 +226,49 @@ Analog für `Resolve-MSSQLCredentials` (Reihenfolge: `Integrated Security` → `
 
 Die Funktion prüft geladene Assemblies, sucht Kandidatenpfade (`DllPath`,
 `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\...`), lädt bei
-Bedarf per `Invoke-WebRequest` von NuGet, prüft SHA-256 und ruft `Add-Type -Path` auf.
-Unit-Tests dürfen **weder herunterladen noch eine DLL laden**:
+Bedarf per `Invoke-WebRequest` von NuGet, prüft **jede** DLL per SHA-256 (Original-Hashes
+`lib\net8.0`/`lib\netstandard2.1` oder `-ExpectedSha256`) und ruft erst dann `Add-Type -Path` auf.
+Unit-Tests dürfen **weder herunterladen noch eine DLL laden** – alle Pfade sind per Mock testbar:
 
 - `Mock Invoke-WebRequest`, `Mock Expand-Archive`, `Mock Add-Type`, `Mock Get-FileHash`,
-  `Mock Test-Path` jeweils mit `-ModuleName SQLSyncCommon`.
+  `Mock Test-Path`, `Mock New-Item`, `Mock Remove-Item` jeweils mit `-ModuleName SQLSyncCommon`.
+- Der Admin-Check ist die (nicht exportierte) Modulfunktion `Test-SQLSyncIsAdministrator` und wird
+  per `Mock Test-SQLSyncIsAdministrator -ModuleName SQLSyncCommon { $true }` bzw. `{ $false }`
+  gesteuert. Download- und Kein-Admin-Pfad laufen damit unabhängig davon, ob die Tests mit oder
+  ohne Adminrechte gestartet werden.
+- Download-Pfad: `Invoke-WebRequest` setzt im Mock ein Flag, `Test-Path` gibt dieses Flag zurück –
+  so „existiert“ die DLL erst nach dem Download.
 - Achtung: Ist der Treiber in der Test-Session bereits geladen (Schritt A,
-  `[AppDomain]::CurrentDomain.GetAssemblies()`), kehrt die Funktion sofort zurück — Tests daher
-  in einer frischen `pwsh`-Session laufen lassen, in der kein Firebird-Treiber geladen wurde.
-- Die innere Hilfsfunktion `Test-IsAdministrator` ist **innerhalb** von `Initialize-FirebirdDriver`
-  definiert und damit nicht mockbar. Der Pfad „Treiber fehlt, kein Admin → throw" ist nur
-  testbar, wenn die Tests ohne Adminrechte laufen; der Download-Pfad nur mit Adminrechten.
-  Für I7 vorgesehen: Admin-Check als Modulfunktion herausziehen, damit beide Pfade mockbar werden.
-- Umgesetzte Unit-Fälle: (a) `DllPath` existiert → kein Download, `Add-Type` genau einmal;
-  (b) ohne Adminrechte und ohne Treiber → throw, kein Download, kein `Add-Type`. Beide Fälle
-  werden per `Set-ItResult -Skipped` übersprungen, wenn der Treiber in der Session schon geladen
-  ist; Fall (b) zusätzlich, wenn die Tests mit Adminrechten laufen.
-- Mit I7 hinzuzufügen: Hash-Mismatch nach Download → throw mit „SHA-256 … stimmt nicht",
-  `Add-Type` nie aufgerufen.
+  `[AppDomain]::CurrentDomain.GetAssemblies()`), kehrt die Funktion ohne Prüfung sofort zurück —
+  die Fälle werden dann per `Set-ItResult -Skipped` übersprungen. Tests daher in einer frischen
+  `pwsh`-Session laufen lassen, in der kein Firebird-Treiber geladen wurde.
+- Umgesetzte Unit-Fälle (8, `Describe 'Initialize-FirebirdDriver (Integrität, I7)'`):
+  (a) `DllPath` mit Original-Hash `net8.0` bzw. `netstandard2.1` → kein Download, `Add-Type` genau
+  einmal (2 Testfälle); (b) vorhandene DLL mit falschem Hash → throw „SHA-256 …“, kein `Add-Type`;
+  (c) abweichende DLL mit passendem `-ExpectedSha256` (Kleinschreibung) → geladen; (d) mit
+  `-ExpectedSha256` wird auch der Original-Hash abgelehnt; (e) Treiber fehlt, kein Admin → throw
+  „ADMINISTRATOR“, kein Download; (f) Admin, Download mit passendem Hash → geladen aus
+  `lib\net8.0`; (g) Admin, Download mit falschem Hash → throw, kein `Add-Type`, Ordner per
+  `Remove-Item -Recurse` verworfen.
+- Dazu 2 Fälle in `Describe 'Get-SQLSyncConfig: Firebird.DllSha256'`: Hash aus der Konfiguration
+  wird übernommen; das Schema lehnt einen Wert ab, der kein SHA-256 ist.
 
 ```powershell
 Describe 'Initialize-FirebirdDriver' {
-    It 'lädt eine vorhandene DllPath-DLL ohne Download' {
+    It 'lädt eine vorhandene DLL mit falschem Hash NICHT' {
         Mock Test-Path -ModuleName SQLSyncCommon { $true }
         Mock Add-Type -ModuleName SQLSyncCommon { }
-        Mock Invoke-WebRequest -ModuleName SQLSyncCommon { throw 'darf nicht aufgerufen werden' }
+        Mock Get-FileHash -ModuleName SQLSyncCommon { [pscustomobject]@{ Hash = ('0' * 64) } }
 
-        $p = Initialize-FirebirdDriver -DllPath 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll'
-        $p | Should -Be 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll'
-        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 1 -Exactly
-        Should -Invoke Invoke-WebRequest -ModuleName SQLSyncCommon -Times 0
+        { Initialize-FirebirdDriver -DllPath 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll' 6>$null } |
+            Should -Throw '*SHA-256*'
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
     }
 }
 ```
 
-Dieser Fall dokumentiert zugleich S4: eine vorhandene/konfigurierte DLL wird heute **ohne**
-Hash-Prüfung geladen. Mit I7 kommt ein Test hinzu, der genau das verbietet (Hash-Mismatch → throw).
+Echter Gegenlauf (manuell, 2026-10-09): Original-DLL über `DllPath` → `geladen (SHA-256 geprüft)`,
+Exit 0; manipulierte Kopie (1 Byte angehängt) → Exit 7 vor jeder Datenbankverbindung.
 
 ### 4.3 `Setup-ScheduledTasks.ps1` (nur `-WhatIf`)
 
@@ -302,7 +309,7 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-09 (130 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 117, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-09 (138 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 125, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
@@ -319,7 +326,7 @@ Ist-Stand 2026-10-09 (130 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Get-StoredCredential` | Ja, nur lesend (Tag `Windows`) | nicht existierender Eintrag → `$null`; echte Einträge werden nie gelesen |
 | `Close-DatabaseConnection` | Ja | `$null` wird ignoriert; Close und Dispose je einmal; Dispose auch, wenn Close wirft |
 | `Write-SyncStatus` | Ja, mit `Mock Write-Host` | Format `[Tabelle] Text` und Farbe je Level |
-| `Initialize-FirebirdDriver` | Teilweise, mit Mocks (siehe 4.2) | `DllPath` vorhanden → kein Download; ohne Admin und ohne Treiber → throw ohne Download |
+| `Initialize-FirebirdDriver` | Ja, mit Mocks inkl. `Test-SQLSyncIsAdministrator` (siehe 4.2) | SHA-256-Prüfung für vorhandene/konfigurierte DLL (beide Original-Hashes, falscher Hash → throw ohne `Add-Type`), `-ExpectedSha256` ersetzt die Original-Hashes, ohne Admin und ohne Treiber → throw ohne Download, Download mit passendem/falschem Hash (Ordner verworfen) |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
 | Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`) und die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) |
 

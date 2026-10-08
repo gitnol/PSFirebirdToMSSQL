@@ -17,8 +17,9 @@ Repliziert die in der Konfigdatei gelisteten Tabellen einer Firebird-Datenbank
 ## Technologie / Abhängigkeiten
 
 - PowerShell 7.0+ (`ForEach-Object -Parallel`, ternärer Operator), Windows
-- `FirebirdSql.Data.FirebirdClient` 10.3.4 (NuGet, net8.0, SHA-256-geprüfter
-  Download nach `%ProgramData%\SQLSync\Drivers\...`, einmalig als Admin)
+- `FirebirdSql.Data.FirebirdClient` 10.3.4 (NuGet, net8.0; einmaliger Download
+  nach `%ProgramData%\SQLSync\Drivers\...` als Admin; jede DLL wird vor dem Laden
+  per SHA-256 gegen die Original-Hashes des Pakets bzw. `Firebird.DllSha256` geprüft)
 - `System.Data.SqlClient` (in PowerShell 7 enthalten; von Microsoft zugunsten
   `Microsoft.Data.SqlClient` abgekündigt, Migration im Backlog)
 - Firebird-Server 2.5+/3.x; MS SQL Server 2017+ (`STRING_AGG`, `CREATE OR ALTER`)
@@ -59,7 +60,7 @@ Vollständige Referenz: `architecture/CONFIGURATION.md`.
 | `General.DeleteLogOlderThanDays` | `30` | Log-Rotation, `0` = aus |
 | `General.IdColumn` | `"ID"` | Standard-ID-Spalte |
 | `General.TimestampColumns` | `["GESPEICHERT"]` | Kandidaten für die Timestamp-Spalte, erste vorhandene gewinnt |
-| `Firebird.*` | Port `3050`, Charset `UTF8` | `Server`, `Database`, `DllPath` (optional), `CredentialTarget` (Default `SQLSync_Firebird`), Fallback `User`/`Password` |
+| `Firebird.*` | Port `3050`, Charset `UTF8` | `Server`, `Database`, `DllPath` (optional), `DllSha256` (optional, nur für eine abweichende Treiber-DLL), `CredentialTarget` (Default `SQLSync_Firebird`), Fallback `User`/`Password` |
 | `MSSQL.*` | `"Integrated Security": false`, `Prefix`/`Suffix` `""` | `Server`, `Database`, `CredentialTarget` (Default `SQLSync_MSSQL`, z. B. ein Eintrag pro Server), Fallback `Username`/`Password`; `Port` wird ignoriert |
 | `Tables` | – (Pflicht, nicht leer) | Liste der Quelltabellen |
 | `TableOverrides.<TAB>` | – | `IdColumn` und/oder `TimestampColumn` je Tabelle |
@@ -88,7 +89,13 @@ Vorbereitung (einmal pro Lauf, sequentiell):
    Default `SQLSync_Firebird`) → Konfig-Passwort (Warnung). MSSQL: Integrated
    Security → Credential Manager (`MSSQL.CredentialTarget`, Default `SQLSync_MSSQL`) →
    Konfig-Passwort (Warnung). Fehler → exit 5.
-5. Treiber laden (`Initialize-FirebirdDriver`), Fehler → exit 7.
+5. Treiber laden (`Initialize-FirebirdDriver -DllPath … -ExpectedSha256 …`): bereits
+   geladene Assembly weiterverwenden (ohne Prüfung), sonst DLL suchen (`DllPath`,
+   `%ProgramData%\…\lib\net8.0`, `…\lib\netstandard2.1`), fehlt sie → als Admin von
+   NuGet laden; **jede** DLL vor `Add-Type` per SHA-256 prüfen (Original-Hashes
+   `lib\net8.0`/`lib\netstandard2.1` des Pakets 10.3.4, oder nur `Firebird.DllSha256`).
+   Abweichung, fehlende Adminrechte oder Ladefehler → exit 7, vor jeder
+   Datenbankverbindung.
 6. Pre-Flight: Ziel-DB über `master` prüfen und ggf. mit `RECOVERY SIMPLE`
    anlegen; `sp_Merge_Generic` neu installieren, wenn sie fehlt, nicht genau 4
    Parameter hat oder `RecreateStoredProcedure` gesetzt ist. Fehler → exit 9
@@ -251,7 +258,7 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Migration per `operations/RUNBOOK.md` |
 | ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
 | ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (S9) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
-| Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung | Prüfung nur beim Download (S4) | geplant in I7 |
+| ~~Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung~~ | früher Prüfung nur beim Download (S4) | behoben in I7 (2026-10-09): jede DLL wird vor dem Laden geprüft, Abweichung → Exit 7; echter Lauf mit manipulierter Kopie bestanden. Grenze: eine in der Sitzung bereits geladene Assembly wird ohne Prüfung weiterverwendet |
 | Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung) | striktes `> MAX(ts)` (S6) | geplant in I8; Workaround Weekly Full |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |

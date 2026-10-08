@@ -24,12 +24,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Mittlere Priorität
 
-### I7: Treiber-Integrität für vorhandene/konfigurierte DLL
-
-- [ ] `Initialize-FirebirdDriver` prüft SHA-256 auch, wenn die DLL bereits in `%ProgramData%\SQLSync\Drivers\...` liegt oder per `DllPath` konfiguriert ist (Abweichung → Abbruch mit Exit 7, Ausnahme nur über expliziten Konfig-Schalter mit eigenem erwarteten Hash)
-- [ ] NTFS-Rechte auf den Treiberordner in `operations/SETUP.md` dokumentieren (nur Administratoren schreibend)
-- **DoD:** manipulierte DLL (ein Byte geändert) wird nicht geladen; gemeinsame DoD erfüllt
-
 ### I8: Inkrementelles Wasserzeichen mit Überlappungsfenster
 
 Bezug: `KNOWN_ISSUES.md` K3.
@@ -54,6 +48,7 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 ## Abgeschlossen
 
+- I7 Treiber-Integrität: SHA-256-Prüfung für jede DLL vor dem Laden (Download, vorhanden, `DllPath`), Original-Hashes net8.0 + netstandard2.1, Ausnahme nur über `Firebird.DllSha256`; Admin-Check mockbar, `SecurityProtocol` wird wiederhergestellt — [ABGESCHLOSSEN 2026-10-09] (Commit siehe `STATE.md`)
 - I6 Konfig gegen `config.schema.json` geprüft (Fail-Fast, Exit 2; Schema-Muster an die Namens-Whitelist angeglichen), gemeinsame Pfadauflösung `Resolve-SQLSyncConfigPath`, `-ConfigFile` für `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` — [ABGESCHLOSSEN 2026-10-09] (Commit c5f94f0)
 - I5 Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale des Firebird-Schemas, Hauptskript nutzt `ConvertTo-SqlServerType` und `Get-TableColumnConfig` (Modul im Parallel-Block); Integrationslauf mit Werten bis zur 6. Nachkommastelle identisch — [ABGESCHLOSSEN 2026-10-08] (Commit 2d1a7ef)
 - I9 Scheduled-Task-Setup parametrisiert (Installationsordner, Konfigdateien, Tasknamen, Zeitpläne als Parameter mit neutralen Defaults; `-WhatIf` ohne Adminrechte; Option `-RunAsUser`/`-GmsaAccount`); keine internen Begriffe mehr in versionierten Dateien — [ABGESCHLOSSEN 2026-10-08] (Commit 438dd57)

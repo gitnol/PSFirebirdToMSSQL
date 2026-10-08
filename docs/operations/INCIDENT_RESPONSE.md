@@ -21,8 +21,8 @@ Spalten `Status`, `Sanity`).
 
 | Stufe | Definition | Beispiele (projektbezogen) | Reaktionsfenster |
 |---|---|---|---|
-| **P0 – Kritisch** | Datenleck, Credential-Kompromittierung, Datenverlust im Ziel | Passwort aus `config.json`/`*.bak`/Log im öffentlichen Repo oder auf einem Share gefunden; manipulierte Treiber-DLL in `%ProgramData%\SQLSync\Drivers\...` oder `DllPath`; Zieltabellen geleert/gedroppt (z. B. durch manipulierte Konfig, Identifier-Injection S2); Zieldaten mit personenbezogenen Daten für Unbefugte lesbar | sofort |
-| **P1 – Hoch** | Sync fällt für alle oder kritische Tabellen aus, oder Zieldaten nachweislich falsch | Abbruch mit Exit-Code 2/5/7/9; Exit 10 für alle bzw. kritische Tabellen; Credential-Eintrag fehlt nach Kontowechsel (Exit 5); Task läuft nicht mehr (Windows-Passwort abgelaufen); Sanity `FEHLER` (Ziel hat weniger Zeilen als Quelle, Exit 11); Nachkommastellen gerundet (S5, Zieltabellen aus v2.13 oder älter; `operations/RUNBOOK.md`) | < 2 Stunden |
+| **P0 – Kritisch** | Datenleck, Credential-Kompromittierung, Datenverlust im Ziel | Passwort aus `config.json`/`*.bak`/Log im öffentlichen Repo oder auf einem Share gefunden; nachweislich manipulierte Treiber-DLL in `%ProgramData%\SQLSync\Drivers\...` oder `DllPath`; Codeausführung auf dem Firebird-Server über das Sync-Konto (CVE-2026-40342); Zieltabellen geleert/gedroppt (z. B. durch manipulierte Konfig, Identifier-Injection S2); Zieldaten mit personenbezogenen Daten für Unbefugte lesbar | sofort |
+| **P1 – Hoch** | Sync fällt für alle oder kritische Tabellen aus, oder Zieldaten nachweislich falsch | `SHA-256 der Treiber-DLL … stimmt nicht` (Exit 7) – möglicher Manipulationsversuch, bis zur Klärung als Sicherheitsvorfall behandeln (bestätigt → P0); Abbruch mit Exit-Code 2/5/7/9; Exit 10 für alle bzw. kritische Tabellen; Credential-Eintrag fehlt nach Kontowechsel (Exit 5); Task läuft nicht mehr (Windows-Passwort abgelaufen); Sanity `FEHLER` (Ziel hat weniger Zeilen als Quelle, Exit 11); Nachkommastellen gerundet (S5, Zieltabellen aus v2.13 oder älter; `operations/RUNBOOK.md`) | < 2 Stunden |
 | **P2 – Mittel** | Einzelne Tabellen fehlerhaft oder verspätet, kein Sicherheitsrisiko | Einzelne Tabelle mit Status `Fehler` nach allen Retries (Exit 10); Sanity `WARNUNG` (+n, z. B. nicht replizierte Löschungen); Schema-Drift (neue Spalte in Firebird, S11); Laufzeit überschreitet 30-Minuten-Takt | < 24 Stunden |
 | **P3 – Niedrig** | Kosmetisch / nicht blockierend | Doppelte Ausgabezeile in `Test-SQLSyncConnections.ps1`; veraltete Doku (S12) | Backlog |
 
@@ -44,7 +44,14 @@ Ziel: weiteren Schaden verhindern, Beweise sichern. Erst danach analysieren.
   `SECRETS_MANAGEMENT.md` → Rotation). Bei Leak im Git-Repo: Rotation vor Historienbereinigung.
 - **Verdacht auf manipulierte DLL oder Konfig:** Dateien nicht löschen, sondern Hash sichern
   (`Get-FileHash ... -Algorithm SHA256`) und Kopie mit Zeitstempeln wegsichern; Hash der Treiber-DLL
-  mit dem Sollwert in `docs/security/DEPENDENCY_AUDIT.md` vergleichen.
+  mit den Sollwerten in `docs/security/DEPENDENCY_AUDIT.md` vergleichen.
+- **Hash-Abweichung der Treiber-DLL** (`SHA-256 der Treiber-DLL (vorhanden) stimmt nicht …`, Exit 7):
+  Der Sync hat die DLL **nicht** geladen und keine Verbindung aufgebaut – der Schutz hat gegriffen,
+  die Ursache ist aber offen (P1). Die gemeldete Datei (Pfad steht in der Meldung) samt Zeitstempeln,
+  Besitzer (`Get-Acl`) und Hash wegsichern, **bevor** der Treiberordner gelöscht und neu geladen wird;
+  `icacls "$env:ProgramData\SQLSync\Drivers"` dokumentieren. Klären, wer Schreibzugriff hatte und
+  ob eine bewusste Treiberänderung vorlag. Den erhaltenen Hash **nicht** als `Firebird.DllSha256`
+  übernehmen. Wiederherstellung: `operations/RUNBOOK.md`, „SHA-256 der Treiber-DLL … stimmt nicht“.
 - **Logs sichern,** bevor die nächste Log-Rotation (`DeleteLogOlderThanDays`) sie löscht:
   `Logs\` und die betroffene Konfigurationsdatei kopieren.
 - **Zieldaten:** Bei Verdacht auf Datenverlust keine weiteren Full-Läufe; DB-Backup des Ziels
@@ -58,7 +65,7 @@ Ziel: weiteren Schaden verhindern, Beweise sichern. Erst danach analysieren.
 - **Wann hat es begonnen?** Logs nach Datum durchsuchen, z. B.
   `Select-String -Path .\Logs\Sync_*.log -Pattern 'Fehler|FEHLER|WARNUNG'`; Verlauf im Task
   Scheduler (Ereignisanzeige *Microsoft-Windows-TaskScheduler/Operational*).
-- **Welcher Vektor?** Abgleich mit `security/THREAT_MODEL.md` (Bedrohungen 1–5) und
+- **Welcher Vektor?** Abgleich mit `security/THREAT_MODEL.md` (Bedrohungen 1–6) und
   `KNOWN_ISSUES.md` (S1–S13).
 - **Diagnose:** `.\Test-SQLSyncConnections.ps1 -ConfigFile <Konfig>` (Exit 0 = Verbindungen und
   `sp_Merge_Generic` OK).

@@ -91,7 +91,8 @@ catch {
 # -----------------------------------------------------------------------------
 try {
     $DllPath = Get-ConfigValue $Config.Firebird "DllPath" ""
-    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $DllPath -ScriptDir $ScriptDir
+    $DllSha256 = Get-ConfigValue $Config.Firebird "DllSha256" $null
+    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $DllPath -ScriptDir $ScriptDir -ExpectedSha256 $DllSha256
 }
 catch {
     Write-Error $_.Exception.Message

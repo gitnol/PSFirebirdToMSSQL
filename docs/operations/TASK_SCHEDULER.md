@@ -147,7 +147,7 @@ ausführen.
 | Persönliches Benutzerkonto mit gespeichertem Windows-Passwort | Passwortwechsel bricht die Tasks; Kopplung an eine Person; Credential-Manager-Einträge hängen am selben Konto | Option vorhanden (S13): `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Default bleibt der aktuelle Benutzer |
 | Fehlende Dateien nur als Warnung | Tasks werden auch mit falschen Pfaden angelegt | offen; Gegenmittel `-WhatIf` vor dem Registrieren |
 | Kein `ExecutionTimeLimit` | hängender Lauf blockiert per `IgnoreNew` alle Folgeläufe bis zu 72 h | offen; `operations/RUNBOOK.md` „Task hängt" |
-| `-ExecutionPolicy Bypass` | Skriptsignatur wird nicht geprüft; Integrität hängt allein an den Dateirechten des Installationsordners | offen (S4) |
+| `-ExecutionPolicy Bypass` | Skriptsignatur wird nicht geprüft; Integrität der Skripte hängt allein an den Dateirechten des Installationsordners (die Treiber-DLL wird seit I7 per SHA-256 geprüft) | offen (Rechte: `security/THREAT_MODEL.md` Bedrohung 5) |
 
 ---
 

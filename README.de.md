@@ -15,6 +15,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
   - [Features](#features)
   - [Dateistruktur](#dateistruktur)
   - [Voraussetzungen](#voraussetzungen)
+    - [Firebird-Treiber (Integritätsprüfung)](#firebird-treiber-integritätsprüfung)
   - [Installation](#installation)
     - [Schritt 1: Dateien kopieren](#schritt-1-dateien-kopieren)
     - [Schritt 2: Konfiguration anlegen](#schritt-2-konfiguration-anlegen)
@@ -104,6 +105,19 @@ PSFirebirdToMSSQL/
 | Firebird .NET Provider | Wird automatisch via NuGet installiert                                         |
 | Firebird-Zugriff       | Leserechte auf der Quelldatenbank                                              |
 | MSSQL-Zugriff          | Berechtigung, DBs zu erstellen (`db_creator`) oder min. `db_owner` auf Ziel-DB |
+
+### Firebird-Treiber (Integritätsprüfung)
+
+Beim ersten Lauf (als Administrator) lädt `Initialize-FirebirdDriver` das Paket `FirebirdSql.Data.FirebirdClient` 10.3.4 von NuGet nach `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\`. **Jede** DLL wird vor dem Laden per SHA-256 geprüft – der frische Download, eine bereits in `%ProgramData%` liegende DLL und eine per `Firebird.DllPath` konfigurierte DLL. Zulässig sind nur die Original-DLLs aus dem NuGet-Paket 10.3.4:
+
+| DLL | SHA-256 |
+|---|---|
+| `lib\net8.0` | `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05` |
+| `lib\netstandard2.1` | `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A` |
+
+Bei Abweichung bricht das Skript vor jeder Datenbankverbindung ab (`SHA-256 der Treiber-DLL ... stimmt nicht ... Treiber wurde NICHT geladen`, Sync-Exit-Code 7). Den gemeldeten Hash **nicht** einfach in die Konfiguration übernehmen – die Datei aus dem offiziellen Paket neu beziehen (Treiberordner löschen und einmal als Administrator ausführen). Für eine bewusst andere Treiberversion deren erwarteten Hash in `Firebird.DllSha256` eintragen (64 Hex-Zeichen, selbst aus dem offiziellen Paket berechnet); dann gilt nur dieser Hash. Schreibrechte auf `%ProgramData%\SQLSync\Drivers` sollten auf Administratoren beschränkt sein (Prüfung: `icacls "$env:ProgramData\SQLSync\Drivers"`).
+
+**Firebird-Konto:** Statt `SYSDBA` ein eigenes Lesekonto verwenden (nur `SELECT` auf die konfigurierten Tabellen, keine DDL, kein `CREATE FUNCTION`) und den Firebird-Server auf 5.0.4 / 4.0.7 / 3.0.14 oder neuer halten. Hintergrund: CVE-2026-40342 (CVSS 9.9) erlaubt einem angemeldeten Benutzer mit `CREATE FUNCTION` auf älteren Versionen Codeausführung als OS-Konto des Firebird-Servers.
 
 ---
 
@@ -508,7 +522,7 @@ Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 | 1 | `SQLSyncCommon.psm1` nicht gefunden |
 | 2 | Konfigurationsfehler (inkl. Schema-Verstoß und ungültiger Tabellen-/Spaltennamen) |
 | 5 | Credentials nicht gefunden |
-| 7 | Firebird-Treiber nicht ladbar |
+| 7 | Firebird-Treiber nicht ladbar (inkl. SHA-256-Abweichung der Treiber-DLL) |
 | 9 | Pre-Flight (Datenbank / `sp_Merge_Generic`) fehlgeschlagen |
 | 10 | Mindestens eine Tabelle fehlgeschlagen |
 | 11 | Sanity Check `FEHLER` (Ziel hat weniger Zeilen als Quelle); abschaltbar über `FailOnSanityError` |
@@ -565,6 +579,15 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.16 (2026-10-09) - Integritätsprüfung des Treibers
+- Modul-/Repo-Stand; `Sync_Firebird_MSSQL_AutoSchema.ps1` selbst bleibt v2.15
+- `Initialize-FirebirdDriver` prüft **jede** DLL vor `Add-Type` per SHA-256: frischer Download, bereits in `%ProgramData%\SQLSync\Drivers\...` vorhandene DLL und per `Firebird.DllPath` konfigurierte DLL (vorher nur der Download). Zulässig: Original-Hashes von `lib\net8.0` und `lib\netstandard2.1` aus dem NuGet-Paket 10.3.4. Abweichung → `SHA-256 der Treiber-DLL (vorhanden|Download) stimmt nicht ... Treiber wurde NICHT geladen`, Sync-Exit-Code 7 (`Test-SQLSyncConnections.ps1` 4, `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` 3); ein abweichender Download-Ordner wird verworfen
+- Neuer optionaler Konfigschlüssel `Firebird.DllSha256` (Schema `^[A-Fa-f0-9]{64}$`) bzw. Parameter `-ExpectedSha256` für eine abweichende Treiber-DLL; dann gilt nur dieser Hash. Alle vier Skripte reichen ihn durch
+- `ServicePointManager.SecurityProtocol` wird nur für den Download gesetzt und danach wiederhergestellt
+- Admin-Check ist jetzt die Modulfunktion `Test-SQLSyncIsAdministrator` (nicht exportiert), dadurch ist der Download-/Hash-Pfad unit-getestet (138 Pester-Tests)
+- Grenze: Ist die Assembly in der Sitzung bereits geladen (z. B. durch ein anderes Modul), wird sie ohne Prüfung weiterverwendet
+- Sicherheitshinweis: Firebird-Server-CVE-2026-40342 (CVSS 9.9, < 5.0.4 / < 4.0.7 / < 3.0.14) – Firebird-Lesekonto statt `SYSDBA` verwenden und Server aktualisieren
 
 ### v2.15 (2026-10-09) - Schema-Prüfung aktiv
 - `Get-SQLSyncConfig -SchemaPath` prüft jetzt Fail-Fast gegen `config.schema.json` (`Test-Json -Schema`, in allen PowerShell-7-Versionen verfügbar): Fehler `Konfiguration verletzt das Schema (config.schema.json): …` mit JSON-Pfad je Verstoß; unbekannte Schlüssel (Tippfehler) werden erkannt. Fehlt die Schema-Datei, erscheint nur eine Warnung

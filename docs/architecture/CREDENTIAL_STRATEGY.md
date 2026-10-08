@@ -90,7 +90,7 @@ ist das akzeptiert; eine Umstellung brächte wenig Gewinn.
 | Manueller Lauf / Test | interaktiver Benutzer | ok |
 | Task Scheduler | Default: aktueller Benutzer mit gespeichertem Windows-Passwort (`Register-ScheduledTask -User … -Password …`); wählbar per `Setup-ScheduledTasks.ps1 -RunAsUser` (Dienstkonto, Passwort wird abgefragt) oder `-GmsaAccount` (gMSA, Principal mit LogonType `Password`, kein gespeichertes Passwort) | dediziertes Dienstkonto oder gMSA mit Least Privilege; mit persönlichem Konto bricht ein Passwortwechsel die Tasks |
 | SQL-Server-Rechte | je nach Konto (nicht dokumentiert) | in der Zieldatenbank: DDL (`CREATE TABLE`, `ALTER TABLE`, `CREATE OR ALTER PROCEDURE`), `TRUNCATE`, Lesen/Schreiben/Löschen, Bulk-Insert (`SqlBulkCopy`), `EXECUTE` auf `sp_Merge_Generic`; `dbcreator` nur, wenn die Datenbank automatisch angelegt werden soll. Ein minimaler Rollensatz ist nicht verifiziert (offen) |
-| Firebird-Rechte | häufig `SYSDBA` (Beispiel im Setup) | eigener Firebird-Benutzer mit reinem Leserecht auf die konfigurierten Tabellen und Systemtabellen (`RDB$…`) |
+| Firebird-Rechte | häufig `SYSDBA` (Beispiel im Setup) | eigenes Firebird-**Lesekonto** statt `SYSDBA`: nur `SELECT` auf die konfigurierten Tabellen (die Systemtabellen `RDB$…` sind standardmäßig für alle Benutzer lesbar), keine DDL, kein `CREATE FUNCTION`. Begründung: CVE-2026-40342 (CVSS 9.9, Firebird-Server < 5.0.4 / < 4.0.7 / < 3.0.14) – ein Konto mit `CREATE FUNCTION` kann darüber Code als OS-Konto des Firebird-Servers ausführen; ein Leck der Sync-Credentials würde mit `SYSDBA` zur Codeausführung auf dem ERP-Datenbankserver (`security/THREAT_MODEL.md` Bedrohung 5 und 6). Anlage: `operations/SETUP.md` |
 
 Niemals Domänen-Admin als Task-Konto.
 

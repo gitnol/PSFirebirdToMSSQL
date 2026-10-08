@@ -133,7 +133,7 @@ Trifft nicht zu – das Projekt verbindet sich nicht per SSH/SCP.
 | Lücke | Fundort | Maßnahme |
 |---|---|---|
 | Klartext-Passwort-Fallback aus Konfigurationsdatei (und deren `*.bak`-Kopien) | `Resolve-FirebirdCredentials`, `Resolve-MSSQLCredentials`, `Manage_Config_Tables.ps1` | Betrieb: Passwortfelder leer lassen; Backlog: Fallback per Schalter deaktivierbar machen (S3) |
-| `SYSDBA` als Default-Benutzer, wenn `Firebird.User` fehlt | `Resolve-FirebirdCredentials` | Dediziertes Lesekonto verwenden |
+| `SYSDBA` als Default-Benutzer, wenn `Firebird.User` fehlt | `Resolve-FirebirdCredentials` | Dediziertes Lesekonto verwenden (nur `SELECT` auf die konfigurierten Tabellen, keine DDL, kein `CREATE FUNCTION`). Begründung: CVE-2026-40342 (CVSS 9.9, Firebird-Server < 5.0.4 / < 4.0.7 / < 3.0.14) – mit `CREATE FUNCTION` wird ein Leck der Sync-Credentials zur Codeausführung auf dem ERP-Datenbankserver (`THREAT_MODEL.md` Bedrohung 5 und 6). Anlage: `operations/SETUP.md` |
 | Task läuft per Default als interaktiver Benutzer mit gespeichertem Windows-Passwort | `Setup-ScheduledTasks.ps1` | Option vorhanden: `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Umstellung ist Betriebsentscheidung |
 | Kein `Encrypt=True` im MSSQL-Connection-String; Firebird-Wire-Encryption nicht explizit gesetzt | `New-MSSQLConnectionString`, `New-FirebirdConnectionString` | Server-seitig erzwingen; Backlog: konfigurierbar machen |
 | Integrated-Security-Zweig baut den Connection-String per Interpolation (nicht über `DbConnectionStringBuilder`) | `New-MSSQLConnectionString` | Niedriges Risiko (Werte aus Konfig); in I4 nicht geändert, weiterhin offen |
@@ -144,7 +144,7 @@ Trifft nicht zu – das Projekt verbindet sich nicht per SSH/SCP.
 
 - [ ] Kein Klartext-Passwort im Quellcode, in `config*.json` oder `*.bak`
 - [ ] `SQLSync_Firebird` (und ggf. `SQLSync_MSSQL`) unter dem **Task-Konto** angelegt
-- [ ] Firebird-Konto mit reinen Leserechten statt `SYSDBA`
+- [ ] Firebird-Lesekonto statt `SYSDBA` (nur `SELECT`, kein `CREATE FUNCTION`/DDL – CVE-2026-40342); Firebird-Server ≥ 5.0.4 / 4.0.7 / 3.0.14
 - [ ] MSSQL: Integrated Security bevorzugt; Login nur mit Rechten auf die Ziel-DB, `dbcreator` nur falls Auto-Create nötig
 - [ ] Task Scheduler: Dediziertes Dienstkonto mit minimalen Rechten – kein lokaler Administrator ohne Notwendigkeit
 - [ ] Credential-Manager-Targets eindeutig benannt (`SQLSync_*`, ggf. mit Serverzusatz) – kein generisches `"password"`

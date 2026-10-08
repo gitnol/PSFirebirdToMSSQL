@@ -78,7 +78,7 @@ catch {
 # 3. TREIBER LADEN
 # -----------------------------------------------------------------------------
 try {
-    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir
+    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir -ExpectedSha256 $Config.DllSha256
 }
 catch {
     Write-Error $_.Exception.Message

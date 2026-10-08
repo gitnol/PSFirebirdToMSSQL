@@ -79,7 +79,7 @@ Implementiert im Parallel-Block des Sync-Skripts (Abschnitt 8):
 | `SQLSyncCommon.psm1` fehlt | `1` | vor Transcript-Start |
 | Konfiguration fehlt / ungültig (`Get-SQLSyncConfig`) | `2` | inkl. Schema-Prüfung (seit v2.15): `Konfiguration verletzt das Schema (config.schema.json): … bei "/General/GlobalTimeout"; …` (je Verstoß der JSON-Pfad; Typfehler, fehlende Pflichtfelder, Grenzen, unbekannte Schlüssel/Tippfehler); fehlt die Schema-Datei → nur Warnung, Lauf geht weiter. Inkl. Namensprüfung (seit v2.12): `Ungültiger Name in '<Feld>': …` bei leerem, zu langem (> 63) oder nicht erlaubtem Namen (nur `A-Z`, `a-z`, `0-9`, `_`, `$`) bzw. `Ungültiger Name: Zieltabelle '…' … ist länger als 128 Zeichen.`; Abbruch vor jedem Verbindungsaufbau, Regeln in `docs/architecture/CONFIGURATION.md` |
 | Keine Credentials (`Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials`) | `5` | |
-| Treiber nicht ladbar (`Initialize-FirebirdDriver`, inkl. SHA-256-Abweichung, fehlende Admin-Rechte beim Erst-Download) | `7` | |
+| Treiber nicht ladbar (`Initialize-FirebirdDriver`, inkl. SHA-256-Abweichung, fehlende Admin-Rechte beim Erst-Download) | `7` | Hash-Abweichung (seit I7 für jede DLL: Download, vorhanden, `DllPath`): `SHA-256 der Treiber-DLL (vorhanden) stimmt nicht: <Pfad> (erhalten <Hash>, erlaubt <Hash> / <Hash>). Treiber wurde NICHT geladen.` bzw. `(Download)`; Abbruch vor jeder Datenbankverbindung, beim Download wird der Ordner verworfen. Möglicher Manipulationsversuch → `docs/operations/RUNBOOK.md`, `docs/operations/INCIDENT_RESPONSE.md` |
 | Pre-Flight: Datenbank prüfen/anlegen über `master` fehlgeschlagen | `9` | z. B. fehlendes `dbcreator`, Server nicht erreichbar |
 | Pre-Flight: `sp_Merge_Generic` prüfen/installieren fehlgeschlagen | `9` | `sql_server_setup.sql` fehlt, Verbindung scheitert oder **ein SQL-Batch** der Datei schlägt fehl (`Fehler beim Ausführen eines SQL-Batch aus 'sql_server_setup.sql': …`); nur „Database … already exists" wird ignoriert |
 | Mindestens eine Tabelle mit Status `Fehler` (nach allen Retries), oder weniger Ergebnisse als konfigurierte Tabellen (z. B. Abbruch eines Parallel-Blocks außerhalb seines `try`; auch: gar keine Ergebnisse) | `10` | hat Vorrang vor `11`; fehlende Tabellen erscheinen in der `ERGEBNIS`-Zeile als `<Name> (kein Ergebnis)` |
@@ -98,7 +98,7 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Modul oder Konfigdatei fehlt, oder ein Verbindungstest fehlgeschlagen | `1` |
 | Konfiguration nicht parsebar / ungültig (inkl. Schema-Verstoß, Namensprüfung) | `2` |
 | Keine Credentials | `3` |
-| Treiber nicht ladbar | `4` |
+| Treiber nicht ladbar (inkl. SHA-256-Abweichung) | `4` |
 
 ### `Get_Firebird_Schema.ps1`
 
@@ -107,7 +107,7 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Erfolg | `0` (implizit) |
 | Modul oder Konfigdatei (`-ConfigFile`, Default `config.json`) fehlt | `1` |
 | Konfiguration ungültig (`Get-SQLSyncConfig`: Parsefehler, Schema-Verstoß, Namensprüfung) | `2` |
-| Treiber nicht ladbar | `3` |
+| Treiber nicht ladbar (inkl. SHA-256-Abweichung) | `3` |
 | Analysefehler (Verbindung, Tabelle nicht vorhanden) | `4` |
 | Keine Credentials | `5` |
 
@@ -118,7 +118,7 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Erfolg oder Abbruch durch Benutzer (keine Auswahl, keine Änderung) | `0` |
 | Modul oder Konfigdatei (`-ConfigFile`, Default `config.json`) fehlt | `1` |
 | Konfiguration ungültig (Startprüfung über `Get-SQLSyncConfig`: Schema-Verstoß, Namensregeln wie `Ungültiger Name in '<Feld>': …`; vor GridView und Backup, Datei bleibt unverändert), oder Firebird-Metadaten nicht lesbar | `2` |
-| Treiber nicht ladbar | `3` |
+| Treiber nicht ladbar (inkl. SHA-256-Abweichung) | `3` |
 | Auswahl würde alle Tabellen entfernen (`Abbruch: Es würden alle Tabellen entfernt. …`; es wird nichts geschrieben), oder Backup/Schreiben der Konfiguration fehlgeschlagen | `4` |
 | Keine Credentials | `5` |
 
