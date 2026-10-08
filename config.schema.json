@@ -119,7 +119,7 @@
           "type": "string",
           "description": "Hostname oder IP-Adresse des Firebird-Servers",
           "minLength": 1,
-          "examples": ["svrerp01", "192.168.1.100"]
+          "examples": ["FIREBIRD01", "192.168.1.100"]
         },
         "Database": {
           "type": "string",

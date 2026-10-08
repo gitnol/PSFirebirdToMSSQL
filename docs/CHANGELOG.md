@@ -24,7 +24,7 @@ Abschnitt „Changelog" von `README.md`.
 - Öffentliche Docs, READMEs, Schema, `Setup_Credentials.ps1` und Tests: interne Hostnamen, Pfade und
   Credential-Eintragsnamen durch Rollen bzw. fiktive Beispielwerte ersetzt; Versionsangaben einzelner
   interner Server aus Threat Model, Dependency-Audit und STATE entfernt
-- `config.sample.json`, `config.schema.json`, READMEs: Beispielserver `SQLSERVER01`, Platzhalter-Zugangsdaten
+- `config.sample.json`, `config.schema.json`, READMEs: Beispielserver `SQLSERVER01` / `FIREBIRD01`, Platzhalter-Zugangsdaten
   (vorher realer Servername bzw. realistisch wirkende Werte — bereits vor I1 öffentlich auf `main`)
 - Lokale Branch-History (9 Commits seit `721d5e0`, nie gepusht) zu einem bereinigten Commit zusammengefasst;
   die früheren Hashes in `STATE.md`/`TODO.md`/`KNOWN_ISSUES.md` sind durch den neuen Hash ersetzt

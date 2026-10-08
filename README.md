@@ -137,7 +137,7 @@ Copy `config.sample.json` to `config.json` and adjust the values.
     "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE"]
   },
   "Firebird": {
-    "Server": "svrerp01",
+    "Server": "FIREBIRD01",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
     "Port": 3050,
     "Charset": "UTF8"
