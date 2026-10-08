@@ -12,6 +12,30 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Reflexion nach I6 (Phase 1c)
+
+### Changed
+- `STATE.md`: „Nächste Reflexion" auf den Abschluss der nächsten drei Inkremente gesetzt (I7, I8, I10 — I9 ist
+  bereits vorgezogen erledigt)
+- `LESSONS_LEARNED.md`: L6 (neue Fail-Fast-Prüfungen vor Aktivierung gegen den Bestand prüfen)
+
+### Confidence / Ungeprüft
+- Struktur-Checks, Health-Check (Hinweis zeigt nur auf offenes I10), Interna-Scan (0 Treffer) und
+  semantische Stichprobe (Konfigschlüssel Code ↔ Schema ↔ `CONFIGURATION.md`: einzige Abweichung das
+  bekannte `MSSQL.Port`, K9) sauber.
+- Advocatus Diaboli: zwei unbelegte Aussagen wurden erst durch Selbstprüfung gefunden (I5-Strategiewahl,
+  Subagent-Aussage zum RUNBOOK — beide nachträglich per Lauf belegt bzw. korrigiert); Messfehler
+  `grep -c $'\r$'`; Testdatenbank in I4 ungefragt neu angelegt (L4); Doku-Aufwand pro Inkrement weiter
+  10–20 Dateien (Backlog „Doku-Duplikate", Kandidat für I10). Der Advocatus-Diaboli-Hook ist weiterhin
+  nicht eingerichtet (Freigabe beim Nutzer).
+- Template-Backport **nicht durchgeführt** (vollautomatischer Lauf ohne Freigabe). Vorschläge:
+  **wichtig:** L3 Mutationsprüfung für Charakterisierungs-/Strukturumbau-Tests → `base/KICKOFF.md` Phase 2
+  (zweimal angewendet: I3, I9); **sinnvoll:** L6 → `base/principles/FAIL_FAST.md`; **sinnvoll:** L1
+  gitignore-Muster verankern → `base/BOOTSTRAP.md`. Cross-Pollination L3/L6: alle Stacks haben ein echtes
+  Analogon (Brownfield-Tests, Konfig-/Schema-Validierung) — idiomatisch prüfen.
+
+---
+
 ## 2026-10-09 I6 – Config-Schema-Validierung + gemeinsame Configpfad-Auflösung
 
 ### Added

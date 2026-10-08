@@ -77,6 +77,21 @@ Pre-Commit-/Commit-Msg-Hook gegen eine gitignored Denylist, Branch per Squash be
 
 ---
 
+## L6: Neue Fail-Fast-Validierung vor dem Scharfschalten gegen den Bestand prüfen
+- Inkrement: I4, I6 (Reflexion nach I6, 2026-10-09)
+- Scope: generisch-base
+- Backport-Ziel: `base/principles/FAIL_FAST.md` (Abschnitt „Einführung neuer Prüfungen")
+- Status: offen
+
+Eine neue harte Prüfung (Identifier-Whitelist in I4, Schema-Validierung in I6) bricht jeden Lauf ab,
+dessen Konfiguration oder Daten sie nicht erfüllen — auch produktive, die bisher funktionierten.
+Vor dem Aktivieren alle erreichbaren Bestandsdaten gegen die neue Regel prüfen (ohne Inhalte
+auszugeben) und das Ergebnis im CHANGELOG festhalten; für nicht erreichbare Installationen einen
+Prüfbefehl für das Deployment dokumentieren. In I6 fiel dabei zusätzlich ein Widerspruch zwischen
+zwei Regelwerken auf (Schema nur Großbuchstaben vs. Whitelist auch Kleinbuchstaben).
+
+---
+
 ## Pflege
 
 - Neuer „Lessons Learned"-Block im `CHANGELOG.md` → Eintrag `## L<N>:` hier anlegen.

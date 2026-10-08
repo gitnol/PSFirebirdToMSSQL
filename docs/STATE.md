@@ -3,15 +3,15 @@
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I6 – Config-Schema-Validierung (2026-10-09)
-**Nächster Schritt:** Reflexion (Phase 1c), danach I7 – Treiber-Integrität
-**Nächste Reflexion:** bei Abschluss von I6 (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I7 – Treiber-Integrität (SHA-256 auch für vorhandene/konfigurierte DLL)
+**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (geplant I7, I8, I10; I9 ist vorgezogen erledigt) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**Reflexion (Phase 1c, fällig nach I6), danach I7 – Treiber-Integrität.** `Initialize-FirebirdDriver`
+**I7 – Treiber-Integrität.** Reflexion nach I6 erledigt (2026-10-09). `Initialize-FirebirdDriver`
 prüft SHA-256 bisher nur beim Download; eine vorhandene oder per `DllPath` konfigurierte DLL wird
 ungeprüft geladen. Dafür den inneren Admin-Check als mockbare Modulfunktion herausziehen (macht auch
 den Download-/Hash-Pfad unit-testbar).
