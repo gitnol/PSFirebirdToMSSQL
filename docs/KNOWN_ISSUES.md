@@ -32,8 +32,8 @@ Lessons Learned). Danach archivieren oder löschen.
 
 | # | Beschreibung | Behoben in | Commit |
 |---|---|---|---|
-| ~~K7~~ | `config.schema.json` wurde nie geprüft | `I6` (2026-10-09) | siehe `STATE.md` |
-| ~~K8~~ | `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` arbeiteten fest mit `config.json` | `I6` (2026-10-09) | siehe `STATE.md` |
+| ~~K7~~ | `config.schema.json` wurde nie geprüft | `I6` (2026-10-09) | c5f94f0 |
+| ~~K8~~ | `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` arbeiteten fest mit `config.json` | `I6` (2026-10-09) | c5f94f0 |
 | ~~K2~~ | `NUMERIC`/`DECIMAL` wurde fest als `DECIMAL(18,4)` angelegt (Rundung ab der 5. Nachkommastelle); Inline-Mapping ohne `Guid`. Altbestand: vorher angelegte Zieltabellen behalten den alten Typ (`operations/RUNBOOK.md`) | `I5` (2026-10-08) | 2d1a7ef |
 | ~~K1~~ | Sync endete immer mit Exit-Code 0, auch bei fehlgeschlagenen Tabellen; SP-Batch-Fehler nur als Warnung | `I2` (2026-10-08) | a082e9d |
 
