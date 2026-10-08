@@ -31,8 +31,8 @@ entsprechenden Zeilen des Templates treffen nicht zu.
 | Secret-Typ | Erlaubter Speicherort | NICHT erlaubt |
 |---|---|---|
 | Firebird-/MSSQL-Passwort | Windows Credential Manager (Generic, Targets `SQLSync_Firebird`/`SQLSync_MSSQL`) unter dem Task-Konto; alternativ Integrated Security (kein Secret) | `config*.json`, `*.bak`, `config.sample.json`, Skripte, README/Doku, Tickets, Kommandozeilenargumente (`cmdkey /pass:`) |
-| Windows-Passwort des Task-Kontos | Task Scheduler; besser gMSA (kein Passwort, I9) | Skripte, Konfigdateien, Task-Argumente |
-| Server-/DB-Namen, interne Pfade (kein Secret, aber vertraulich) | Lokale `config*.json` (gitignored) | `config.sample.json`, `Setup-ScheduledTasks.ps1` im öffentlichen Repo (derzeit noch enthalten, S3/I9) |
+| Windows-Passwort des Task-Kontos | Task Scheduler; besser gMSA (`Setup-ScheduledTasks.ps1 -GmsaAccount`, kein Passwort) | Skripte, Konfigdateien, Task-Argumente |
+| Server-/DB-Namen, interne Pfade (kein Secret, aber vertraulich) | Lokale `config*.json` (gitignored) | `config.sample.json`, `Setup-ScheduledTasks.ps1`, Doku im öffentlichen Repo (seit I9 bereinigt; Pfade/Konfignamen beim Aufruf per Parameter übergeben) |
 
 ---
 
@@ -99,8 +99,8 @@ Details: `docs/operations/TASK_SCHEDULER.md`.
 - `Logs/`, `*.log`
 - `*.secret`, `*.key`, `*.pem`, `*.pfx`, `*.clixml`, `.env`
 - Echte Server-, Datenbank-, Benutzernamen oder Passwörter in `config.sample.json`, Skripten oder
-  Doku. Derzeit noch offen: `config.sample.json` (Sektion `MSSQL`) und `Setup-ScheduledTasks.ps1`
-  enthalten interne Namen bzw. realistisch wirkende Beispielwerte → I9.
+  Doku. `config.sample.json` enthält nur Platzhalter, `Setup-ScheduledTasks.ps1` nur generische
+  Parameter-Defaults (seit I9).
 
 Vor jedem Commit: `git status` prüfen; bei Verdacht `git diff --cached | Select-String -Pattern 'Password'`.
 Wurde ein Secret committet: Vorgehen nach `docs/operations/INCIDENT_RESPONSE.md` (P0) – Rotation

@@ -59,7 +59,7 @@ Optional: `Manage_Config_Tables.ps1`, `Get_Firebird_Schema.ps1`,
 
 ```powershell
 # Beispiel: Klon aus dem öffentlichen Repo oder Kopie in das Zielverzeichnis
-git clone https://github.com/gitnol/PSFirebirdToMSSQL.git E:\SQLSync_Firebird_to_MSSQL
+git clone https://github.com/gitnol/PSFirebirdToMSSQL.git D:\Apps\SQLSync
 ```
 
 Der Ordner `Logs\` wird beim ersten Lauf automatisch neben dem Skript angelegt.
@@ -88,7 +88,7 @@ Für interaktive Aufrufe ggf. einmalig:
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # Aus dem Internet geladene Dateien ggf. entsperren
-Get-ChildItem E:\SQLSync_Firebird_to_MSSQL -Filter *.ps* | Unblock-File
+Get-ChildItem D:\Apps\SQLSync -Filter *.ps* | Unblock-File
 ```
 
 ### 3. Konfiguration anlegen
@@ -122,7 +122,7 @@ ausführen" ab (Sync exit 7, Test-Skript exit 4).
 
 ```powershell
 # PowerShell 7 "Als Administrator ausführen", dann:
-cd E:\SQLSync_Firebird_to_MSSQL
+cd D:\Apps\SQLSync
 .\Test-SQLSyncConnections.ps1     # lädt den Treiber und testet gleich die Verbindungen
 ```
 
@@ -154,7 +154,8 @@ Den Namen dann in der Konfigdatei unter `MSSQL.CredentialTarget` (bzw.
 
 **Wichtig:** Credential-Manager-Einträge gehören dem Windows-Konto, unter dem
 `Setup_Credentials.ps1` läuft. Es muss **dasselbe Konto** sein, unter dem später
-die Scheduled Tasks laufen (S13). Details: `architecture/CREDENTIAL_STRATEGY.md`,
+die Scheduled Tasks laufen (`-RunAsUser`/`-GmsaAccount` von
+`Setup-ScheduledTasks.ps1`, S13). Details: `architecture/CREDENTIAL_STRATEGY.md`,
 `operations/SECRETS_MANAGEMENT.md`.
 
 ```powershell
@@ -215,12 +216,17 @@ nicht in einem echten Lauf abgenommen).
 ### 9. Automatisierung (optional)
 
 ```powershell
-# PowerShell 7 als Administrator
-.\Setup-ScheduledTasks.ps1
+# Vorschau: Pfade/Konfignamen prüfen (ohne Adminrechte, nichts wird registriert)
+.\Setup-ScheduledTasks.ps1 -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json -WhatIf
+
+# Registrieren: PowerShell 7 als Administrator, fragt das Windows-Passwort ab
+.\Setup-ScheduledTasks.ps1 -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json
 ```
 
-Vorher die hart codierten Pfade und Konfignamen im Skriptkopf anpassen –
-siehe `operations/TASK_SCHEDULER.md`.
+Installationsordner (`-InstallDir`, Default: Ordner des Skripts), Konfignamen,
+Tasknamen, Zeitplan und Konto sind Parameter; mit `-GmsaAccount` laufen die
+Tasks unter einem gMSA ohne gespeichertes Passwort. Parameter-Tabelle und
+gMSA-Grenzen: `operations/TASK_SCHEDULER.md`.
 
 ---
 

@@ -15,7 +15,8 @@ Alle Authentifizierungsmechanismen, die das Projekt verwendet. Code-Fundorte:
 | Firebird-Server (Quelle) | Firebird-Benutzer + Passwort im Connection-String (`User`, `Password`) | Windows Credential Manager, Target `SQLSync_Firebird` (Generic; Name per `Firebird.CredentialTarget` änderbar). Fallback: `Firebird.User`/`Firebird.Password` in `config*.json` (unsicher) | Einmalig interaktiv mit `Setup_Credentials.ps1`, als das Konto, unter dem der Task läuft |
 | MS SQL Server (Ziel), Variante A | Windows-integriert (`Integrated Security=True`, Kerberos/NTLM des Task-Kontos) | Kein Secret im Projekt | Konfig: `MSSQL."Integrated Security": true`; SQL-Login für das Windows-Konto durch DBA |
 | MS SQL Server (Ziel), Variante B | SQL-Authentifizierung (`User Id`, `Password`) | Windows Credential Manager, Target `SQLSync_MSSQL` (Generic; Name per `MSSQL.CredentialTarget` änderbar). Fallback: `MSSQL.Username`/`MSSQL.Password` in `config*.json` (unsicher) | Einmalig interaktiv mit `Setup_Credentials.ps1` (Frage „SQL Server Authentifizierung einrichten? J") |
-| Windows Task Scheduler | Windows-Benutzer + Passwort (Logon „unabhängig von Anmeldung") | Vom Task Scheduler (LSA) gespeichert | `Setup-ScheduledTasks.ps1` fragt per `Get-Credential` das Passwort des **aktuellen** Benutzers ab |
+| Windows Task Scheduler | Windows-Benutzer + Passwort (Logon „unabhängig von Anmeldung") | Vom Task Scheduler (LSA) gespeichert | `Setup-ScheduledTasks.ps1` fragt per `Get-Credential` das Passwort von `-RunAsUser` ab (Default: **aktueller** Benutzer) |
+| Windows Task Scheduler mit gMSA | Group Managed Service Account (`-GmsaAccount`) | Kein gespeichertes Passwort; Passwort verwaltet AD | `Setup-ScheduledTasks.ps1 -GmsaAccount 'DOMAIN\name$'`; Konto braucht „Anmelden als Stapelverarbeitungsauftrag“ |
 | NuGet CDN (Treiber-Download) | Keine Authentifizierung (öffentliches HTTPS) | – | – |
 
 **Reihenfolge der Auflösung (Code):**
@@ -48,11 +49,16 @@ Integrierte Authentifizierung wird nur für die **SQL-Server-Verbindung** genutz
 - Sync-Host und SQL Server in derselben bzw. vertrauten AD-Domain (Kerberos), sonst NTLM.
 
 **Bei Task Scheduler:**
-- Derzeit läuft der Task als der Benutzer, der `Setup-ScheduledTasks.ps1` ausführt (S13).
-  Empfehlung (I9): dediziertes Dienstkonto oder gMSA; Einrichtung siehe
-  `docs/operations/TASK_SCHEDULER.md`.
-- Konfiguration: „Unabhängig von Benutzeranmeldung ausführen" (durch `-User`/`-Password` bei
-  `Register-ScheduledTask` implizit gesetzt).
+- Default: Der Task läuft als der Benutzer, der `Setup-ScheduledTasks.ps1` ausführt (S13).
+  Empfohlen: dediziertes Dienstkonto (`-RunAsUser`) oder gMSA (`-GmsaAccount 'DOMAIN\name$'`);
+  Einrichtung siehe `docs/operations/TASK_SCHEDULER.md`.
+- Mit gMSA ist Integrated Security der passende Weg zum SQL Server: kein gespeichertes Passwort,
+  weder im Task noch im Credential Manager. Grenze: Credential-Manager-Einträge sind kontogebunden;
+  Firebird-Credentials müssten im Kontext des gMSA angelegt werden
+  (`docs/architecture/CREDENTIAL_STRATEGY.md`, „Grenze gMSA“).
+- Konfiguration: „Unabhängig von Benutzeranmeldung ausführen" (LogonType `Password`; bei
+  Benutzerkonten über `-User`/`-Password` von `Register-ScheduledTask`, beim gMSA über
+  `New-ScheduledTaskPrincipal`).
 
 ---
 
@@ -128,7 +134,7 @@ Trifft nicht zu – das Projekt verbindet sich nicht per SSH/SCP.
 |---|---|---|
 | Klartext-Passwort-Fallback aus Konfigurationsdatei (und deren `*.bak`-Kopien) | `Resolve-FirebirdCredentials`, `Resolve-MSSQLCredentials`, `Manage_Config_Tables.ps1` | Betrieb: Passwortfelder leer lassen; Backlog: Fallback per Schalter deaktivierbar machen (S3) |
 | `SYSDBA` als Default-Benutzer, wenn `Firebird.User` fehlt | `Resolve-FirebirdCredentials` | Dediziertes Lesekonto verwenden |
-| Task läuft als interaktiver Benutzer mit gespeichertem Windows-Passwort | `Setup-ScheduledTasks.ps1` | I9 (Dienstkonto/gMSA) |
+| Task läuft per Default als interaktiver Benutzer mit gespeichertem Windows-Passwort | `Setup-ScheduledTasks.ps1` | Option vorhanden: `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Umstellung ist Betriebsentscheidung |
 | Kein `Encrypt=True` im MSSQL-Connection-String; Firebird-Wire-Encryption nicht explizit gesetzt | `New-MSSQLConnectionString`, `New-FirebirdConnectionString` | Server-seitig erzwingen; Backlog: konfigurierbar machen |
 | Integrated-Security-Zweig baut den Connection-String per Interpolation (nicht über `DbConnectionStringBuilder`) | `New-MSSQLConnectionString` | Niedriges Risiko (Werte aus Konfig); in I4 nicht geändert, weiterhin offen |
 

@@ -257,7 +257,7 @@ Invoke-Pester -Container $c -Output Detailed
 |---------|-------|-------------|
 | Sync gegen Produktiv-Firebird oder produktive Staging-DB | Produktionsdaten-Schutz, Last auf dem ERP | Nur Testinstanzen; Guard auf `TEST_`/`DEV_` |
 | Schreibende Tests ohne `-EnableWriteTests` | Default nicht-destruktiv | Opt-in-Switch |
-| `Setup-ScheduledTasks.ps1` (Task Scheduler, `#Requires -RunAsAdministrator`, hart codierte Pfade) | OS-spezifisch, Admin, fragt Windows-Passwort ab | Manueller Smoke-Test nach Deployment (`operations/TASK_SCHEDULER.md`) |
+| `Setup-ScheduledTasks.ps1` – echte Registrierung (Task Scheduler, Admin-Prüfung zur Laufzeit) | OS-spezifisch, Admin, fragt Windows-Passwort ab | `-WhatIf`-Pfad per Unit-Test (`UNIT_TESTS.md` 4.3); Registrierung als manueller Smoke-Test nach Deployment (`operations/TASK_SCHEDULER.md`), noch nicht durchgeführt |
 | `Setup_Credentials.ps1` (interaktiv, `CredWrite`) | Interaktiv, schreibt in den Credential Manager | Manuell beim Einrichten des Testrechners |
 | `Manage_Config_Tables.ps1` (Out-GridView) | GUI, fest auf `config.json` | Manuell |
 | Treiber-Download von NuGet | Netz + Admin, einmalig | Manuell beim Einrichten; Hash-Logik per Unit-Test mit Mocks |

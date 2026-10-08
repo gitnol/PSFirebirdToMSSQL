@@ -1,14 +1,15 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
 > **Stand 2026-10-08: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> `tests/Unit/SQLSyncCommon.Tests.ps1` enthält 74 Pester-5-Tests, alle grün; jede exportierte
-> Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test (Übersicht in Abschnitt 5).
+> 111 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (98) – jede exportierte
+> Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
+> `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
 > die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-08:
 > 82,54 % von 315 Kommandos). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
-> (13 von 13 Mutationen erkannt, siehe Abschnitt 8.6). Weiterhin offen: keine CI (Backlog),
-> keine automatisierten Tests für die Einstiegsskripte (siehe `INTEGRATION_TESTS.md`), keine
-> Testhelfer unter `tests/helpers/`.
+> (Modul 13 von 13, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
+> Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
+> (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
 
 Framework: Pester 5.x. Auf dem Entwicklungsrechner sind Pester 3.4.0 (Windows-Bordmittel),
 5.7.1 und 6.1.0 installiert — verbindlich ist die in `tests/RequiredModules.psd1` gepinnte
@@ -36,13 +37,16 @@ Import-Module Pester -RequiredVersion $req.Pester.RequiredVersion -Force
   ├── pester.config.ps1                # vorhanden: Lauf mit Coverage, Exit 1 bei Rot/Coverage < Ziel
   ├── coverage.xml                     # erzeugt von pester.config.ps1, gitignored
   ├── Unit/
-  │   └── SQLSyncCommon.Tests.ps1      # vorhanden: 98 Tests, alle exportierten Modulfunktionen
+  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 98 Tests, alle exportierten Modulfunktionen
+  │   └── Setup-ScheduledTasks.Tests.ps1  # vorhanden: 13 Tests, nur -WhatIf
   ├── Integration/                     # noch nicht vorhanden, siehe INTEGRATION_TESTS.md
   └── helpers/
       └── TestHelpers.ps1              # noch nicht vorhanden; z. B. New-TestConfigFile (JSON in $TestDrive)
   ```
-- Unit-Tests laden **nur** `SQLSyncCommon.psm1` — nie die Einstiegsskripte
+- Unit-Tests laden `SQLSyncCommon.psm1` — nicht die Einstiegsskripte
   (`Sync_Firebird_MSSQL_AutoSchema.ps1` u. a. starten sofort Transcript, Treiber und DB-Verbindungen).
+  Einzige Ausnahme: `Setup-ScheduledTasks.ps1`, das ausschließlich mit `-WhatIf` aufgerufen wird
+  (Abschnitt 4.3).
 - Jeder Test läuft isoliert — kein gemeinsamer State zwischen `It`-Blöcken. Testkonfigurationen
   werden pro Test in `$TestDrive` geschrieben, nie im Projekt-Root.
 - Keine Netz-/DB-Zugriffe in Unit-Tests: Firebird, SQL Server, Credential Manager (`advapi32`)
@@ -257,11 +261,46 @@ Describe 'Initialize-FirebirdDriver' {
 Dieser Fall dokumentiert zugleich S4: eine vorhandene/konfigurierte DLL wird heute **ohne**
 Hash-Prüfung geladen. Mit I7 kommt ein Test hinzu, der genau das verbietet (Hash-Mismatch → throw).
 
+### 4.3 `Setup-ScheduledTasks.ps1` (nur `-WhatIf`)
+
+Das Skript ist per `[CmdletBinding(SupportsShouldProcess)]` so geschnitten, dass `-WhatIf` alle
+Task-Definitionen (Aktion, Trigger, Settings, Principal) berechnet und als Objekte ausgibt, ohne
+Adminrechte zu prüfen, ohne Passwort abzufragen und ohne zu registrieren. Die Tests rufen es
+deshalb ausschließlich mit `-WhatIf` auf und prüfen die zurückgegebenen Objekte:
+
+```powershell
+BeforeAll {
+    $script:Script = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'Setup-ScheduledTasks.ps1'
+    function Invoke-Setup { param([hashtable]$Params = @{}) & $script:Script @Params -WhatIf 6>$null }
+}
+Describe 'Setup-ScheduledTasks.ps1 (-WhatIf)' {
+    BeforeEach {
+        # Sicherheitsnetz: würde -WhatIf ignoriert, schlägt der Test fehl statt Tasks anzulegen
+        Mock Register-ScheduledTask { throw 'darf unter -WhatIf nicht aufgerufen werden' }
+        Mock Unregister-ScheduledTask { throw 'darf unter -WhatIf nicht aufgerufen werden' }
+        Mock Get-Credential { throw 'darf unter -WhatIf nicht aufgerufen werden' }
+    }
+    It 'registriert nichts' {
+        foreach ($t in @(Invoke-Setup)) { $t.Registered | Should -BeExactly $false }
+        Should -Invoke Register-ScheduledTask -Times 0 -Exactly
+        Should -Invoke Get-Credential -Times 0 -Exactly
+    }
+}
+```
+
+Abgedeckt: Defaults (zwei Tasks, Skriptordner als Installations- und Arbeitsverzeichnis,
+`config.json`/`config_weekly_full.json`, Zeitplan Mo–Fr 06:01 alle 30 Min. für 15 h ohne
+`StopAtDurationEnd`, So 05:13, `MultipleInstances IgnoreNew`, keine Registrierung), Parameter
+(relative und absolute Konfigpfade, Taskname/Zeitplan/Intervall, Principal mit `-GmsaAccount` bzw.
+`-RunAsUser`) und ein Repo-Hygiene-Test gegen fest eingetragene Laufwerkspfade. Nicht
+unit-getestet: die Admin-Prüfung, die Passwortabfrage und der echte Registrierungslauf – ein
+Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.md`).
+
 ---
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-08 (`tests/Unit/SQLSyncCommon.Tests.ps1`, 98 Tests, alle grün):
+Ist-Stand 2026-10-08 (111 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 98, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
@@ -278,7 +317,8 @@ Ist-Stand 2026-10-08 (`tests/Unit/SQLSyncCommon.Tests.ps1`, 98 Tests, alle grün
 | `Close-DatabaseConnection` | Ja | `$null` wird ignoriert; Close und Dispose je einmal; Dispose auch, wenn Close wirft |
 | `Write-SyncStatus` | Ja, mit `Mock Write-Host` | Format `[Tabelle] Text` und Farbe je Level |
 | `Initialize-FirebirdDriver` | Teilweise, mit Mocks (siehe 4.2) | `DllPath` vorhanden → kein Download; ohne Admin und ohne Treiber → throw ohne Download |
-| Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Inline-Logik mit DB-Zugriff; mit I5/I6 wandert Logik ins Modul und wird dann unit-testbar |
+| `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
+| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Inline-Logik mit DB-Zugriff; mit I5/I6 wandert Logik ins Modul und wird dann unit-testbar |
 
 Querschnittlich: Edge Cases (leeres Array, `$null`, Sonderzeichen in Tabellennamen und
 Passwörtern, Identifier-Allow-List `^[A-Za-z0-9_$]+$` mit Quote-, Klammer- und Semikolon-Fällen).
@@ -312,7 +352,8 @@ Invoke-Pester -Configuration $Config
 
 - `Run.Exit = $true`: Exit-Code 1 bei einem roten Test oder Coverage unter dem Ziel — damit als
   Gate in Skripten und einer späteren CI verwendbar.
-- Coverage nur auf `SQLSyncCommon.psm1`; die Einstiegsskripte sind nicht unit-testbar.
+- Coverage nur auf `SQLSyncCommon.psm1`; die Einstiegsskripte gehen nicht in die Coverage ein
+  (auch nicht `Setup-ScheduledTasks.ps1`, dessen Tests nur den `-WhatIf`-Pfad abdecken).
 - Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos), Ziel 80 %. Das Ziel wird nur
   angehoben, nie abgesenkt.
 - `tests/coverage.xml` ist ein Laufartefakt und steht in `.gitignore`.
@@ -525,3 +566,6 @@ Strategiewahl, Passwort-Maskierung (Firebird und SQL Server), `Get-ConfigValue` 
 `Close-DatabaseConnection` ohne Dispose, Default `GlobalTimeout`, ignorierte Integrated Security,
 Farbe in `Write-SyncStatus`, Escaping in `Protect-SqlString`, entfernter Admin-Check, entfernte
 `Tables`-Validierung, ignoriertes `CredentialTarget`.
+
+Angewendet in I9 auf `Setup-ScheduledTasks.ps1` mit 8 Mutationen (in einer Kopie, nie im
+Arbeitsstand), alle erkannt. Ein echter Registrierungslauf mit Adminrechten ersetzt das nicht.

@@ -108,8 +108,10 @@ Injection-Frage (Bedrohung 5).
   vollständigen Connection-String.
 - `.gitignore` schließt `/config*` (außer Sample/Schema), `*.bak`, `Logs/`, `*.clixml`, `.env` aus.
 
-**Offene Maßnahme:** **I9** – `config.sample.json` neutralisieren, interne Namen aus
-`Setup-ScheduledTasks.ps1` entfernen (Parameter statt Hartcodierung). Backlog: Klartext-Fallback
+- `config.sample.json` enthält nur Platzhalterwerte; `Setup-ScheduledTasks.ps1` enthält keine
+  internen Pfade oder Konfignamen mehr (Parameter mit generischen Defaults, I9).
+
+**Offene Maßnahme:** Backlog: Klartext-Fallback
 standardmäßig abschalten (Opt-in-Schalter), `.bak`-Rotation, `Encrypt=True` für MSSQL konfigurierbar
 machen. Betrieb: siehe `docs/operations/SECRETS_MANAGEMENT.md`.
 
@@ -199,21 +201,26 @@ Sanity-`FEHLER` (z. B. gerundete Nachkommastellen bei gleicher Zeilenzahl).
   PROCEDURE`, PK-Anlage) und Bulk-Insert. Zusammen mit Bedrohung 1 vergrößert das den Schaden.
 - Firebird-Fallback-Benutzer ist `SYSDBA`, wenn `Firebird.User` fehlt (`Resolve-FirebirdCredentials`)
   – Vollzugriff auf die ERP-Datenbank, obwohl nur lesend gearbeitet wird.
-- `Setup-ScheduledTasks.ps1` registriert die Tasks unter dem **aktuellen interaktiven Benutzer** mit
-  gespeichertem Windows-Passwort (`Register-ScheduledTask -User ... -Password ...`) und startet
-  `pwsh -NoProfile -ExecutionPolicy Bypass`. Die Credential-Manager-Einträge sind an genau dieses
-  Konto gebunden.
+- `Setup-ScheduledTasks.ps1` registriert die Tasks per Default unter dem **aktuellen interaktiven
+  Benutzer** mit gespeichertem Windows-Passwort (`Register-ScheduledTask -User ... -Password ...`)
+  und startet `pwsh -NoProfile -ExecutionPolicy Bypass`. Die Credential-Manager-Einträge sind an
+  genau dieses Konto gebunden.
 
 **Aktuelle Mitigation (im Code vorhanden):**
-- `Setup-ScheduledTasks.ps1` verlangt `#Requires -RunAsAdministrator` nur für die Einrichtung; der
-  Task selbst wird ohne erhöhte Run-Level registriert.
+- `Setup-ScheduledTasks.ps1` prüft Adminrechte zur Laufzeit nur für die Registrierung (Exit 1 ohne
+  Adminrechte; `-WhatIf` zeigt die Task-Definitionen ohne Adminrechte und ohne Passwortabfrage);
+  der Task selbst wird ohne erhöhten Run-Level registriert.
+- Ausführungskonto wählbar: `-RunAsUser` (dediziertes Dienstkonto) oder `-GmsaAccount` (gMSA,
+  kein gespeichertes Passwort). Grenze: Credential-Manager-Einträge sind kontogebunden, mit gMSA
+  ist daher vor allem Integrated Security für SQL Server praktikabel; Firebird-Credentials müssten
+  im Kontext des gMSA angelegt werden (`docs/architecture/CREDENTIAL_STRATEGY.md`).
 - `-ExecutionPolicy Bypass` betrifft nur den einen Prozess; die Skripte werden aus einem lokalen
   Ordner gestartet.
 - `MultipleInstances IgnoreNew` verhindert parallele Läufe desselben Tasks.
 - Integrated Security für MSSQL wird unterstützt (kein gespeichertes SQL-Passwort nötig).
 
-**Offene Maßnahme:** **I9** – Dienstkonto/gMSA-Option, Pfade/Konfignamen als Parameter. Betrieb
-(ohne Code-Änderung umsetzbar): Datenbank vorab anlegen und `dbcreator` entziehen; dediziertes
+**Offene Maßnahme:** Betrieb (ohne Code-Änderung umsetzbar): Tasks auf Dienstkonto oder gMSA
+umstellen (Default bleibt der aufrufende Benutzer); Datenbank vorab anlegen und `dbcreator` entziehen; dediziertes
 Firebird-Konto mit reinen `SELECT`-Rechten statt `SYSDBA`; MSSQL-Login auf `db_ddladmin` +
 `db_datawriter` + `db_datareader` der Ziel-DB beschränken; Skriptordner nur für Admins und das
 Sync-Konto beschreibbar. Details: `docs/operations/TASK_SCHEDULER.md`,
@@ -263,7 +270,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 |---|---|---|---|
 | S1 | Sync endet mit Exit 0 trotz Tabellenfehlern; SP-Batch-Fehler nur Warnung | K1 | I2 (erledigt, abgenommen 2026-10-08) |
 | S2 | SQL-Identifier ungeprüft in SQL interpoliert | — | I4 (erledigt 2026-10-08) |
-| S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 |
+| S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
 | S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 |
 | S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Inline-Mapping ohne `Guid` | K2 | I5 |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
@@ -273,7 +280,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
 | S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
 | S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7 | I10 |
-| S13 | Tasks als interaktiver Benutzer mit gespeichertem Passwort, breite DB-Rechte | — | I9 |
+| S13 | Tasks als interaktiver Benutzer mit gespeichertem Passwort, breite DB-Rechte | — | I9 (Option Dienstkonto/gMSA vorhanden 2026-10-08; Umstellung und DB-Rechte sind Betrieb) |
 
 Hinweis: `S1`–`S3` in `docs/REFLECTION.md` bezeichnen dagegen die
 Eval-Szenarien des Template-Repos, nicht diese Schwachstellen.

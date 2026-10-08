@@ -66,12 +66,6 @@ Bezug: `KNOWN_ISSUES.md` K3.
 - [ ] Schema, Sample, README und `architecture/CONFIGURATION.md` ergänzen
 - **DoD:** Integrationstest: Datensatz mit identischem Zeitstempel wie das Wasserzeichen wird übernommen; gemeinsame DoD erfüllt
 
-### I9: Scheduled-Task-Setup parametrisieren, interne Namen entfernen
-
-- [ ] `Setup-ScheduledTasks.ps1`: Pfade, Konfigdateinamen und Zeitpläne als Parameter (Defaults neutral), Option für Dienstkonto/gMSA
-- [ ] Interne Konfignamen/Pfade (Laufwerkspfade wie `E:\…`, interne Konfignamen) aus `Setup-ScheduledTasks.ps1` entfernen — `config.sample.json`, `config.schema.json` und READMEs sind seit 2026-10-08 neutralisiert (`SQLSERVER01`, Platzhalter-Zugangsdaten)
-- **DoD:** Skript läuft ohne Codeänderung auf einem frischen Server; `git grep` findet keine internen Hostnamen/Kürzel; gemeinsame DoD erfüllt
-
 ---
 
 ## Niedrige Priorität
@@ -88,6 +82,7 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 ## Abgeschlossen
 
+- I9 Scheduled-Task-Setup parametrisiert (Installationsordner, Konfigdateien, Tasknamen, Zeitpläne als Parameter mit neutralen Defaults; `-WhatIf` ohne Adminrechte; Option `-RunAsUser`/`-GmsaAccount`); keine internen Begriffe mehr in versionierten Dateien — [ABGESCHLOSSEN 2026-10-08] (Commit siehe `STATE.md`)
 - I4 SQL-Identifier gehärtet (Whitelist-Validierung in `Get-SQLSyncConfig` inkl. `MSSQL.Database` und 128-Zeichen-Grenze, `[...]`/`QUOTENAME` überall, Metadaten-Abfragen und `sp_Merge_Generic` parametrisiert, `Manage_Config_Tables.ps1` markiert ungültige Namen) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)
 - I3 Pester-Testharness + Unit-Tests für `SQLSyncCommon.psm1` (74 Tests, alle exportierten Funktionen, Coverage 82,54 % bei Ziel 80 %, 13/13 Mutationen erkannt) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)
 - I2 Fehlschläge sichtbar machen (Exit-Codes 10/11, Pre-Flight-Abbruch bei SP-Fehlern; dazu konfigurierbare Credential-Targets) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d; Abnahme gegen Firebird-Testserver → SQL-Testserver inkl. Aufgabenplanung `0xA`)

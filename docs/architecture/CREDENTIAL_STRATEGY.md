@@ -88,11 +88,18 @@ ist das akzeptiert; eine Umstellung brächte wenig Gewinn.
 | Szenario | Ist-Zustand | Empfehlung |
 |---|---|---|
 | Manueller Lauf / Test | interaktiver Benutzer | ok |
-| Task Scheduler | aktueller (interaktiver) Benutzer mit gespeichertem Windows-Passwort (`Register-ScheduledTask -User … -Password …`) | dediziertes Dienstkonto oder gMSA mit Least Privilege; Passwortwechsel des Benutzers bricht sonst die Tasks (Inkrement I9) |
+| Task Scheduler | Default: aktueller Benutzer mit gespeichertem Windows-Passwort (`Register-ScheduledTask -User … -Password …`); wählbar per `Setup-ScheduledTasks.ps1 -RunAsUser` (Dienstkonto, Passwort wird abgefragt) oder `-GmsaAccount` (gMSA, Principal mit LogonType `Password`, kein gespeichertes Passwort) | dediziertes Dienstkonto oder gMSA mit Least Privilege; mit persönlichem Konto bricht ein Passwortwechsel die Tasks |
 | SQL-Server-Rechte | je nach Konto (nicht dokumentiert) | in der Zieldatenbank: DDL (`CREATE TABLE`, `ALTER TABLE`, `CREATE OR ALTER PROCEDURE`), `TRUNCATE`, Lesen/Schreiben/Löschen, Bulk-Insert (`SqlBulkCopy`), `EXECUTE` auf `sp_Merge_Generic`; `dbcreator` nur, wenn die Datenbank automatisch angelegt werden soll. Ein minimaler Rollensatz ist nicht verifiziert (offen) |
 | Firebird-Rechte | häufig `SYSDBA` (Beispiel im Setup) | eigener Firebird-Benutzer mit reinem Leserecht auf die konfigurierten Tabellen und Systemtabellen (`RDB$…`) |
 
 Niemals Domänen-Admin als Task-Konto.
+
+**Grenze gMSA:** Credential-Manager-Einträge sind an das Konto gebunden, das sie anlegt. Ein gMSA kann sich nicht
+interaktiv anmelden, `Setup_Credentials.ps1` lässt sich also nicht einfach unter ihm ausführen. Mit gMSA eignet sich
+daher vor allem `MSSQL."Integrated Security": true` (das gMSA braucht ein SQL-Server-Login). Firebird kennt keine
+Windows-Authentifizierung im Sync; die Firebird-Credentials müssten im Kontext des gMSA angelegt werden (z. B. über
+einen einmaligen Task unter dem gMSA), sonst endet der Sync mit Exit 5. Ein klassisches Dienstkonto (`-RunAsUser`)
+hat diese Einschränkung nicht, bringt aber wieder ein gespeichertes Passwort mit.
 
 ---
 
@@ -120,8 +127,8 @@ Write-Host "Verbinde mit $FirebirdConnString"
 $cs = "User=$User;Password=$Pass;Database=$Db"
 ```
 
-`config.sample.json` darf keine realistisch wirkenden Zugangsdaten oder internen Servernamen enthalten (Bestand weicht
-ab — Neutralisierung ist Inkrement I9).
+`config.sample.json` und `Setup-ScheduledTasks.ps1` dürfen keine realistisch wirkenden Zugangsdaten, internen
+Servernamen oder Konfignamen enthalten (seit I9 neutralisiert: Platzhalterwerte bzw. generische Parameter-Defaults).
 
 ---
 

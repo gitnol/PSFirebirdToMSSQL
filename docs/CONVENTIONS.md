@@ -46,7 +46,8 @@ Import-Module $ModulePath -Force
 ```
 
 - `#Requires -Version 7.0` steht in **jedem** Skript (Grund: `ForEach-Object -Parallel`, ternärer Operator `? :`, `Test-Json`).
-  Skripte, die Admin brauchen, zusätzlich `#Requires -RunAsAdministrator` (Bestand: `Setup-ScheduledTasks.ps1`).
+  Skripte, die Admin brauchen, prüfen die Rechte zur Laufzeit (Exit 1) statt per `#Requires -RunAsAdministrator`,
+  damit eine `-WhatIf`-Vorschau ohne Admin möglich bleibt (Vorbild: `Setup-ScheduledTasks.ps1`).
 - Modul-Import immer über `Join-Path $PSScriptRoot` (bzw. `$ScriptDir`), nie relativ zum aktuellen Arbeitsverzeichnis —
   Skripte werden vom Task Scheduler mit beliebigem CWD gestartet.
 - Comment-based Help auf Deutsch, mit `.LINK` auf das GitHub-Repo.
@@ -221,8 +222,8 @@ finally {
   *Bestand weicht ab:* `"$env:ProgramData\SQLSync\Drivers\…"` in `Initialize-FirebirdDriver`.
 - **Basis ist `$PSScriptRoot`**, nicht das CWD (Logs, Modul, `config.json`, `sql_server_setup.sql`).
 - **Existenz prüfen vor Zugriff:** `Test-Path` vor Modul-Import, Konfig-Laden, `sql_server_setup.sql` und DLL-Laden (Bestand).
-- **Keine hart codierten Umgebungspfade in neuem Code.** *Bestand weicht ab:* `Setup-ScheduledTasks.ps1` enthält
-  feste Laufwerks-/Konfigpfade — Parametrisierung ist Inkrement I9.
+- **Keine hart codierten Umgebungspfade.** Installationsordner und Konfignamen als Parameter mit Default
+  `$PSScriptRoot` (Vorbild: `Setup-ScheduledTasks.ps1 -InstallDir/-DailyConfigFile/-WeeklyConfigFile`).
 - **Credentials niemals über `$env:`** — nur Windows Credential Manager (siehe `docs/architecture/CREDENTIAL_STRATEGY.md`).
 
 ## 6. Security-Checkliste vor jedem Commit
@@ -267,7 +268,7 @@ Commit-Messages — ist öffentlich.** Secrets stehen ohnehin nie im Repo (Absch
   (Repo-Root, gitignored, ein Begriff pro Zeile) enthalten. Einmalig pro Klon aktivieren:
   `git config core.hooksPath tools/git-hooks`. Neue interne Begriffe sofort in `.internal-terms`
   ergänzen. Fehlt die Datei, warnt der Hook nur.
-- Der Hook prüft nur **neue** Zeilen; bereits öffentliche Altlasten werden über `I9` bereinigt.
+- Der Hook prüft nur **neue** Zeilen; die bis dahin öffentlichen Altlasten sind mit I9 bereinigt.
   Vor dem **ersten Push** eines Branches zusätzlich die gesamte Branch-History prüfen
   (`git log -p origin/main..HEAD`), da frühere lokale Commits ohne Hook entstanden sein können.
 

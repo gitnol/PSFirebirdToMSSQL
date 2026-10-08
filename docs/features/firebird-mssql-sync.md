@@ -229,7 +229,9 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
   `RecreateStagingTable`) umstellen – Kopie der Konfig verwenden
   (`operations/RUNBOOK.md`).
 - Credential-Manager-Einträge sind pro Windows-Konto: `Setup_Credentials.ps1`
-  unter dem Task-Konto ausführen.
+  unter dem Task-Konto ausführen. Bei Tasks unter einem gMSA
+  (`Setup-ScheduledTasks.ps1 -GmsaAccount`) ist das nicht direkt möglich – dort
+  für SQL Server Integrated Security verwenden (`operations/TASK_SCHEDULER.md`).
 - Der erste Lauf auf einem neuen Host muss als Administrator laufen (Treiber).
 - `Snapshot`- und `FullMerge (Forced)`-Tabellen sind während des Laufs kurz leer
   (`TRUNCATE` vor dem Befüllen, keine Transaktion um beide Schritte).

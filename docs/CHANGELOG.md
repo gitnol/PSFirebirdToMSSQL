@@ -12,6 +12,39 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-08 I9 – Scheduled-Task-Setup parametrisieren (vor I5 gezogen)
+
+### Changed
+- `Setup-ScheduledTasks.ps1`: Installationsordner (Default: Skriptordner), Konfigdateien (`config.json` /
+  `config_weekly_full.json`, relativ oder absolut), Tasknamen und Zeitpläne als Parameter; fest
+  eingetragene Laufwerkspfade und interne Konfignamen entfernt
+- `#Requires -RunAsAdministrator` durch Laufzeitprüfung ersetzt; `SupportsShouldProcess` — `-WhatIf`
+  berechnet und zeigt die Task-Definitionen ohne Adminrechte, Passwortabfrage oder Registrierung
+- Ausgabe je Task als Objekt (TaskName, Action, Trigger, Settings, Principal, Registered)
+
+### Added
+- Ausführungskonto wählbar: `-RunAsUser` (Passwort wird abgefragt) oder `-GmsaAccount` (kein gespeichertes
+  Passwort; Grenze: Credential-Manager-Einträge sind kontogebunden)
+- `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13 Tests, nur `-WhatIf`, Registrierung gemockt) — Suite: 111
+
+### Security
+- Keine internen Begriffe mehr in versionierten Dateien (Scan aller Dateien gegen `.internal-terms`)
+- Tasks können unter einem Dienstkonto/gMSA statt unter einem persönlichen Konto laufen (S13)
+
+### Iterations-Log
+- Rot zunächst überwiegend strukturell (`#Requires -RunAsAdministrator` verhinderte jeden Testlauf), nur
+  der Test „keine fest eingetragenen Laufwerkspfade" war behavioral rot. Diskriminierung daher per
+  Mutationsprüfung belegt: 8/8 Mutationen (Intervall, `IgnoreNew`, `StopAtDurationEnd`, gMSA, relative
+  Pfade, `ShouldProcess` umgangen, Wochentag, Default-Konfig) erkannt; keine Aufgabe wurde angelegt.
+
+### Confidence / Ungeprüft
+- Kein echter Registrierungslauf mit Adminrechten (weder Benutzer- noch gMSA-Variante); geprüft sind nur die
+  berechneten Definitionen unter `-WhatIf`.
+- **Verhaltensänderung für bestehende Installationen:** Wer die Tasks neu anlegt, muss Installationsordner
+  und Konfignamen jetzt explizit übergeben; bereits registrierte Tasks sind nicht betroffen.
+
+---
+
 ## 2026-10-08 Repo-Hygiene – Interna aus dem öffentlichen Repository heraushalten
 
 ### Added

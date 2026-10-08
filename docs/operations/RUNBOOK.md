@@ -2,7 +2,7 @@
 
 Routine-Operationen und Störungsfälle für den Firebird→MS-SQL-Sync.
 Alle Befehle in PowerShell 7 (`pwsh`) im Installationsverzeichnis
-(Beispiel: `E:\SQLSync_Firebird_to_MSSQL`). Erst-Setup: `operations/SETUP.md`,
+(Beispiel: `D:\Apps\SQLSync`). Erst-Setup: `operations/SETUP.md`,
 Überwachung: `operations/MONITORING.md`, Tasks: `operations/TASK_SCHEDULER.md`,
 Ablauf im Detail: `features/firebird-mssql-sync.md`.
 
@@ -64,7 +64,7 @@ reduzieren (`$cfg.Tables = @('BKUNDE')`), um nur diese zu bearbeiten.
 | Montag | Log des Weekly-Full-Laufs vom Sonntag prüfen; alle Tabellen Sanity `OK` erwartet |
 | Nach Änderung an `Tables` | Testlauf manuell, neue Tabellen erscheinen mit Strategie und Sanity in der Zusammenfassung |
 | Nach Code-Update | `operations/DEPLOYMENT.md` – Post-Deploy-Verifikation |
-| Bei Passwortwechsel | `Setup_Credentials.ps1` unter dem Task-Konto erneut ausführen; bei Wechsel des Windows-Passworts des Task-Kontos `Setup-ScheduledTasks.ps1` erneut ausführen |
+| Bei Passwortwechsel | `Setup_Credentials.ps1` unter dem Task-Konto erneut ausführen; bei Wechsel des Windows-Passworts des Task-Kontos `Setup-ScheduledTasks.ps1` mit denselben Parametern erneut ausführen (nicht nötig bei gMSA) |
 | Monatlich | `Logs\` Größe prüfen (Rotation über `DeleteLogOlderThanDays`, Default 30 Tage); alte `config.json.*.bak` löschen |
 
 ---
@@ -226,7 +226,7 @@ automatisch erweitert (S11).
      und lädt voll. Nur, wenn niemand auf der Tabelle Abhängigkeiten (Views,
      Rechte) hat.
 
-Das Job-Profil Weekly Full (`config_..._RecreateTable_ForceFullSync.json`)
+Das Job-Profil Weekly Full (Default `config_weekly_full.json`)
 baut Staging wöchentlich neu, erweitert aber die Zieltabelle ebenfalls nicht.
 
 ### Löschungen in Firebird fehlen im Ziel
@@ -284,12 +284,14 @@ dann die Tabelle erneut laufen lassen.
 
 ### Task läuft manuell, aber nicht geplant
 
-- Konto-Passwort geändert → `Setup-ScheduledTasks.ps1` erneut ausführen
-  (registriert beide Tasks mit neuem Passwort).
+- Konto-Passwort geändert → `Setup-ScheduledTasks.ps1` mit denselben
+  Parametern erneut ausführen (registriert beide Tasks mit neuem Passwort;
+  entfällt bei `-GmsaAccount`).
 - `LastTaskResult` `0x41301` = läuft gerade; `0x80070005` = Rechte auf
   Skript-/Logordner fehlen.
-- Pfade im Task stimmen nicht (hart codiert `E:\SQLSync_Firebird_to_MSSQL\...`)
-  → `operations/TASK_SCHEDULER.md`.
+- Pfade im Task stimmen nicht → `(Get-ScheduledTask <Name>).Actions` prüfen,
+  `Setup-ScheduledTasks.ps1 -InstallDir … -DailyConfigFile … -WeeklyConfigFile … -WhatIf`
+  zur Kontrolle, dann ohne `-WhatIf` neu registrieren (`operations/TASK_SCHEDULER.md`).
 
 ### Execution Policy blockiert interaktiven Aufruf
 

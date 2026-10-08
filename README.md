@@ -80,7 +80,7 @@ PSFirebirdToMSSQL/
 ├── SQLSyncCommon.psm1                   # CORE MODULE: Shared functions (MUST be present!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Main script (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # One-time: Store passwords securely
-├── Setup-ScheduledTasks.ps1             # Template for Windows Tasks (adjust paths!)
+├── Setup-ScheduledTasks.ps1             # Creates the Windows Tasks (parameters, -WhatIf preview)
 ├── Manage_Config_Tables.ps1             # GUI tool for table management
 ├── Get_Firebird_Schema.ps1              # Helper tool: Data type analysis
 ├── sql_server_setup.sql                 # SQL template for DB & SP (used by main script)
@@ -203,16 +203,32 @@ The manager offers a **toggle logic**:
 
 Use the provided script to set up synchronization in the Windows Task Scheduler. The script creates tasks for Daily Diff & Weekly Full.
 
-**WARNING:** The script `Setup-ScheduledTasks.ps1` serves as a template and contains example paths (e.g., `E:\SQLSync_...`).
+**WARNING:** Paths and config names are parameters – the script no longer needs to be edited. Defaults: installation folder = folder of the script, `config.json` (daily) and `config_weekly_full.json` (weekly). Always check the result with `-WhatIf` first: missing files only produce a warning, the tasks would still be created.
 
-1.  Open `Setup-ScheduledTasks.ps1` in an editor.
-2.  Adjust the variables `$ScriptPath`, `$WorkDir`, and config names to your environment.
-3.  Run it as Administrator only after making adjustments.
+| Parameter | Default |
+|---|---|
+| `-InstallDir` | folder of the script |
+| `-DailyConfigFile` / `-WeeklyConfigFile` | `config.json` / `config_weekly_full.json` (relative to `-InstallDir` or absolute) |
+| `-DailyTaskName` / `-WeeklyTaskName` | `SQLSync_Firebird_Daily_Diff` / `SQLSync_Firebird_Weekly_Full` |
+| `-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours` | `06:01`, Monday–Friday, `30`, `15` |
+| `-WeeklyDay`, `-WeeklyStart` | `Sunday`, `05:13` |
+| `-RunAsUser` | current user (Windows password is prompted) |
+| `-GmsaAccount` | – (gMSA as `DOMAIN\name$`, no stored password) |
 
 ```powershell
-# Run as Administrator!
-.\Setup-ScheduledTasks.ps1
+# 1. Preview: no admin rights, no password prompt, nothing is registered
+.\Setup-ScheduledTasks.ps1 -InstallDir D:\Apps\SQLSync -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json -WhatIf
+
+# 2. Register (run as Administrator!)
+.\Setup-ScheduledTasks.ps1 -InstallDir D:\Apps\SQLSync -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json
+
+# Optional: run as gMSA instead of the current user
+.\Setup-ScheduledTasks.ps1 -GmsaAccount 'EXAMPLE\svc-sqlsync$'
 ```
+
+Note on gMSA: Credential Manager entries are bound to the account that creates them. With a gMSA, use mainly `"Integrated Security": true` for SQL Server; Firebird credentials would have to be created in the context of the gMSA.
+
+**Existing installations:** If you used the paths and config names previously hard-coded in the script, pass `-InstallDir`, `-DailyConfigFile` and `-WeeklyConfigFile` explicitly when re-creating the tasks (check with `-WhatIf` first). Tasks that are already registered are not affected.
 
 ---
 
@@ -496,7 +512,7 @@ Alternatively, `CleanupOrphans: true` can be used to compare IDs.
 
 ### Task Scheduler Integration (Path Adjustment)
 
-It is recommended to use the script `Setup-ScheduledTasks.ps1` as a template. **Important:** Since the script uses environment variables like `$WorkDir` and `$ScriptPath` with example values, **it must be edited before execution** to point to your actual installation.
+It is recommended to create the tasks with `Setup-ScheduledTasks.ps1` (see Step 7). The installation folder and config names are passed as parameters (`-InstallDir`, `-DailyConfigFile`, `-WeeklyConfigFile`); `-WhatIf` shows the resulting task definitions without registering anything.
 
 Manual call parameters for custom integrations:
 
@@ -535,6 +551,13 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.13 (2026-10-08) - Parameterized Task Setup
+- `Setup-ScheduledTasks.ps1` no longer contains hard-coded paths or config names: new parameters `-InstallDir` (default: folder of the script), `-DailyConfigFile` (`config.json`), `-WeeklyConfigFile` (`config_weekly_full.json`), task names, schedule (`-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours`, `-WeeklyDay`, `-WeeklyStart`) and account (`-RunAsUser`)
+- `-WhatIf` computes and outputs the task definitions without admin rights, password prompt or registration; output is one object per task (`TaskName`, `Action`, `Trigger`, `Settings`, `Principal`, `Registered`)
+- New option `-GmsaAccount` (`DOMAIN\name$`): tasks run as a gMSA without a stored password
+- Admin check at runtime (exit 1) instead of `#Requires -RunAsAdministrator`; cancelled password prompt exits with 1
+- **Existing installations:** pass `-InstallDir`, `-DailyConfigFile` and `-WeeklyConfigFile` explicitly when re-creating the tasks; already registered tasks are not affected
 
 ### v2.12 (2026-10-08) - SQL Identifier Hardening
 - New module function `Assert-SqlIdentifier`: table/column names, `MSSQL.Database`, Prefix/Suffix and `TableOverrides` are checked against `^[A-Za-z0-9_$]+$` (max. 63 characters) when the configuration is loaded; target table name max. 128 characters; violations exit with 2

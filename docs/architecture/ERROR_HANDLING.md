@@ -128,7 +128,7 @@ Firebird-Tabellen mit ungültigem Namen führen nicht zum Abbruch: Sie erscheine
 
 ### Weitere Skripte
 
-- `Setup-ScheduledTasks.ps1`: `exit 1` bei PowerShell < 7; ohne Admin-Rechte `exit` ohne Code (zusätzlich `#Requires -RunAsAdministrator`).
+- `Setup-ScheduledTasks.ps1`: PowerShell < 7 per `#Requires -Version 7.0` abgewiesen; ohne Admin-Rechte `exit 1` (Prüfung zur Laufzeit, entfällt bei `-WhatIf`); abgebrochene Passworteingabe `exit 1`. Fehlende Sync-Skript- oder Konfigdateien nur als Warnung.
 - `Setup_Credentials.ps1`: keine Exit-Codes; Speicherfehler werden nur rot ausgegeben.
 
 Die Codes sind **nicht** zwischen den Skripten vereinheitlicht (z. B. Credentials = 5 im Sync, 3 im Test-Skript).

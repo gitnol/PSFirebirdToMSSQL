@@ -42,7 +42,7 @@ PSFirebirdToMSSQL/
 ├── SQLSyncCommon.psm1                   # Gemeinsames Modul v1.0.0 (explizite Export-Liste, kein .psd1)
 ├── sql_server_setup.sql                 # CREATE OR ALTER PROCEDURE dbo.sp_Merge_Generic
 ├── Setup_Credentials.ps1                # Credential-Manager-Einträge anlegen (interaktiv)
-├── Setup-ScheduledTasks.ps1             # Task-Scheduler-Jobs registrieren (Admin)
+├── Setup-ScheduledTasks.ps1             # Task-Scheduler-Jobs registrieren (Admin; Parameter, -WhatIf, gMSA)
 ├── Test-SQLSyncConnections.ps1          # Verbindungs-/Setup-Diagnose
 ├── Get_Firebird_Schema.ps1              # Schema einer Firebird-Tabelle anzeigen
 ├── Manage_Config_Tables.ps1             # Tabellenliste in config.json pflegen (Out-GridView)
@@ -73,6 +73,7 @@ Tests (Pester-5-Harness seit I3, Details in `docs/testing/UNIT_TESTS.md`):
 | `tests/RequiredModules.psd1` | gepinnte Testabhängigkeit: Pester 5.7.1 |
 | `tests/pester.config.ps1` | Testlauf mit gepinntem Pester und Coverage auf `SQLSyncCommon.psm1` (Ziel 80 %); Exit 1 bei rotem Test oder Coverage unter Ziel |
 | `tests/Unit/SQLSyncCommon.Tests.ps1` | 98 Unit-Tests, jede exportierte Funktion von `SQLSyncCommon.psm1` |
+| `tests/Unit/Setup-ScheduledTasks.Tests.ps1` | 13 Unit-Tests für `Setup-ScheduledTasks.ps1`, nur mit `-WhatIf` (Registrierung und Passwortabfrage gemockt) |
 | `tests/coverage.xml` | Coverage-Report, vom Testlauf erzeugt, gitignored |
 
 Aufruf: `pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage) oder `Invoke-Pester ./tests`
@@ -108,7 +109,8 @@ Nicht vorhanden: `src/`, Build-Output, Modul-Manifest.
   als `ConvertTo-SqlServerType` / `Get-TableColumnConfig` im Modul (weichen voneinander ab) — Inkrement I5.
 - **Kopierte Hilfslogik:** Konfigpfad-Auflösung ist in zwei Skripten kopiert; `Get_Firebird_Schema.ps1` und
   `Manage_Config_Tables.ps1` lesen fest `config.json` — Inkrement I6.
-- **Hart codierte Umgebungspfade** in `Setup-ScheduledTasks.ps1` — Inkrement I9.
+- **Hart codierte Umgebungspfade** (Laufwerke, Installationsordner, Konfignamen) in Skripten — Pfade als Parameter
+  mit Default Skriptordner übergeben (Vorbild: `Setup-ScheduledTasks.ps1 -InstallDir`).
 
 ---
 

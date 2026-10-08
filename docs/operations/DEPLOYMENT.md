@@ -25,10 +25,10 @@ anderen `Prefix` verwenden, damit produktive Zieltabellen nicht berührt werden.
 
 ## Zielverzeichnis
 
-Beispielpfad (aus `Setup-ScheduledTasks.ps1`, dort hart codiert):
+Beispielpfad (frei wählbar; `Setup-ScheduledTasks.ps1 -InstallDir`, Default: Ordner des Skripts):
 
 ```
-E:\SQLSync_Firebird_to_MSSQL\
+D:\Apps\SQLSync\
     Sync_Firebird_MSSQL_AutoSchema.ps1
     SQLSyncCommon.psm1
     sql_server_setup.sql
@@ -84,7 +84,7 @@ Einstiegsskripte und eine CI gibt es nicht.
 | Schritt | Aktion | Verifikation |
 |---|---|---|
 | 1. Version festhalten | Aktuellen Stand notieren: `git -C <Repo> log -1 --oneline` bzw. Tag (z. B. `git tag v2.10`) | Commit-Hash im Änderungsprotokoll |
-| 2. Sicherung | Zielverzeichnis ohne `Logs\` sichern, z. B. `Compress-Archive -Path E:\SQLSync_Firebird_to_MSSQL\*.ps*, E:\SQLSync_Firebird_to_MSSQL\*.sql, E:\SQLSync_Firebird_to_MSSQL\*.json -DestinationPath E:\Backup\SQLSync_<Datum>.zip` (enthält Konfigs – Archiv wie Secrets behandeln) | Archiv vorhanden |
+| 2. Sicherung | Zielverzeichnis ohne `Logs\` sichern, z. B. `Compress-Archive -Path D:\Apps\SQLSync\*.ps*, D:\Apps\SQLSync\*.sql, D:\Apps\SQLSync\*.json -DestinationPath D:\Backup\SQLSync_<Datum>.zip` (enthält Konfigs – Archiv wie Secrets behandeln) | Archiv vorhanden |
 | 3. Läufe pausieren | `Disable-ScheduledTask -TaskName SQLSync_Firebird_Daily_Diff, SQLSync_Firebird_Weekly_Full`; laufende Instanz abwarten (`Get-ScheduledTask ... State`) | State `Disabled`, keine `pwsh`-Sync-Prozesse |
 | 4. Dateien ersetzen | Skripte, Modul, `sql_server_setup.sql`, `config.schema.json`, `config.sample.json` überschreiben. **Eigene `config_*.json` nicht überschreiben.** | Datei-Zeitstempel |
 | 5. Konfig abgleichen | `config.sample.json` mit eigenen Konfigs vergleichen; neue Schlüssel haben Defaults in `Get-SQLSyncConfig`, müssen also nur bei Abweichung ergänzt werden | – |
@@ -97,7 +97,7 @@ Treiber-Update: Version und SHA-256 stehen in `Initialize-FirebirdDriver`.
 Nach Code-Update auf eine neue Treiberversion lädt der erste Lauf **als
 Administrator** den neuen Treiber in einen neuen Versionsordner (sonst exit 7).
 Da `.ps1`-Dateien aus `git clone` oder Download kommen können:
-`Get-ChildItem E:\SQLSync_Firebird_to_MSSQL -Filter *.ps* | Unblock-File`.
+`Get-ChildItem D:\Apps\SQLSync -Filter *.ps* | Unblock-File`.
 
 ---
 
@@ -110,7 +110,7 @@ Pre-Flight/Treiber brechen ab, und ein Fix ist nicht am selben Tag möglich.
 |---|---|
 | 1. Letzte stabile Version identifizieren | `git log --oneline` / `git tag` im Repo; oder Sicherungsarchiv aus Schritt 2 |
 | 2. Läufe pausieren | `Disable-ScheduledTask -TaskName SQLSync_Firebird_Daily_Diff, SQLSync_Firebird_Weekly_Full` |
-| 3. Dateien zurückspielen | `git checkout <hash-oder-tag> -- Sync_Firebird_MSSQL_AutoSchema.ps1 SQLSyncCommon.psm1 sql_server_setup.sql` und ins Zielverzeichnis kopieren, oder `Expand-Archive <Sicherung>.zip -DestinationPath E:\SQLSync_Firebird_to_MSSQL -Force` |
+| 3. Dateien zurückspielen | `git checkout <hash-oder-tag> -- Sync_Firebird_MSSQL_AutoSchema.ps1 SQLSyncCommon.psm1 sql_server_setup.sql` und ins Zielverzeichnis kopieren, oder `Expand-Archive <Sicherung>.zip -DestinationPath D:\Apps\SQLSync -Force` |
 | 4. Stored Procedure zurück | Einmal-Konfig mit `RecreateStoredProcedure: true` (installiert die SP aus der zurückgespielten `sql_server_setup.sql`) |
 | 5. Verifikation | `Test-SQLSyncConnections.ps1`, manueller Lauf, Zusammenfassung prüfen; Tasks wieder aktivieren |
 
@@ -132,6 +132,7 @@ bleiben dabei erhalten (TRUNCATE + MERGE statt DROP).
 - [ ] Nächster geplanter Lauf erzeugt Log und gleiche Ergebnisse
 - [ ] `LastTaskResult` des nächsten geplanten Laufs `0x0` (`0xA`/`0xB` = Tabellen-/Sanity-Fehler, `operations/MONITORING.md`); Sanity `WARNUNG` zusätzlich im Log prüfen
 - [ ] Beim Update auf Sync v2.11: Neuer Schlüssel `General.FailOnSanityError` (Default `true`) – bewusst entscheiden, ob Sanity `FEHLER` den Task als fehlgeschlagen melden soll
+- [ ] Beim Update von `Setup-ScheduledTasks.ps1` (parametrisierte Fassung): bestehende Tasks bleiben unverändert. Erst beim Neuanlegen `-InstallDir`, `-DailyConfigFile` und `-WeeklyConfigFile` explizit übergeben und vorher mit `-WhatIf` prüfen – die Defaults (Skriptordner, `config.json`, `config_weekly_full.json`) entsprechen nicht den früher fest eingetragenen Namen
 
 ---
 

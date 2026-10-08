@@ -65,7 +65,7 @@ Log prüfen. Exit-Codes der Hilfsskripte: `features/firebird-mssql-sync.md`.
 ## Manuelle Checks
 
 ```powershell
-$Dir = 'E:\SQLSync_Firebird_to_MSSQL'     # Installationsverzeichnis anpassen
+$Dir = 'D:\Apps\SQLSync'     # Installationsverzeichnis anpassen
 
 # 1. Task-Status
 Get-ScheduledTaskInfo -TaskName SQLSync_Firebird_Daily_Diff, SQLSync_Firebird_Weekly_Full |
@@ -126,8 +126,8 @@ pro Tabelle genau einmal und ist das robusteste Grep-Ziel.
 ```
 Trigger:          Daily Diff: Mo–Fr ab 06:01 alle 30 Min für 15 h
                   Weekly Full: So 05:13
-Ausführung:       Unabhängig von Benutzeranmeldung (gespeichertes Windows-Passwort)
-Konto:            Benutzer, der Setup-ScheduledTasks.ps1 ausgeführt hat (kein Dienstkonto, S13)
+Ausführung:       Unabhängig von Benutzeranmeldung (gespeichertes Windows-Passwort, bei gMSA keins)
+Konto:            -RunAsUser (Default: Benutzer, der Setup-ScheduledTasks.ps1 ausführt) oder -GmsaAccount (S13)
 Protokollierung:  <Skriptordner>\Logs\Sync_<Konfigname>_<yyyy-MM-dd_HHmm>.log
 ```
 
