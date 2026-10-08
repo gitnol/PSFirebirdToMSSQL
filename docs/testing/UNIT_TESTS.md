@@ -1,12 +1,12 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
 > **Stand 2026-10-08: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 111 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (98) – jede exportierte
+> 120 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (107) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
 > die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-08:
-> 82,54 % von 315 Kommandos). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
+> 84,42 % von 353 Kommandos, Stand I5). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
 > (Modul 13 von 13, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
 > Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
 > (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
@@ -37,7 +37,7 @@ Import-Module Pester -RequiredVersion $req.Pester.RequiredVersion -Force
   ├── pester.config.ps1                # vorhanden: Lauf mit Coverage, Exit 1 bei Rot/Coverage < Ziel
   ├── coverage.xml                     # erzeugt von pester.config.ps1, gitignored
   ├── Unit/
-  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 98 Tests, alle exportierten Modulfunktionen
+  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 107 Tests, alle exportierten Modulfunktionen
   │   └── Setup-ScheduledTasks.Tests.ps1  # vorhanden: 13 Tests, nur -WhatIf
   ├── Integration/                     # noch nicht vorhanden, siehe INTEGRATION_TESTS.md
   └── helpers/
@@ -95,8 +95,10 @@ Describe 'ConvertTo-SqlServerType' {
     It 'mappt String über 4000 Zeichen auf NVARCHAR(MAX)' {
         ConvertTo-SqlServerType -DotNetTypeName 'String' -Size 5000 | Should -Be 'NVARCHAR(MAX)'
     }
-    It 'mappt Decimal (Ist-Zustand, S5) fest auf DECIMAL(18,4)' {
-        # Dokumentiert die heutige Datentreue-Lücke; wird mit I5 auf Precision/Scale umgestellt.
+    It 'mappt Decimal mit Precision/Scale auf DECIMAL(p,s)' {
+        ConvertTo-SqlServerType -DotNetTypeName 'Decimal' -Precision 15 -Scale 6 | Should -Be 'DECIMAL(15,6)'
+    }
+    It 'fällt bei Decimal ohne Precision/Scale auf DECIMAL(18,4) zurück' {
         ConvertTo-SqlServerType -DotNetTypeName 'Decimal' | Should -Be 'DECIMAL(18,4)'
     }
     It 'fällt bei unbekanntem Typ auf NVARCHAR(MAX) zurück' {
@@ -300,7 +302,7 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-08 (111 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 98, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-08 (120 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 107, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
@@ -309,7 +311,7 @@ Ist-Stand 2026-10-08 (111 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Assert-SqlIdentifier` | Ja | Gültige Namen (inkl. `_`, `$`, Ziffern, 63 Zeichen) laufen durch; ungültige werfen `Ungültiger Name in '<Feld>'`: `A"B`, `X;DROP`, `A]B`, `A'B`, Leerzeichen, `-`, leer (ohne `-AllowEmpty`), 64 Zeichen; leer mit `-AllowEmpty` erlaubt |
 | `Get-ConfigValue` | Ja | Wert vorhanden, Default bei fehlendem Wert, `false` wird nicht durch den Default ersetzt |
 | `Get-TableColumnConfig` | Ja | Strategiewahl Incremental / FullMerge / Snapshot, Override-Vorrang, Fallback bei fehlender Override-Spalte |
-| `ConvertTo-SqlServerType` | Ja | Typmapping aller Typen; Decimal als Ist-Zustand `DECIMAL(18,4)` (Precision/Scale mit I5) |
+| `ConvertTo-SqlServerType` | Ja | Typmapping aller Typen inkl. `Guid`; Decimal mit Precision/Scale (`DECIMAL(15,6)`, `DECIMAL(18,0)`, `DECIMAL(38,10)`), Precision > 38 → 38, nur Scale bekannt → `DECIMAL(38,s)`, beides DBNull/fehlend → Fallback `DECIMAL(18,4)`, Precision/Scale bei Nicht-Decimal ignoriert |
 | `New-FirebirdConnectionString`, `New-MSSQLConnectionString` | Ja | Maskierung von `; = ' "`, SecureString-Konvertierung, Integrated Security |
 | `Protect-SqlString` | Ja | Escaping einfacher Anführungszeichen, Leerstring und `$null` |
 | `Resolve-FirebirdCredentials`, `Resolve-MSSQLCredentials` | Ja, mit `Mock Get-StoredCredential -ModuleName SQLSyncCommon` | Reihenfolge, Fallback auf config.json, Integrated Security ohne Credential-Manager-Abfrage, konfigurierbares `CredentialTarget` samt Fehlermeldung |
@@ -318,7 +320,7 @@ Ist-Stand 2026-10-08 (111 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Write-SyncStatus` | Ja, mit `Mock Write-Host` | Format `[Tabelle] Text` und Farbe je Level |
 | `Initialize-FirebirdDriver` | Teilweise, mit Mocks (siehe 4.2) | `DllPath` vorhanden → kein Download; ohne Admin und ohne Treiber → throw ohne Download |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
-| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Inline-Logik mit DB-Zugriff; mit I5/I6 wandert Logik ins Modul und wird dann unit-testbar |
+| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), die Configpfad-Auflösung ist noch dupliziert (I6) |
 
 Querschnittlich: Edge Cases (leeres Array, `$null`, Sonderzeichen in Tabellennamen und
 Passwörtern, Identifier-Allow-List `^[A-Za-z0-9_$]+$` mit Quote-, Klammer- und Semikolon-Fällen).
@@ -354,7 +356,7 @@ Invoke-Pester -Configuration $Config
   Gate in Skripten und einer späteren CI verwendbar.
 - Coverage nur auf `SQLSyncCommon.psm1`; die Einstiegsskripte gehen nicht in die Coverage ein
   (auch nicht `Setup-ScheduledTasks.ps1`, dessen Tests nur den `-WhatIf`-Pfad abdecken).
-- Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos), Ziel 80 %. Das Ziel wird nur
+- Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos, I3), nach I5 84,42 % (353), Ziel 80 %. Das Ziel wird nur
   angehoben, nie abgesenkt.
 - `tests/coverage.xml` ist ein Laufartefakt und steht in `.gitignore`.
 

@@ -10,7 +10,7 @@ BeforeAll {
 
     function Invoke-Setup {
         param([hashtable]$Params = @{})
-        & $script:Script @Params -WhatIf 6>$null
+        & $script:Script @Params -WhatIf -WarningAction SilentlyContinue 6>$null
     }
 }
 

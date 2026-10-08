@@ -145,8 +145,8 @@ IMMER vor einem Commit. Greift zusammen mit der Reflexions-Selbstkritik
 
 | Behauptung | Check (belegen oder fallenlassen) |
 |---|---|
-| „Der Sync ist durchgelaufen, also ist alles synchron." | Seit I2 heißt Exit-Code 0: keine Tabelle `Fehler`, kein Sanity `FEHLER` (sofern `FailOnSanityError` aktiv) — aber nicht: Sanity `WARNUNG` ausgeschlossen, Nachkommastellen korrekt (S5), nichts übersprungen (S6). Zudem ist das Exit-Code-Verhalten noch nicht in einem echten Lauf abgenommen. Exit-Code und Zeile `ERGEBNIS:` im Transcript `Logs\Sync_<cfg>_<ts>.log` nennen, bei Datenaussagen `COUNT(*)` Firebird vs. Zieltabelle vergleichen. |
-| „Die Typen werden korrekt gemappt." | Mapping steht zweimal: `ConvertTo-SqlServerType` (Modul) **und** inline in `Sync_Firebird_MSSQL_AutoSchema.ps1` (S8). Beide Stellen lesen; `Decimal` → `DECIMAL(18,4)` fest (S5). |
+| „Der Sync ist durchgelaufen, also ist alles synchron." | Seit I2 heißt Exit-Code 0: keine Tabelle `Fehler`, kein Sanity `FEHLER` (sofern `FailOnSanityError` aktiv) — aber nicht: Sanity `WARNUNG` ausgeschlossen, Nachkommastellen korrekt (S5: Zieltabellen aus v2.13 oder älter runden weiter), nichts übersprungen (S6). Exit-Code und Zeile `ERGEBNIS:` im Transcript `Logs\Sync_<cfg>_<ts>.log` nennen, bei Datenaussagen `COUNT(*)` Firebird vs. Zieltabelle vergleichen. |
+| „Die Typen werden korrekt gemappt." | Seit v2.14 nur noch `ConvertTo-SqlServerType` (Modul, unit-getestet); `Decimal` → `DECIMAL(p,s)` aus dem Firebird-Schema. Gilt aber nur für neu angelegte Tabellen: der Sync ändert keine bestehenden. Tatsächlichen Zieltyp per `INFORMATION_SCHEMA.COLUMNS` belegen und mit `Get_Firebird_Schema.ps1` (Spalten `Precision`/`Scale`) abgleichen. |
 | „Die Config wird gegen das Schema validiert." | `Get-SQLSyncConfig` hat `-SchemaPath`, aber kein Aufrufer übergibt ihn (S9) — per `grep -n SchemaPath *.ps1` belegen. |
 | „Der Treiber ist integritätsgeprüft." | Nur der frische Download (seit 721d5e0); vorhandene/konfigurierte DLL wird ohne Hash geladen (S4). |
 | „Gelöschte Datensätze werden entfernt." | Nur mit `CleanupOrphans = true`, nur mit ID, nicht bei Snapshot/Forced (S7). |

@@ -22,27 +22,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ---
 
-## Aktuell (Hohe Priorität)
-
-### I5: Typmapping-Datentreue + Modulfunktionen nutzen
-
-Bezug: `KNOWN_ISSUES.md` K2.
-
-**Aufgaben:**
-
-- [ ] `ConvertTo-SqlServerType` um `NumericPrecision`/`NumericScale` erweitern (`DECIMAL(p,s)`, Fallback `DECIMAL(38,s)`)
-- [ ] Inline-Typmapping im Hauptskript durch `ConvertTo-SqlServerType` ersetzen (inkl. `Guid`)
-- [ ] Inline-Spalten-/Strategieermittlung durch `Get-TableColumnConfig` ersetzen (Hinweis: Modul im `-Parallel`-Block importieren)
-- [ ] Hinweis in `RUNBOOK.md`: bestehende Staging-/Zieltabellen müssen für korrigierte Typen neu angelegt werden (`RecreateStagingTable` + Ziel-Neuaufbau)
-
-**Definition of Done:**
-
-- [ ] Unit-Test: `NUMERIC(18,6)` → `DECIMAL(18,6)`, `NUMERIC(15,2)` → `DECIMAL(15,2)`
-- [ ] Keine doppelte Typmapping-/Strategie-Logik mehr im Hauptskript
-- [ ] Gemeinsame DoD erfüllt
-
----
-
 ## Mittlere Priorität
 
 ### I6: Config-Schema-Validierung aktiv + gemeinsame Configpfad-Auflösung
@@ -82,6 +61,7 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 ## Abgeschlossen
 
+- I5 Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale des Firebird-Schemas, Hauptskript nutzt `ConvertTo-SqlServerType` und `Get-TableColumnConfig` (Modul im Parallel-Block); Integrationslauf mit Werten bis zur 6. Nachkommastelle identisch — [ABGESCHLOSSEN 2026-10-08] (Commit siehe `STATE.md`)
 - I9 Scheduled-Task-Setup parametrisiert (Installationsordner, Konfigdateien, Tasknamen, Zeitpläne als Parameter mit neutralen Defaults; `-WhatIf` ohne Adminrechte; Option `-RunAsUser`/`-GmsaAccount`); keine internen Begriffe mehr in versionierten Dateien — [ABGESCHLOSSEN 2026-10-08] (Commit 438dd57)
 - I4 SQL-Identifier gehärtet (Whitelist-Validierung in `Get-SQLSyncConfig` inkl. `MSSQL.Database` und 128-Zeichen-Grenze, `[...]`/`QUOTENAME` überall, Metadaten-Abfragen und `sp_Merge_Generic` parametrisiert, `Manage_Config_Tables.ps1` markiert ungültige Namen) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)
 - I3 Pester-Testharness + Unit-Tests für `SQLSyncCommon.psm1` (74 Tests, alle exportierten Funktionen, Coverage 82,54 % bei Ziel 80 %, 13/13 Mutationen erkannt) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)

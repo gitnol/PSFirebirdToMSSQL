@@ -22,7 +22,7 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.12 (SQL-Identifier gehärtet)
+    Version: 2.14 (Typmapping mit Precision/Scale, Modulfunktionen im Parallel-Block)
 
     Exit-Codes:
     0  = alle Tabellen erfolgreich
@@ -324,7 +324,10 @@ Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRe
 
 $Results = $Tabellen | ForEach-Object -Parallel {
     $Tabelle = $_
-    
+
+    # Jeder Parallel-Runspace startet leer: Modul für Typmapping/Strategie laden
+    Import-Module $using:ModulePath
+
     # Variablen in Scope holen
     $FbCS = $using:FirebirdConnString
     $SqlCS = $using:SqlConnString
@@ -394,36 +397,19 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             $SchemaTable = $ReaderSchema.GetSchemaTable()
             $ReaderSchema.Close()
 
-            $ColNames = $SchemaTable | ForEach-Object { $_.ColumnName }
-            
-            # Dynamische Spalten-Ermittlung (NEU in v2.10)
-            $Override = $null
-            if ($LocalTableOverrides.ContainsKey($Tabelle)) {
-                $Override = $LocalTableOverrides[$Tabelle]
-            }
-            
-            # ID-Spalte bestimmen
-            $IdColumnName = if ($Override -and $Override.IdColumn) { $Override.IdColumn } else { $DefaultIdColumn }
-            $HasID = $IdColumnName -in $ColNames
-            
-            # Timestamp-Spalte bestimmen
-            $TimestampColumnName = $null
-            if ($Override -and $Override.TimestampColumn) {
-                $TimestampColumnName = $Override.TimestampColumn
-            } else {
-                foreach ($tsCol in $DefaultTimestampColumns) {
-                    if ($tsCol -in $ColNames) {
-                        $TimestampColumnName = $tsCol
-                        break
-                    }
-                }
-            }
-            $HasDate = $null -ne $TimestampColumnName -and $TimestampColumnName -in $ColNames
+            $ColNames = @($SchemaTable | ForEach-Object { $_.ColumnName })
 
-            $SyncStrategy = "Incremental"
-            if (-not $HasID) { $SyncStrategy = "Snapshot" }
-            elseif (-not $HasDate) { $SyncStrategy = "FullMerge" }
-            
+            # ID-/Timestamp-Spalte und Strategie über das Modul (v2.14, vorher Inline-Duplikat)
+            $ColumnConfig = Get-TableColumnConfig -TableName $Tabelle -ActualColumns $ColNames -Config @{
+                IdColumn         = $DefaultIdColumn
+                TimestampColumns = $DefaultTimestampColumns
+                TableOverrides   = $LocalTableOverrides
+            }
+            $IdColumnName = $ColumnConfig.IdColumn
+            $HasID = $ColumnConfig.HasId
+            $TimestampColumnName = $ColumnConfig.TimestampColumn
+            $SyncStrategy = $ColumnConfig.SyncStrategy
+
             if ($ForceFull -and $SyncStrategy -eq "Incremental") { $SyncStrategy = "FullMerge (Forced)" }
             $Strategy = $SyncStrategy
 
@@ -442,25 +428,12 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 $Cols = @()
                 foreach ($Row in $SchemaTable) {
                     $ColName = $Row.ColumnName
-                    $DotNetType = $Row.DataType
-                    $Size = $Row.ColumnSize
                     $AllowDBNull = $Row.AllowDBNull
-                    
-                    $SqlType = switch ($DotNetType.Name) {
-                        "Int16" { "SMALLINT" }
-                        "Int32" { "INT" }
-                        "Int64" { "BIGINT" }
-                        "String" { if ($Size -gt 0 -and $Size -le 4000) { "NVARCHAR($Size)" } else { "NVARCHAR(MAX)" } }
-                        "DateTime" { "DATETIME2" }
-                        "TimeSpan" { "TIME" }
-                        "Decimal" { "DECIMAL(18,4)" }
-                        "Double" { "FLOAT" }
-                        "Single" { "REAL" }
-                        "Byte[]" { "VARBINARY(MAX)" }
-                        "Boolean" { "BIT" }
-                        Default { "NVARCHAR(MAX)" }
-                    }
-                    
+
+                    # Typmapping über das Modul inkl. Precision/Scale (v2.14, vorher fest DECIMAL(18,4))
+                    $SqlType = ConvertTo-SqlServerType -DotNetTypeName $Row.DataType.Name -Size $Row.ColumnSize `
+                        -Precision $Row.NumericPrecision -Scale $Row.NumericScale
+
                     if (-not $AllowDBNull -or $ColName -eq $IdColumnName) {
                         $SqlType += " NOT NULL"
                     }

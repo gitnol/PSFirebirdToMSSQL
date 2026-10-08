@@ -129,7 +129,8 @@ finally {
 ```
 
 - Außerhalb von `ForEach-Object -Parallel` alternativ `Close-DatabaseConnection -Connection $Conn` aus dem Modul.
-- Innerhalb `-Parallel`: Werte nur über `$using:` hereinholen, Verbindungen pro Versuch (Retry) neu öffnen und im
+- Innerhalb `-Parallel`: Modulfunktionen per `Import-Module $using:ModulePath` laden (Runspaces erben das Modul
+  nicht) statt Logik zu kopieren; Werte nur über `$using:` hereinholen, Verbindungen pro Versuch (Retry) neu öffnen und im
   `finally` schließen; Verbindungsvariablen **vor** jedem Versuch auf `$null` setzen.
 - `SqlBulkCopy`, `DataReader` und Commands, die eigene Ressourcen halten, ebenfalls schließen bzw. disposen.
 
@@ -179,7 +180,7 @@ finally {
   nummerierte Abschnitte gegliedert (`# 1. INITIALISIERUNG …` bis `# 10. LOG ROTATION`) — neue Phasen fügen sich in diese
   Nummerierung ein.
 - **Gemeinsame Logik** gehört in `SQLSyncCommon.psm1`, sobald sie von mehr als einem Skript gebraucht wird
-  (*Bestand weicht ab:* Configpfad-Auflösung und Typmapping sind dupliziert — Inkremente I5/I6).
+  (*Bestand weicht ab:* die Configpfad-Auflösung ist dupliziert — Inkrement I6).
 - Regionen im Modul mit `#region <Thema>` / `#endregion` (Credential Manager, Credentials Resolution, Connection Strings,
   Firebird Driver, Safe Database Operations, …).
 - Konfiguration als JSON im Root; `config.sample.json` und `config.schema.json` sind versioniert, alle anderen `config*`
@@ -324,7 +325,7 @@ pwsh -NoProfile -File .\tests\pester.config.ps1           # Gate 4 — Unit-Test
 **Stand 2026-10-08:** Keine PSScriptAnalyzer-Settings und keine CI; Gate 1 wird manuell ausgeführt.
 Gate 4 ist seit I3 vorhanden: `tests/pester.config.ps1` lädt das in `tests/RequiredModules.psd1`
 gepinnte Pester 5.7.1, führt die 98 Tests unter `tests/Unit/` aus und endet mit Exit-Code 1 bei einem
-roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 82,54 %). Schneller Lauf
+roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 84,42 %, Stand I5). Schneller Lauf
 ohne Coverage: `Invoke-Pester ./tests`. Details in `docs/testing/UNIT_TESTS.md`. Die Einstiegsskripte
 sind nicht unit-getestet; für sie bleibt als Minimal-Gate: `Test-SQLSyncConnections.ps1` gegen eine
 Testumgebung liefert Exit-Code 0.

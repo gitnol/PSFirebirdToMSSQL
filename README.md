@@ -416,7 +416,7 @@ The module centrally provides the following functions:
 - **Configuration:** `Get-SQLSyncConfig` (including schema validation)
 - **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
 - **Driver Loading:** `Initialize-FirebirdDriver`
-- **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types)
+- **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types; `Decimal` with precision/scale from the Firebird schema). Since v2.14 the parallel sync block imports the module and uses `ConvertTo-SqlServerType` and `Get-TableColumnConfig` directly
 
 ---
 
@@ -551,6 +551,12 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.14 (2026-10-08) - Precision/Scale for DECIMAL
+- `ConvertTo-SqlServerType` has new parameters `-Precision`/`-Scale` (values `NumericPrecision`/`NumericScale` from `GetSchemaTable`, DBNull allowed): `Decimal` becomes `DECIMAL(p,s)`; precision > 38 is capped at 38; precision missing but scale known → `DECIMAL(38,s)`; both missing → previous fallback `DECIMAL(18,4)`. Other types unchanged
+- `Sync_Firebird_MSSQL_AutoSchema.ps1`: the duplicated inline type mapping and inline column/strategy detection were removed; the parallel block imports the module and uses `ConvertTo-SqlServerType` (now also `Guid` → `UNIQUEIDENTIFIER`) and `Get-TableColumnConfig`. Strategy selection is unchanged
+- `Get_Firebird_Schema.ps1`: output has new columns `Precision`/`Scale`; the type proposal takes them into account
+- **Existing installations:** the sync never alters existing tables. Target tables created with v2.13 or older keep `DECIMAL(18,4)` and keep rounding values with more than 4 decimal places, even when the staging table is recreated. Check affected columns (`Get_Firebird_Schema.ps1 -TableName <table>`) and fix them with `ALTER TABLE ... ALTER COLUMN ... DECIMAL(p,s)` or by dropping the target table and running once with `RecreateStagingTable: true` + `ForceFullSync: true`
 
 ### v2.13 (2026-10-08) - Parameterized Task Setup
 - `Setup-ScheduledTasks.ps1` no longer contains hard-coded paths or config names: new parameters `-InstallDir` (default: folder of the script), `-DailyConfigFile` (`config.json`), `-WeeklyConfigFile` (`config_weekly_full.json`), task names, schedule (`-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours`, `-WeeklyDay`, `-WeeklyStart`) and account (`-RunAsUser`)

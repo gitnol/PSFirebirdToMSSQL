@@ -247,7 +247,7 @@ Describe 'ConvertTo-SqlServerType' {
         @{ Type = 'String'; Size = 0; Expected = 'NVARCHAR(MAX)' }
         @{ Type = 'DateTime'; Size = 0; Expected = 'DATETIME2' }
         @{ Type = 'TimeSpan'; Size = 0; Expected = 'TIME' }
-        @{ Type = 'Decimal'; Size = 0; Expected = 'DECIMAL(18,4)' }   # Ist-Zustand (K2), Änderung mit I5
+        @{ Type = 'Decimal'; Size = 0; Expected = 'DECIMAL(18,4)' }   # ohne Precision/Scale: bisheriger Fallback
         @{ Type = 'Double'; Size = 0; Expected = 'FLOAT' }
         @{ Type = 'Single'; Size = 0; Expected = 'REAL' }
         @{ Type = 'Byte[]'; Size = 0; Expected = 'VARBINARY(MAX)' }
@@ -257,6 +257,31 @@ Describe 'ConvertTo-SqlServerType' {
     ) {
         param($Type, $Size, $Expected)
         ConvertTo-SqlServerType -DotNetTypeName $Type -Size $Size | Should -Be $Expected
+    }
+}
+
+Describe 'ConvertTo-SqlServerType: Decimal mit Precision/Scale (K2)' {
+    It 'mappt Decimal(<P>,<S>) auf <Expected>' -TestCases @(
+        @{ P = 15; S = 6; Expected = 'DECIMAL(15,6)' }    # z. B. Gewichte (real im Firebird-Schema)
+        @{ P = 15; S = 5; Expected = 'DECIMAL(15,5)' }
+        @{ P = 15; S = 2; Expected = 'DECIMAL(15,2)' }
+        @{ P = 18; S = 0; Expected = 'DECIMAL(18,0)' }
+        @{ P = 38; S = 10; Expected = 'DECIMAL(38,10)' }  # Firebird 4+ INT128
+    ) {
+        param($P, $S, $Expected)
+        ConvertTo-SqlServerType -DotNetTypeName 'Decimal' -Precision $P -Scale $S | Should -Be $Expected
+    }
+    It 'begrenzt eine Precision über 38 auf 38' {
+        ConvertTo-SqlServerType -DotNetTypeName 'Decimal' -Precision 40 -Scale 4 | Should -Be 'DECIMAL(38,4)'
+    }
+    It 'nutzt bei fehlender Precision, aber bekannter Scale DECIMAL(38,Scale)' {
+        ConvertTo-SqlServerType -DotNetTypeName 'Decimal' -Precision ([DBNull]::Value) -Scale 6 | Should -Be 'DECIMAL(38,6)'
+    }
+    It 'fällt bei DBNull für beide Werte auf DECIMAL(18,4) zurück' {
+        ConvertTo-SqlServerType -DotNetTypeName 'Decimal' -Precision ([DBNull]::Value) -Scale ([DBNull]::Value) | Should -Be 'DECIMAL(18,4)'
+    }
+    It 'ignoriert Precision/Scale bei Nicht-Decimal-Typen' {
+        ConvertTo-SqlServerType -DotNetTypeName 'Int64' -Precision 18 -Scale 0 | Should -Be 'BIGINT'
     }
 }
 

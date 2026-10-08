@@ -417,7 +417,7 @@ Das Modul stellt zentral folgende Funktionen bereit:
 - **Configuration:** `Get-SQLSyncConfig` (inkl. Schema-Validierung)
 - **Spalten-Konfiguration:** `Get-TableColumnConfig` (ermittelt ID/Timestamp-Spalten pro Tabelle)
 - **Driver Loading:** `Initialize-FirebirdDriver`
-- **Type Mapping:** `ConvertTo-SqlServerType` (.NET zu SQL Datentypen)
+- **Type Mapping:** `ConvertTo-SqlServerType` (.NET zu SQL Datentypen; `Decimal` mit Precision/Scale aus dem Firebird-Schema). Seit v2.14 importiert der Parallel-Block des Syncs das Modul und nutzt `ConvertTo-SqlServerType` und `Get-TableColumnConfig` direkt
 
 ---
 
@@ -552,6 +552,12 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.14 (2026-10-08) - Precision/Scale für DECIMAL
+- `ConvertTo-SqlServerType` hat neue Parameter `-Precision`/`-Scale` (Werte `NumericPrecision`/`NumericScale` aus `GetSchemaTable`, DBNull erlaubt): `Decimal` wird zu `DECIMAL(p,s)`; Precision > 38 wird auf 38 begrenzt; Precision fehlt, Scale bekannt → `DECIMAL(38,s)`; beides fehlt → bisheriger Fallback `DECIMAL(18,4)`. Andere Typen unverändert
+- `Sync_Firebird_MSSQL_AutoSchema.ps1`: doppeltes Inline-Typmapping und Inline-Spalten-/Strategieermittlung entfernt; der Parallel-Block importiert das Modul und nutzt `ConvertTo-SqlServerType` (damit auch `Guid` → `UNIQUEIDENTIFIER`) und `Get-TableColumnConfig`. Strategiewahl unverändert
+- `Get_Firebird_Schema.ps1`: Ausgabe um Spalten `Precision`/`Scale` erweitert; der Typvorschlag berücksichtigt sie
+- **Bestehende Installationen:** Der Sync ändert keine bestehenden Tabellen. Zieltabellen, die mit v2.13 oder älter angelegt wurden, behalten `DECIMAL(18,4)` und runden Werte mit mehr als 4 Nachkommastellen weiter – auch wenn die Staging-Tabelle neu angelegt wird. Betroffene Spalten prüfen (`Get_Firebird_Schema.ps1 -TableName <Tabelle>`) und per `ALTER TABLE ... ALTER COLUMN ... DECIMAL(p,s)` korrigieren oder Zieltabelle löschen und einmal mit `RecreateStagingTable: true` + `ForceFullSync: true` laufen lassen
 
 ### v2.13 (2026-10-08) - Parametrisierte Aufgabenplanung
 - `Setup-ScheduledTasks.ps1` enthält keine fest eingetragenen Pfade oder Config-Namen mehr: neue Parameter `-InstallDir` (Default: Ordner des Skripts), `-DailyConfigFile` (`config.json`), `-WeeklyConfigFile` (`config_weekly_full.json`), Tasknamen, Zeitplan (`-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours`, `-WeeklyDay`, `-WeeklyStart`) und Konto (`-RunAsUser`)

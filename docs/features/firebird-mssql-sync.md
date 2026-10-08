@@ -1,7 +1,7 @@
 # Feature: Firebird → MS SQL Sync (Sync_Firebird_MSSQL_AutoSchema.ps1)
 
 Hauptfeature des Projekts. Erstellt auf Basis von `features/FEATURE-template.md`.
-Stand: Skriptversion 2.12 (2026-10-08), Modul `SQLSyncCommon.psm1` 1.0.0; Erstfassung auf Commit 721d5e0.
+Stand: Skriptversion 2.14 (2026-10-08), Modul `SQLSyncCommon.psm1` 1.0.0; Erstfassung auf Commit 721d5e0.
 
 ---
 
@@ -96,11 +96,15 @@ Vorbereitung (einmal pro Lauf, sequentiell):
 Pro Tabelle (parallel, `ThrottleLimit = NumberOfThreads`, mit Retry-Schleife;
 jeder Versuch öffnet eigene Verbindungen und schließt sie im `finally`):
 
-- **A – Analyse:** `SELECT FIRST 1 *` mit `SchemaOnly` liest die Spalten.
-  ID-Spalte = `TableOverrides.<TAB>.IdColumn` oder `IdColumn`; Timestamp-Spalte
-  = Override oder erste vorhandene aus `TimestampColumns`. Daraus die Strategie.
+- **A – Analyse:** Der Parallel-Block importiert zuerst das Modul
+  (`Import-Module $using:ModulePath`), weil Runspaces von `ForEach-Object -Parallel`
+  es nicht erben. `SELECT FIRST 1 *` mit `SchemaOnly` liest die Spalten;
+  `Get-TableColumnConfig` bestimmt ID-Spalte (`TableOverrides.<TAB>.IdColumn` oder
+  `IdColumn`), Timestamp-Spalte (Override oder erste vorhandene aus
+  `TimestampColumns`) und daraus die Strategie.
 - **B – Staging:** `STG_<Tabelle>` anlegen, falls sie fehlt oder
-  `RecreateStagingTable` gesetzt ist (Typmapping inline, ID-Spalte `NOT NULL`).
+  `RecreateStagingTable` gesetzt ist (Typmapping per `ConvertTo-SqlServerType`, siehe
+  „Typmapping“, ID-Spalte `NOT NULL`).
 - **C – Extrakt:** Incremental: Wasserzeichen = `MAX(<ts>)` der Zieltabelle
   (Fehler oder leer → `1900-01-01`), Firebird-Abfrage
   `WHERE <ts> > @LastDate` (parametrisiert). Sonst `SELECT *`.
@@ -147,6 +151,38 @@ Objekt mit `Tabelle`, `Target`, `Status` (`Erfolg`/`Fehler`), `Strategie`,
 `RowsLoaded`, `OrphansDeleted`, `FbTotal`, `SqlTotal`, `SanityCheck`,
 `Duration`, `Speed`, `Info`, `Versuche`. Wird nur als Tabelle ins Transcript
 ausgegeben, nicht als Datei persistiert.
+
+### Typmapping
+
+`ConvertTo-SqlServerType` (Modul) bildet beim Anlegen von `STG_<Tabelle>` jede Spalte
+aus `GetSchemaTable` ab (`DataType`, `ColumnSize`, `NumericPrecision`, `NumericScale`).
+Die Zieltabelle entsteht per `SELECT * INTO … WHERE 1=0` aus der Staging-Tabelle und
+übernimmt deren Typen.
+
+| .NET-Typ | SQL-Server-Typ |
+|---|---|
+| `Int16` / `Int32` / `Int64` | `SMALLINT` / `INT` / `BIGINT` |
+| `String` | `NVARCHAR(n)` bei 1–4000 Zeichen, sonst `NVARCHAR(MAX)` |
+| `DateTime` / `TimeSpan` | `DATETIME2` / `TIME` |
+| `Decimal` | `DECIMAL(p,s)` aus Precision/Scale; p > 38 → 38; Precision fehlt, Scale bekannt → `DECIMAL(38,s)`; beides fehlt → Fallback `DECIMAL(18,4)` |
+| `Double` / `Single` | `FLOAT` / `REAL` |
+| `Byte[]` | `VARBINARY(MAX)` |
+| `Boolean` | `BIT` |
+| `Guid` | `UNIQUEIDENTIFIER` |
+| sonstige | `NVARCHAR(MAX)` |
+
+Belegt am 2026-10-08: Der Firebird-Provider meldet `NumericPrecision`/`NumericScale`
+korrekt (z. B. 15/6); die Demo-Datenbank hat 915 Spalten mit Scale > 4. Im
+Integrationslauf Firebird-Testserver → SQL-Testserver wurde eine Gewichtsspalte als
+`decimal(15,6)` angelegt; die Summe über 62.523 Zeilen war in Firebird und SQL Server
+bis zur 6. Nachkommastelle identisch, 956 Zeilen mit mehr als 4 Nachkommastellen wären
+mit v2.13 gerundet worden.
+
+**Migration bestehender Zieltabellen:** Der Sync ändert keine bestehenden Tabellen.
+Zieltabellen, die mit v2.13 oder älter angelegt wurden, behalten `DECIMAL(18,4)` und
+runden weiter – auch wenn die Staging-Tabelle mit korrektem Typ neu angelegt wird, denn
+der MERGE schreibt in die alten Zieltypen. Prüfung und Korrektur je Tabelle:
+`operations/RUNBOOK.md`, Störung „Nachkommastellen im Ziel gerundet“.
 
 ---
 
@@ -210,15 +246,15 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 |---------------|---------|--------|
 | Exit-Code 0 trotz Tabellenfehlern/Sanity FEHLER; SP-Batch-Fehler nur Warnung | früher kein Exit-Code-Mapping am Skriptende (S1) | behoben in I2 (Exit 10/11/9), abgenommen 2026-10-08 |
 | ~~Tabellen-/Spaltennamen, Prefix/Suffix ungeprüft in SQL interpoliert, teils ohne `[]`~~ | früher fehlende Identifier-Validierung (S2) | behoben in I4 / v2.12 (Allow-List + Klammerung + Parameter), Integrationsläufe 2026-10-08 bestanden |
-| `DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft | Inline-Typmapping ohne Precision/Scale (S5) | geplant in I5 |
-| Typmapping und Spaltenermittlung doppelt (inline statt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`), Guid fehlt inline | Duplikat (S8) | geplant in I5 |
+| ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Migration per `operations/RUNBOOK.md` |
+| ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat geplant in I6 |
 | `config.schema.json` wird nie geprüft | `-SchemaPath` wird nicht übergeben (S9) | geplant in I6 |
 | Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung | Prüfung nur beim Download (S4) | geplant in I7 |
 | Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung) | striktes `> MAX(ts)` (S6) | geplant in I8; Workaround Weekly Full |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
 | `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10 |
-| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; Inline-Logik der Skripte braucht DB-Zugriff | Integrationstests offen; mit I5/I6 wandert Logik ins Modul |
+| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl liegen seit I5 im Modul (unit-getestet), Configpfad folgt mit I6 |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
 
 ---
@@ -243,9 +279,9 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 ## Teststrategie
 
 Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
-mit 74 Pester-5-Tests; jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
+mit 107 Pester-5-Tests (insgesamt 120 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
-`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 82,54 %)
+`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 84,42 %, Stand I5)
 oder schnell `Invoke-Pester ./tests`. Die Diskriminierung der Tests ist per
 Mutationsprüfung belegt (13 von 13 Mutationen erkannt). Die Einstiegsskripte werden
 weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` und die

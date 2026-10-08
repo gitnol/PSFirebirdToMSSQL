@@ -13,8 +13,8 @@ Verbindet sich mit den Prinzipien [[SEPARATION_OF_CONCERNS]] und [[ORTHOGONALITY
 ```mermaid
 flowchart TD
     P[Einstiegspunkte / Präsentation<br/>Sync_Firebird_MSSQL_AutoSchema.ps1 · Test-SQLSyncConnections.ps1<br/>Get_Firebird_Schema.ps1 · Manage_Config_Tables.ps1 · Setup-*.ps1]
-    A[Orchestrierung<br/>Sync-Ablauf, Strategie-Wahl, Retry, Sanity<br/>inline im Sync-Skript]
-    I[Infrastruktur<br/>SQLSyncCommon.psm1: Konfig, Credentials,<br/>Connection Strings, Treiber, Typmapping]
+    A[Orchestrierung<br/>Sync-Ablauf, Retry, Wasserzeichen, Merge, Sanity<br/>im Parallel-Block des Sync-Skripts]
+    I[Infrastruktur<br/>SQLSyncCommon.psm1: Konfig, Credentials,<br/>Connection Strings, Treiber, Typmapping,<br/>Spalten-/Strategieermittlung]
     DB[Datenbank-Seite<br/>sql_server_setup.sql: sp_Merge_Generic]
 
     P --> A
@@ -27,10 +27,11 @@ flowchart TD
 
 - Skripte importieren `SQLSyncCommon.psm1`; das Modul importiert nichts aus den Skripten.
 - Das Modul kennt keine Tabellen-/Sync-Logik — es liefert Konfiguration, Credentials, Verbindungen und Typen.
-- Es gibt keine eigene Domänenschicht: die Fachlogik (Strategie, Wasserzeichen, Merge) steckt im
-  `ForEach-Object -Parallel`-Block des Sync-Skripts. Grund: Modulfunktionen sind im Parallel-Runspace nicht
-  automatisch geladen. Herauslösen testbarer Teile (z. B. `Get-TableColumnConfig`, `ConvertTo-SqlServerType`)
-  ist Inkrement I5.
+- Es gibt keine eigene Domänenschicht: der Ablauf (Wasserzeichen, Extrakt, Merge, Sanity) steckt im
+  `ForEach-Object -Parallel`-Block des Sync-Skripts. Modulfunktionen sind im Parallel-Runspace nicht
+  automatisch geladen; der Block importiert das Modul daher selbst (`Import-Module $using:ModulePath`) und
+  nutzt `Get-TableColumnConfig` (Spalten/Strategie) und `ConvertTo-SqlServerType` (Typmapping) — keine
+  Kopie dieser Logik im Skript (seit v2.14).
 
 ---
 
@@ -105,8 +106,10 @@ Nicht vorhanden: `src/`, Build-Output, Modul-Manifest.
 
 ## Anti-Pattern
 
-- **Fachlogik doppelt pflegen:** Typmapping und Spalten-/Strategie-Ermittlung existieren inline im Sync-Skript **und**
-  als `ConvertTo-SqlServerType` / `Get-TableColumnConfig` im Modul (weichen voneinander ab) — Inkrement I5.
+- **Fachlogik doppelt pflegen:** Logik, die im Modul existiert, nicht im Skript nachbauen — auch nicht im
+  `-Parallel`-Block (dort `Import-Module $using:ModulePath`). Das frühere Duplikat von Typmapping und
+  Spalten-/Strategieermittlung im Sync-Skript ist seit v2.14 entfernt; es war vom Modul abgewichen (fehlendes
+  `Guid`, `DECIMAL(18,4)` fest).
 - **Kopierte Hilfslogik:** Konfigpfad-Auflösung ist in zwei Skripten kopiert; `Get_Firebird_Schema.ps1` und
   `Manage_Config_Tables.ps1` lesen fest `config.json` — Inkrement I6.
 - **Hart codierte Umgebungspfade** (Laufwerke, Installationsordner, Konfignamen) in Skripten — Pfade als Parameter

@@ -229,6 +229,49 @@ automatisch erweitert (S11).
 Das Job-Profil Weekly Full (Default `config_weekly_full.json`)
 baut Staging wöchentlich neu, erweitert aber die Zieltabelle ebenfalls nicht.
 
+### Nachkommastellen im Ziel gerundet
+
+Symptom: Dezimalwerte im Ziel haben höchstens 4 Nachkommastellen, in Firebird mehr
+(z. B. Gewichte, Umrechnungsfaktoren); Summen weichen ab, Sanity bleibt `OK`.
+Ursache: Bis v2.13 wurde jedes `Decimal` als `DECIMAL(18,4)` angelegt (S5). Seit v2.14
+übernimmt der Sync Precision/Scale aus Firebird (`DECIMAL(p,s)`) – aber nur beim
+**Anlegen** von Tabellen. Der Sync ändert keine bestehenden Tabellen: Zieltabellen aus
+v2.13 oder älter behalten `DECIMAL(18,4)` und runden weiter, auch wenn
+`STG_<Tabelle>` neu und korrekt angelegt wird, weil der MERGE in die alten Zieltypen
+schreibt.
+
+1. Betroffene Spalten im Ziel finden (SSMS, Zieldatenbank):
+
+   ```sql
+   SELECT TABLE_NAME, COLUMN_NAME
+   FROM INFORMATION_SCHEMA.COLUMNS
+   WHERE DATA_TYPE = 'decimal' AND NUMERIC_PRECISION = 18 AND NUMERIC_SCALE = 4;
+   ```
+
+2. Mit dem Firebird-Schema abgleichen – nur Spalten mit Scale > 4 oder Precision > 18
+   sind betroffen (Spalten `Precision`/`Scale`, `Vorschlag SQL`):
+
+   ```powershell
+   .\Get_Firebird_Schema.ps1 -TableName BKUNDE   # liest fest config.json
+   ```
+
+3. Korrigieren – eine der beiden Varianten:
+   - Spalte im Ziel ändern (Typ aus `Vorschlag SQL`, Nullbarkeit wie bisher; Indizes oder
+     ein PK auf der Spalte müssen vorher entfernt werden):
+
+     ```sql
+     ALTER TABLE [<Ziel>] ALTER COLUMN [<Spalte>] DECIMAL(15,6) NULL;  -- bzw. NOT NULL
+     ```
+
+     Bereits gerundete Werte bleiben gerundet, bis die Zeilen neu geladen werden:
+     danach einmal mit `ForceFullSync: true` laufen lassen (Einmal-Konfig).
+   - Zieltabelle löschen (`DROP TABLE`) und einmal mit Einmal-Konfig
+     `RecreateStagingTable: true` + `ForceFullSync: true` laufen lassen: Staging wird mit
+     den neuen Typen angelegt, das Ziel per `SELECT * INTO` daraus neu erzeugt und voll
+     geladen. Nur, wenn niemand auf der Tabelle Abhängigkeiten (Views, Rechte) hat.
+4. Prüfen: Abfrage aus Schritt 1 liefert die Spalte nicht mehr; Stichprobe
+   `SUM(<Spalte>)` in Firebird und im Ziel bis zur letzten Nachkommastelle vergleichen.
+
 ### Löschungen in Firebird fehlen im Ziel
 
 Standardmäßig werden Löschungen nicht repliziert (Sanity `WARNUNG (+n)`).

@@ -115,13 +115,16 @@ try {
         $AllowDBNull = $Row.AllowDBNull
         
         # SQL Server Typ-Vorschlag
-        $ProposedSqlType = ConvertTo-SqlServerType -DotNetTypeName $DotNetType.Name -Size $Size
+        $ProposedSqlType = ConvertTo-SqlServerType -DotNetTypeName $DotNetType.Name -Size $Size `
+            -Precision $Row.NumericPrecision -Scale $Row.NumericScale
 
         $Result += [PSCustomObject]@{
             Column          = $ColName
             ".NET Type"     = $DotNetType.Name
             "Full Type"     = $DotNetType.FullName
             "Size"          = $Size
+            "Precision"     = $Row.NumericPrecision
+            "Scale"         = $Row.NumericScale
             "Nullable"      = $AllowDBNull
             "Vorschlag SQL" = $ProposedSqlType
         }

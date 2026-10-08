@@ -133,6 +133,7 @@ bleiben dabei erhalten (TRUNCATE + MERGE statt DROP).
 - [ ] `LastTaskResult` des nächsten geplanten Laufs `0x0` (`0xA`/`0xB` = Tabellen-/Sanity-Fehler, `operations/MONITORING.md`); Sanity `WARNUNG` zusätzlich im Log prüfen
 - [ ] Beim Update auf Sync v2.11: Neuer Schlüssel `General.FailOnSanityError` (Default `true`) – bewusst entscheiden, ob Sanity `FEHLER` den Task als fehlgeschlagen melden soll
 - [ ] Beim Update von `Setup-ScheduledTasks.ps1` (parametrisierte Fassung): bestehende Tasks bleiben unverändert. Erst beim Neuanlegen `-InstallDir`, `-DailyConfigFile` und `-WeeklyConfigFile` explizit übergeben und vorher mit `-WhatIf` prüfen – die Defaults (Skriptordner, `config.json`, `config_weekly_full.json`) entsprechen nicht den früher fest eingetragenen Namen
+- [ ] Beim Update auf Sync v2.14: Altbestand prüfen. Der Sync ändert keine bestehenden Tabellen – Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` und runden Werte mit mehr als 4 Nachkommastellen weiter. Betroffene Spalten per `INFORMATION_SCHEMA.COLUMNS` (`decimal`, Precision 18, Scale 4) suchen, mit `Get_Firebird_Schema.ps1 -TableName <Tabelle>` abgleichen und korrigieren (`operations/RUNBOOK.md`, „Nachkommastellen im Ziel gerundet“)
 
 ---
 

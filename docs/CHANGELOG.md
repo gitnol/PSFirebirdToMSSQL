@@ -12,6 +12,41 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-08 I5 – Typmapping-Datentreue + Modulfunktionen im Hauptskript
+
+### Changed
+- `ConvertTo-SqlServerType`: neue Parameter `-Precision`/`-Scale` (aus `NumericPrecision`/`NumericScale`
+  des Firebird-Schemas, DBNull erlaubt) → `DECIMAL(p,s)`, p ≤ 38; ohne Schema-Info bisheriger Fallback
+  `DECIMAL(18,4)`
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.14: Inline-Typmapping und Inline-Spalten-/Strategieermittlung
+  durch `ConvertTo-SqlServerType` bzw. `Get-TableColumnConfig` ersetzt; der `-Parallel`-Block importiert
+  dazu das Modul (damit auch `Guid` → `UNIQUEIDENTIFIER`)
+- `Get_Firebird_Schema.ps1`: zeigt Precision/Scale und schlägt `DECIMAL(p,s)` vor
+
+### Fixed
+- Stiller Präzisionsverlust ab der 5. Nachkommastelle für neu angelegte Staging-/Zieltabellen (`KNOWN_ISSUES.md` K2)
+
+### Iterations-Log
+- Vorab-Faktencheck (lesend): Die Demo-Datenbank des Firebird-Testservers hat 915 Spalten mit Scale > 4;
+  der Treiber meldet `NumericPrecision`/`NumericScale` korrekt (z. B. 15/6).
+- Rot: Parameter zuerst als wirkungsloser Stub → 5 Tests „Expected 'DECIMAL(15,6)' … but … different"
+  (behavioral), Grün mit Implementierung; 120/120.
+- Integrationslauf Firebird-Testserver → SQL-Testserver (`STAGING_I2TEST`, vorher lesend geprüft, L4):
+  Exit 0; Zieltyp `decimal(15,6)` für eine Gewichtsspalte; SUM über 62.523 Zeilen in Firebird und
+  SQL Server bis zur 6. Nachkommastelle identisch, 956 Zeilen mit > 4 Nachkommastellen (vorher gerundet).
+
+### Confidence / Ungeprüft
+- Nicht geprüft: Precision > 18 (Firebird 4+ INT128) mit echten Daten — die Demo-Datenbank hat nur NUMERIC(15,x);
+  nur per Unit-Test.
+- **Altbestand:** Der Sync ändert keine bestehenden Tabellen. Vor v2.14 angelegte Zieltabellen behalten
+  `DECIMAL(18,4)`; Korrekturprozedur in `operations/RUNBOOK.md`, Risiko in `STATE.md`.
+- Strategiewahl über `Get-TableColumnConfig`: Code-Vergleich mit der alten Inline-Logik + zwei Läufe mit dem
+  neuen Code — ForceFull (`FullMerge (Forced)`) und inkrementell mit `CleanupOrphans` (0 Zeilen geladen →
+  Wasserzeichen greift, Exit 0). Nicht mit neuem Code gelaufen: `Snapshot` (Tabelle ohne ID) und
+  `TableOverrides` gegen echte Daten — nur per Unit-Test.
+
+---
+
 ## 2026-10-08 I9 – Scheduled-Task-Setup parametrisieren (vor I5 gezogen)
 
 ### Changed

@@ -55,9 +55,9 @@ flowchart TD
     SYNC[Sync_Firebird_MSSQL_AutoSchema.ps1] --> PF
     PF[Pre-Flight über master<br/>DB anlegen falls fehlt · sp_Merge_Generic prüfen<br/>sonst sql_server_setup.sql ausführen] --> PAR
 
-    PAR[ForEach-Object -Parallel<br/>je Tabelle mit Retry-Schleife] --> SCH
+    PAR[ForEach-Object -Parallel<br/>je Tabelle: Import-Module SQLSyncCommon<br/>Retry-Schleife] --> SCH
     FB[(Firebird<br/>Quelltabelle)] --> SCH
-    SCH[Schema lesen · Strategie wählen<br/>Incremental / FullMerge / Snapshot] --> EXT
+    SCH[Schema lesen · Get-TableColumnConfig<br/>Incremental / FullMerge / Snapshot<br/>Typen per ConvertTo-SqlServerType] --> EXT
     WM[(Wasserzeichen<br/>MAX Timestamp der Zieltabelle)] --> EXT
     EXT[Extrakt aus Firebird<br/>WHERE ts > @LastDate] --> BULK
     BULK[SqlBulkCopy] --> STG[(STG_Tabelle<br/>Staging)]
@@ -81,8 +81,10 @@ Ablauf eines Laufs im Detail (Nummern = Abschnitte im Sync-Skript):
 2. **Pre-Flight** (7): über `master` die Zieldatenbank anlegen (Recovery `SIMPLE`, braucht `dbcreator`), dann
    `sp_Merge_Generic` prüfen (fehlt / Parameteranzahl ≠ 4 / `RecreateStoredProcedure`) und ggf. `sql_server_setup.sql`
    batchweise (Split an `GO`) ausführen.
-3. **Hauptschleife** (8), je Tabelle in eigenem Runspace mit bis zu `MaxRetries + 1` Versuchen:
-   Schema lesen → ID-/Timestamp-Spalte bestimmen (`TableOverrides` > globale Werte) → Staging anlegen/leeren →
+3. **Hauptschleife** (8), je Tabelle in eigenem Runspace mit bis zu `MaxRetries + 1` Versuchen; der Runspace
+   importiert zuerst das Modul (`Import-Module $using:ModulePath`):
+   Schema lesen → ID-/Timestamp-Spalte und Strategie per `Get-TableColumnConfig` (`TableOverrides` > globale
+   Werte) → Staging anlegen (Typen per `ConvertTo-SqlServerType` inkl. Precision/Scale)/leeren →
    Extrakt + `SqlBulkCopy` → Zieltabelle bei Bedarf anlegen, PK nachrüsten → `MERGE` bzw. Snapshot →
    optional Orphan-Cleanup → Sanity Check → Ergebnisobjekt.
 4. Zusammenfassung (9), Log-Rotation (10), Exit-Code per `Get-SyncExitCode` (11, Zeile `ERGEBNIS: …`),
@@ -161,10 +163,10 @@ Fehler in einem Schritt führen zum nächsten Versuch der Retry-Schleife; nach d
 
 | Constraint | Auswirkung |
 |-----------|-----------|
-| PowerShell 7.0+ | `ForEach-Object -Parallel`; jede Tabelle in eigenem Runspace, Modulfunktionen dort nicht automatisch verfügbar → Logik in der Hauptschleife inline |
+| PowerShell 7.0+ | `ForEach-Object -Parallel`; jede Tabelle in eigenem Runspace, Modulfunktionen dort nicht automatisch verfügbar → jeder Runspace importiert `SQLSyncCommon.psm1` (`Import-Module $using:ModulePath`) und nutzt dessen Funktionen |
 | Wasserzeichen = `MAX(ts)` der Zieltabelle, Vergleich `>` | kein separater Zustandsspeicher nötig; Datensätze mit gleichem/älterem Zeitstempel können übersprungen werden (Inkrement I8) |
 | Staging + generische `MERGE`-Prozedur | Delta-Läufe ohne Löschungen; Löschungen nur über Orphan-Cleanup oder Weekly Full ([Entscheidung ADR-001](ADR/ADR-001-staging-merge-statt-direktem-upsert.md)) |
-| Zieltabellen werden automatisch per `SELECT * INTO … WHERE 1=0` angelegt | Typen stammen aus Staging-Mapping (`DECIMAL(18,4)` fest, Inkrement I5); keine automatische Spaltenerweiterung |
+| Zieltabellen werden automatisch per `SELECT * INTO … WHERE 1=0` angelegt | Typen stammen aus dem Staging-Mapping (`ConvertTo-SqlServerType`, `DECIMAL(p,s)` aus dem Firebird-Schema seit v2.14); bestehende Tabellen werden nie geändert — Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` (Migration: `operations/RUNBOOK.md`); keine automatische Spaltenerweiterung |
 | Credentials im Credential Manager, `Persist = LocalMachine`, an das Windows-Konto gebunden | Task muss unter demselben Konto laufen, unter dem `Setup_Credentials.ps1` ausgeführt wurde |
 | Treiber-Download braucht einmalig Admin-Rechte und Internetzugang | Erstinstallation als Administrator; danach Offline-Betrieb aus `%ProgramData%` |
 | Auto-Create der Zieldatenbank über `master` | Konto braucht `dbcreator`, sonst Pre-Flight-Abbruch (Exit 9) — alternativ DB vorab anlegen |

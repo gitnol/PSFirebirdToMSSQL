@@ -796,7 +796,12 @@ function ConvertTo-SqlServerType {
         [Parameter(Mandatory)]
         [string]$DotNetTypeName,
 
-        [int]$Size = 0
+        [int]$Size = 0,
+
+        # NumericPrecision/NumericScale aus GetSchemaTable (können DBNull sein)
+        [object]$Precision = $null,
+
+        [object]$Scale = $null
     )
 
     switch ($DotNetTypeName) {
@@ -813,7 +818,17 @@ function ConvertTo-SqlServerType {
         }
         "DateTime" { return "DATETIME2" }
         "TimeSpan" { return "TIME" }
-        "Decimal" { return "DECIMAL(18,4)" }
+        "Decimal" {
+            # Precision/Scale aus dem Firebird-Schema übernehmen (SQL Server: max. 38).
+            # Ohne Schema-Info bleibt der bisherige Fallback DECIMAL(18,4).
+            $P = if ($null -ne $Precision -and $Precision -isnot [DBNull]) { [int]$Precision } else { 0 }
+            $S = if ($null -ne $Scale -and $Scale -isnot [DBNull]) { [int]$Scale } else { -1 }
+            if ($P -le 0 -and $S -lt 0) { return "DECIMAL(18,4)" }
+            if ($P -le 0) { $P = 38 }
+            $P = [Math]::Min($P, 38)
+            $S = [Math]::Min([Math]::Max($S, 0), $P)
+            return "DECIMAL($P,$S)"
+        }
         "Double" { return "FLOAT" }
         "Single" { return "REAL" }
         "Byte[]" { return "VARBINARY(MAX)" }

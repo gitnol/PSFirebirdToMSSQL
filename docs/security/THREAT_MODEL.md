@@ -160,8 +160,10 @@ jemand bemerkt:
   auch wenn Tabellen den Status `Fehler` oder der Sanity Check `FEHLER` hatte; Batch-Fehler beim
   Installieren von `sql_server_setup.sql` waren nur Warnungen. Der Task Scheduler meldete Erfolg.
   Seit v2.11 (I2) im Code mitigiert, siehe unten.
-- **S5:** Das Inline-Typmapping bildet `Decimal` fest auf `DECIMAL(18,4)` ab – Werte mit mehr als
-  4 Nachkommastellen werden gerundet, Werte mit Precision > 18 laufen über (Fehler oder Verlust).
+- **S5:** Bis Version 2.13 bildete das Typmapping im Sync-Skript `Decimal` fest auf `DECIMAL(18,4)`
+  ab – Werte mit mehr als 4 Nachkommastellen wurden gerundet, Werte mit Precision > 18 liefen über
+  (Fehler oder Verlust). Seit v2.14 (I5) für neu angelegte Tabellen mitigiert, siehe unten;
+  bestehende Zieltabellen behalten ihren Typ.
 - **S6:** Das Wasserzeichen ist strikt `> MAX(ts)` der Zieltabelle; Sätze mit identischem
   Zeitstempel oder aus länger laufenden Firebird-Transaktionen werden bis zum nächsten Full-Lauf
   übersprungen. Fällt die `MAX`-Abfrage aus, wird `1900-01-01` verwendet (Voll-Extrakt).
@@ -180,15 +182,22 @@ jemand bemerkt:
   fehlendem Ergebnis) und `11` bei Sanity `FEHLER` (abschaltbar per `General.FailOnSanityError`),
   ermittelt durch `Get-SyncExitCode` (Unit-Tests vorhanden). `LastTaskResult` im Task Scheduler
   zeigt damit `0xA`/`0xB`. Sanity `WARNUNG (+n)` bleibt Exit 0.
+- Seit v2.14 (I5): `ConvertTo-SqlServerType` übernimmt `NumericPrecision`/`NumericScale` aus dem
+  Firebird-Schema (`DECIMAL(p,s)`, p höchstens 38; Fallback `DECIMAL(18,4)` nur ohne
+  Schema-Info); der Sync nutzt die Modulfunktion statt einer eigenen Kopie. Unit-Tests vorhanden;
+  Integrationslauf am 2026-10-08: `decimal(15,6)` im Ziel, Summe über 62.523 Zeilen bis zur 6.
+  Nachkommastelle identisch mit Firebird. Der Sync ändert keine bestehenden Tabellen –
+  Zieltabellen aus v2.13 oder älter runden weiter, bis sie migriert sind
+  (`operations/RUNBOOK.md`, „Nachkommastellen im Ziel gerundet“).
 
-**Offene Maßnahme:** Abnahme von **I2** durch einen echten Lauf (nicht existierende Tabelle →
-Exit 10, Task Scheduler „Letztes Ergebnis" `0xA`); **I5** (DECIMAL mit Precision/Scale aus dem
-Schema), **I8** (Überlappungsfenster für das Wasserzeichen). Backlog: strukturiertes
+**Offene Maßnahme:** (I2 abgenommen 2026-10-08: echter Lauf Exit 10, Aufgabenplanung `0xA`.) Migration von Zieltabellen aus v2.13 oder
+älter je Installation (S5-Altbestand); **I8** (Überlappungsfenster für das Wasserzeichen). Backlog: strukturiertes
 Run-Ergebnis (JSON/CSV) und Alarmierung auf `LastTaskResult`.
 
 **Restrisiko:** Mittel – Tabellen- und Sanity-Fehler sind über den Exit-Code erkennbar (Abnahme
-offen), es gibt aber keine aktive Alarmierung; S5/S6 bleiben offen und erzeugen nicht immer einen
-Sanity-`FEHLER` (z. B. gerundete Nachkommastellen bei gleicher Zeilenzahl).
+offen), es gibt aber keine aktive Alarmierung; S6 bleibt offen, ebenso S5 für nicht migrierte
+Zieltabellen aus v2.13 oder älter – beides erzeugt nicht immer einen Sanity-`FEHLER` (z. B.
+gerundete Nachkommastellen bei gleicher Zeilenzahl).
 
 ---
 
@@ -272,10 +281,10 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S2 | SQL-Identifier ungeprüft in SQL interpoliert | — | I4 (erledigt 2026-10-08) |
 | S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
 | S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 |
-| S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Inline-Mapping ohne `Guid` | K2 | I5 |
+| S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand siehe RUNBOOK) |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
 | S7 | Löschungen nicht repliziert; Orphan-Cleanup nur numerische IDs | K4, K5 | by design / `BACKLOG.md` |
-| S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5, I6 |
+| S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5 Typmapping/Strategie erledigt, Configpfad-Duplikat → I6 |
 | S9 | `config.schema.json` wird nie geprüft | K7 | I6 |
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
 | S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
