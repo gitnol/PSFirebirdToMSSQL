@@ -44,6 +44,11 @@
           "description": "COUNT-Vergleich zwischen Quelle und Ziel durchführen",
           "default": true
         },
+        "FailOnSanityError": {
+          "type": "boolean",
+          "description": "Sanity Check 'FEHLER' (Ziel hat weniger Zeilen als Quelle) beendet den Lauf mit Exit-Code 11",
+          "default": true
+        },
         "MaxRetries": {
           "type": "integer",
           "description": "Wiederholungsversuche bei Verbindungsfehlern",
@@ -148,6 +153,12 @@
         "Password": {
           "type": "string",
           "description": "Firebird Passwort (UNSICHER! Besser: Credential Manager)"
+        },
+        "CredentialTarget": {
+          "type": "string",
+          "description": "Name des Eintrags im Windows Credential Manager (anlegen mit Setup_Credentials.ps1 -FirebirdTarget)",
+          "minLength": 1,
+          "default": "SQLSync_Firebird"
         }
       },
       "additionalProperties": false
@@ -161,7 +172,7 @@
           "type": "string",
           "description": "SQL Server Hostname oder Instance-Name",
           "minLength": 1,
-          "examples": ["SVRSQL03", "localhost\\SQLEXPRESS", "server.domain.local,1433"]
+          "examples": ["SQLSERVER01", "localhost\\SQLEXPRESS", "server.domain.local,1433"]
         },
         "Database": {
           "type": "string",
@@ -189,6 +200,13 @@
         "Password": {
           "type": "string",
           "description": "SQL Server Passwort (UNSICHER! Besser: Credential Manager)"
+        },
+        "CredentialTarget": {
+          "type": "string",
+          "description": "Name des Eintrags im Windows Credential Manager (anlegen mit Setup_Credentials.ps1 -MSSQLTarget); nur bei SQL Auth",
+          "minLength": 1,
+          "default": "SQLSync_MSSQL",
+          "examples": ["SQLSync_MSSQL", "SQLSync_MSSQL_sqltest"]
         },
         "Prefix": {
           "type": "string",

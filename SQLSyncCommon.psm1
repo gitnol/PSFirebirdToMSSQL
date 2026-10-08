@@ -169,7 +169,8 @@ function Get-SQLSyncConfig {
         DeleteLogOlderThanDays  = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
         CleanupOrphans          = Get-ConfigValue $Config.General "CleanupOrphans" $false
         OrphanCleanupBatchSize  = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
-        
+        FailOnSanityError       = [bool](Get-ConfigValue $Config.General "FailOnSanityError" $true)
+
         # Column Configuration (NEU in v2.10)
         IdColumn                = Get-ConfigValue $Config.General "IdColumn" "ID"
         TimestampColumns        = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
@@ -219,6 +220,26 @@ function Get-SQLSyncConfig {
         throw "OrphanCleanupBatchSize muss mindestens 1000 sein."
     }
 
+    # Identifier-Whitelist (Fail-Fast): alle Namen, die in SQL-Text eingesetzt werden
+    foreach ($Table in $Result.Tables) { Assert-SqlIdentifier -Name $Table -Field "Tables" }
+    Assert-SqlIdentifier -Name $Result.IdColumn -Field "General.IdColumn"
+    foreach ($TsCol in $Result.TimestampColumns) { Assert-SqlIdentifier -Name $TsCol -Field "General.TimestampColumns" }
+    Assert-SqlIdentifier -Name $Result.MSSQLDatabase -Field "MSSQL.Database" -AllowEmpty
+    Assert-SqlIdentifier -Name $Result.MSSQLPrefix -Field "MSSQL.Prefix" -AllowEmpty
+    Assert-SqlIdentifier -Name $Result.MSSQLSuffix -Field "MSSQL.Suffix" -AllowEmpty
+    foreach ($Key in $Result.TableOverrides.Keys) {
+        Assert-SqlIdentifier -Name $Key -Field "TableOverrides"
+        Assert-SqlIdentifier -Name $Result.TableOverrides[$Key].IdColumn -Field "TableOverrides.$Key.IdColumn" -AllowEmpty
+        Assert-SqlIdentifier -Name $Result.TableOverrides[$Key].TimestampColumn -Field "TableOverrides.$Key.TimestampColumn" -AllowEmpty
+    }
+    # SQL Server erlaubt 128 Zeichen pro Name; Ziel = Prefix + Tabelle + Suffix
+    foreach ($Table in $Result.Tables) {
+        $TargetName = "$($Result.MSSQLPrefix)$Table$($Result.MSSQLSuffix)"
+        if ($TargetName.Length -gt 128) {
+            throw "Ungültiger Name: Zieltabelle '$TargetName' (MSSQL.Prefix + Tables + MSSQL.Suffix) ist länger als 128 Zeichen."
+        }
+    }
+
     return $Result
 }
 
@@ -264,10 +285,11 @@ function Resolve-FirebirdCredentials {
         [object]$Config
     )
 
-    # 1. Versuch: Credential Manager
-    $Cred = Get-StoredCredential -Target "SQLSync_Firebird"
+    # 1. Versuch: Credential Manager (Eintrag aus Firebird.CredentialTarget, Default SQLSync_Firebird)
+    $Target = Get-ConfigValue $Config.Firebird "CredentialTarget" "SQLSync_Firebird"
+    $Cred = Get-StoredCredential -Target $Target
     if ($Cred) {
-        Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green
+        Write-Host "[Credentials] Firebird: Credential Manager ($Target)" -ForegroundColor Green
         return @{
             Username = $Cred.Username
             Password = $Cred.Password
@@ -286,7 +308,7 @@ function Resolve-FirebirdCredentials {
         }
     }
 
-    throw "Keine Firebird Credentials gefunden! Führe Setup_Credentials.ps1 aus."
+    throw "Keine Firebird Credentials gefunden (Credential-Manager-Eintrag '$Target')! Führe Setup_Credentials.ps1 aus."
 }
 
 <#
@@ -318,10 +340,11 @@ function Resolve-MSSQLCredentials {
         }
     }
 
-    # 1. Versuch: Credential Manager
-    $Cred = Get-StoredCredential -Target "SQLSync_MSSQL"
+    # 1. Versuch: Credential Manager (Eintrag aus MSSQL.CredentialTarget, Default SQLSync_MSSQL)
+    $Target = Get-ConfigValue $Config.MSSQL "CredentialTarget" "SQLSync_MSSQL"
+    $Cred = Get-StoredCredential -Target $Target
     if ($Cred) {
-        Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green
+        Write-Host "[Credentials] SQL Server: Credential Manager ($Target)" -ForegroundColor Green
         return @{
             Username           = $Cred.Username
             Password           = $Cred.Password
@@ -341,7 +364,7 @@ function Resolve-MSSQLCredentials {
         }
     }
 
-    throw "Keine SQL Server Credentials gefunden! Führe Setup_Credentials.ps1 aus oder aktiviere 'Integrated Security'."
+    throw "Keine SQL Server Credentials gefunden (Credential-Manager-Eintrag '$Target')! Führe Setup_Credentials.ps1 aus oder aktiviere 'Integrated Security'."
 }
 
 #endregion
@@ -712,6 +735,46 @@ function Write-SyncStatus {
 
 #endregion
 
+#region Exit Codes
+
+<#
+.SYNOPSIS
+    Ermittelt den Exit-Code eines Sync-Laufs aus den Tabellenergebnissen.
+
+.DESCRIPTION
+    0  = alle Tabellen erfolgreich (Sanity OK, N/A oder WARNUNG)
+    10 = mindestens eine Tabelle mit Status "Fehler", keine Ergebnisse oder weniger
+         Ergebnisse als ExpectedTableCount
+    11 = keine Tabellenfehler, aber mindestens ein Sanity Check "FEHLER (...)"
+         (nur wenn FailOnSanityError aktiv ist)
+
+.PARAMETER Results
+    Ergebnisobjekte der Tabellenverarbeitung (Eigenschaften Status, SanityCheck).
+
+.PARAMETER FailOnSanityError
+    Ob ein Sanity "FEHLER" (Ziel hat weniger Zeilen als Quelle) zu Exit 11 führt.
+#>
+function Get-SyncExitCode {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Results,
+
+        [bool]$FailOnSanityError = $true,
+
+        [int]$ExpectedTableCount = 0
+    )
+
+    # Fehlende Ergebnisse (z. B. Abbruch eines Parallel-Blocks außerhalb seines try) zählen als Tabellenfehler
+    if ($Results.Count -eq 0 -or $Results.Count -lt $ExpectedTableCount) { return 10 }
+    if ($Results | Where-Object { $_.Status -ne "Erfolg" }) { return 10 }
+    if ($FailOnSanityError -and ($Results | Where-Object { "$($_.SanityCheck)" -like "FEHLER*" })) { return 11 }
+    return 0
+}
+
+#endregion
+
 #region Type Mapping
 
 <#
@@ -882,6 +945,50 @@ function Get-TableColumnConfig {
 
 <#
 .SYNOPSIS
+    Prüft einen Tabellen-/Spaltennamen (oder Namensteil) gegen die Whitelist ^[A-Za-z0-9_$]+$.
+
+.DESCRIPTION
+    Namen aus der Konfiguration bzw. aus Firebird-Metadaten werden in SQL-Text eingesetzt
+    (Firebird "..." / SQL Server [...]). Die Whitelist schließt Quote-, Klammer-, Semikolon-
+    und Leerzeichen aus, die maximale Länge folgt dem Firebird-Limit (63 Zeichen).
+    Bei Verstoß wird geworfen (Fail-Fast) – die Meldung nennt das Konfigurationsfeld.
+
+.PARAMETER Name
+    Zu prüfender Name.
+
+.PARAMETER Field
+    Konfigurationsfeld für die Fehlermeldung (z. B. "Tables", "MSSQL.Prefix").
+
+.PARAMETER AllowEmpty
+    Leerstring zulassen (für Prefix/Suffix).
+#>
+function Assert-SqlIdentifier {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [AllowNull()]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [string]$Field,
+
+        [switch]$AllowEmpty
+    )
+
+    if ([string]::IsNullOrEmpty($Name)) {
+        if ($AllowEmpty) { return }
+        throw "Ungültiger Name in '$Field': leer."
+    }
+    if ($Name.Length -gt 63) {
+        throw "Ungültiger Name in '$Field': '$Name' ist länger als 63 Zeichen."
+    }
+    if ($Name -cnotmatch '^[A-Za-z0-9_$]+$') {
+        throw "Ungültiger Name in '$Field': '$Name' (erlaubt sind nur A-Z, a-z, 0-9, _ und `$)."
+    }
+}
+
+<#
+.SYNOPSIS
     Escaped Strings für die Verwendung in Firebird SQL-Statements.
 .DESCRIPTION
     Verdoppelt einfache Anführungszeichen, um SQL-Injection und Syntaxfehler zu verhindern.
@@ -927,6 +1034,8 @@ Export-ModuleMember -Function @(
     
     # Helpers
     'Write-SyncStatus'
+    'Get-SyncExitCode'
     'ConvertTo-SqlServerType'
     'Protect-SqlString'
+    'Assert-SqlIdentifier'
 )

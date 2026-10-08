@@ -1,5 +1,41 @@
-config*
-!config.sample.json
-!config.schema.json
-Logs
+# --- Konfiguration mit Zugangsdaten (nur Root-Ebene!) ---
+# Anker "/" ist Pflicht: Ohne ihn trifft "config*" bei core.ignorecase=true
+# auch docs/architecture/CONFIGURATION.md.
+/config*
+!/config.sample.json
+!/config.schema.json
+
+# Backups, die Manage_Config_Tables.ps1 anlegt (können Passwörter enthalten)
+*.bak
+
+# --- Laufzeit-Artefakte ---
+Logs/
 **/*.log
+
+# --- Secrets / Credential-Exporte (nie committen) ---
+*.secret
+*.key
+*.pem
+*.pfx
+*.clixml
+.env
+
+# --- Treiber / Pakete (werden zur Laufzeit nach %ProgramData% geladen) ---
+*.nupkg
+*.dll
+
+# --- Pester / Test-Artefakte ---
+TestResults/
+testResults.xml
+coverage.xml
+
+# --- Editor / OS ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+Thumbs.db
+desktop.ini
+
+# --- Interna fuer oeffentliches Repo (siehe docs/local/ENVIRONMENT.md) ---
+/docs/local/
+/.internal-terms

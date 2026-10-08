@@ -33,6 +33,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
     - [Column Configuration (NEW in v2.10)](#column-configuration-new-in-v210)
     - [Orphan Cleanup (Deletion Detection)](#orphan-cleanup-deletion-detection)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
+    - [Naming Rules (since v2.12)](#naming-rules-since-v212)
     - [JSON Schema Validation](#json-schema-validation)
   - [Module Architecture](#module-architecture)
   - [Usage in Custom Scripts](#usage-in-custom-scripts)
@@ -142,7 +143,7 @@ Copy `config.sample.json` to `config.json` and adjust the values.
     "Charset": "UTF8"
   },
   "MSSQL": {
-    "Server": "SVRSQL03",
+    "Server": "SQLSERVER01",
     "Integrated Security": true,
     "Database": "STAGING",
     "Prefix": "FB_",
@@ -158,7 +159,7 @@ Copy `config.sample.json` to `config.json` and adjust the values.
 }
 ```
 
-_Note on MSSQL Port:_ The script primarily uses the `Server` parameter. If a non-standard port (other than 1433) is needed, specify it in the format `ServerName,Port` in the `Server` field (e.g., `"SVRSQL03,1433"`).
+_Note on MSSQL Port:_ The script primarily uses the `Server` parameter. If a non-standard port (other than 1433) is needed, specify it in the format `ServerName,Port` in the `Server` field (e.g., `"SQLSERVER01,1433"`).
 
 ### Step 3: SQL Server Environment (Automatic)
 
@@ -176,6 +177,8 @@ Run the setup script to store passwords encrypted in the Windows Credential Mana
 ```powershell
 .\Setup_Credentials.ps1
 ```
+
+Different entry names (e.g. one per SQL Server): see [Credential Management](#credential-management).
 
 ### Step 5: Test Connection
 
@@ -281,6 +284,7 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 | `ForceFullSync`          | `false`           | `true` = **Truncate** target table + complete reload     |
 | `NumberOfThreads`        | 4                 | Number of parallel threads for table sync                |
 | `RunSanityCheck`         | `true`            | `false` = Skip COUNT comparison                          |
+| `FailOnSanityError`      | `true`            | `false` = Sanity `FEHLER` does not cause exit code 11   |
 | `MaxRetries`             | 3                 | Retry attempts on error                                  |
 | `RetryDelaySeconds`      | 10                | Wait time between retries                                |
 | `DeleteLogOlderThanDays` | 30                | Automatically delete logs after X days (0 = Disabled)    |
@@ -369,6 +373,12 @@ Control naming in the target system.
 - **Prefix**: `DWH_` -> Target table becomes `DWH_KUNDE`
 - **Suffix**: `_V1` -> Target table becomes `KUNDE_V1`
 
+### Naming Rules (since v2.12)
+
+Table and column names (`Tables`, `General.IdColumn`, `General.TimestampColumns`, `TableOverrides` keys and values) as well as `MSSQL.Database`, `MSSQL.Prefix` and `MSSQL.Suffix` may only contain `A-Z`, `a-z`, `0-9`, `_` and `$`, with at most 63 characters (Firebird limit). Prefix + table + suffix must not exceed 128 characters (SQL Server limit). Empty values are allowed only for `MSSQL.Database`, Prefix/Suffix and the override columns.
+
+Violations stop the sync while loading the configuration (exit code 2, message `Ungültiger Name in '<field>': …`) before any database connection is opened. `Manage_Config_Tables.ps1` does not offer Firebird tables with invalid names.
+
 ### JSON Schema Validation
 
 The file `config.schema.json` can be used for validation to avoid typos in the config:
@@ -432,6 +442,18 @@ Credentials are stored in the Windows Credential Manager under the following nam
 - `SQLSync_Firebird`
 - `SQLSync_MSSQL`
 
+These are the defaults. The optional keys `Firebird.CredentialTarget` and `MSSQL.CredentialTarget` select a different entry, e.g. when several SQL Servers use the same login (such as `sa`) with different passwords. Store the entry with the matching parameter:
+
+```powershell
+.\Setup_Credentials.ps1 -MSSQLTarget "SQLSync_MSSQL_sqltest"   # also: -FirebirdTarget
+```
+
+```json
+"MSSQL": { "Server": "sqltest", "Database": "STAGING", "CredentialTarget": "SQLSync_MSSQL_sqltest" }
+```
+
+The log names the entry used, e.g. `[Credentials] SQL Server: Credential Manager (SQLSync_MSSQL_sqltest)`. Entries remain bound to the Windows account that ran `Setup_Credentials.ps1`.
+
 ```powershell
 # Display
 cmdkey /list:SQLSync*
@@ -447,6 +469,21 @@ cmdkey /delete:SQLSync_MSSQL
 
 All output is automatically written to a log file:
 `Logs\Sync_<ConfigName>_YYYY-MM-DD_HHmm.log`
+
+### Exit Codes
+
+| Code | Meaning |
+|---|---|
+| 0 | All tables synchronized successfully |
+| 1 | `SQLSyncCommon.psm1` not found |
+| 2 | Configuration error (incl. invalid table/column names) |
+| 5 | Credentials not found |
+| 7 | Firebird driver could not be loaded |
+| 9 | Pre-flight (database / `sp_Merge_Generic`) failed |
+| 10 | At least one table failed |
+| 11 | Sanity check `FEHLER` (target has fewer rows than source); disable via `FailOnSanityError` |
+
+Task Scheduler shows the code as *Last Run Result* (e.g. `0xA` = 10).
 
 ---
 
@@ -498,6 +535,17 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.12 (2026-10-08) - SQL Identifier Hardening
+- New module function `Assert-SqlIdentifier`: table/column names, `MSSQL.Database`, Prefix/Suffix and `TableOverrides` are checked against `^[A-Za-z0-9_$]+$` (max. 63 characters) when the configuration is loaded; target table name max. 128 characters; violations exit with 2
+- All SQL Server table names are bracket-quoted; metadata queries (`INFORMATION_SCHEMA`, `sys.indexes`) use parameters; `sp_Merge_Generic` is called as a stored procedure with parameters
+- `Manage_Config_Tables.ps1` validates `IdColumn`/`TimestampColumns` (exit 2) and skips Firebird tables with invalid names
+
+### v2.11 (2026-10-08) - Exit Codes
+- Sync now exits with 10 (table failed) or 11 (sanity `FEHLER`) instead of always 0
+- Errors while installing `sql_server_setup.sql` abort the pre-flight (exit 9) instead of only warning
+- New option `General.FailOnSanityError` (default `true`)
+- New options `Firebird.CredentialTarget` / `MSSQL.CredentialTarget` (Credential Manager entry name, defaults `SQLSync_Firebird` / `SQLSync_MSSQL`); `Setup_Credentials.ps1` gains `-FirebirdTarget` / `-MSSQLTarget`
 
 ### v2.10 (2025-12-09) - Dynamic Column Configuration
 

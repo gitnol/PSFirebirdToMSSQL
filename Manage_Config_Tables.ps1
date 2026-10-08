@@ -53,10 +53,17 @@ if ($Config.Tables) {
 }
 
 # Column Configuration (v2.10)
-$RawIdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
-$IdColumn = Protect-SqlString $RawIdColumn # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
-$RawTimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
-$TimestampColumns = $RawTimestampColumns | ForEach-Object { Protect-SqlString $_ } # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
+# Spaltennamen werden unten in SQL-Text eingesetzt -> Whitelist-Prüfung (Fail-Fast, wie Get-SQLSyncConfig)
+$IdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
+$TimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
+try {
+    Assert-SqlIdentifier -Name $IdColumn -Field "General.IdColumn"
+    foreach ($TsCol in $TimestampColumns) { Assert-SqlIdentifier -Name $TsCol -Field "General.TimestampColumns" }
+}
+catch {
+    Write-Error $_.Exception.Message
+    exit 2
+}
 
 # -----------------------------------------------------------------------------
 # 2. CREDENTIALS AUFLÖSEN
@@ -141,11 +148,15 @@ try {
         }
 
         $Hinweis = ""
-        if (-not $HatId) { $Hinweis = "ACHTUNG: Keine $IdColumn Spalte (Snapshot Modus)" }
+        $NameGueltig = $true
+        try { Assert-SqlIdentifier -Name $Name -Field "Tables" } catch { $NameGueltig = $false }
+
+        if (-not $NameGueltig) { $Hinweis = "UNGÜLTIGER NAME (nur A-Z, a-z, 0-9, _, `$; max. 63 Zeichen) - wird nicht übernommen" }
+        elseif (-not $HatId) { $Hinweis = "ACHTUNG: Keine $IdColumn Spalte (Snapshot Modus)" }
         elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Timestamp (Full Merge)" }
 
         $TableList += [PSCustomObject]@{
-            Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } else { "Hinzufügen bei Auswahl" } 
+            Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } elseif (-not $NameGueltig) { "Keine (ungültiger Name)" } else { "Hinzufügen bei Auswahl" }
             Tabelle     = $Name
             Status      = $Status
             "Hat ID"    = $HatId
@@ -211,6 +222,11 @@ foreach ($Tab in $Config.Tables) {
 # Neue hinzufügen
 foreach ($Sel in $SelectedNames) {
     if ($Sel -notin $Config.Tables) {
+        try { Assert-SqlIdentifier -Name $Sel -Field "Tables" }
+        catch {
+            Write-Host "  [!] Übersprungen: $($_.Exception.Message)" -ForegroundColor Yellow
+            continue
+        }
         # War NICHT drin UND wurde ausgewählt -> HINZUFÜGEN
         $TablesToAdd += $Sel
         $FinalTableList.Add($Sel)

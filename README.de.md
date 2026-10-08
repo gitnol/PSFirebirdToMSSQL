@@ -33,6 +33,7 @@ Ersetzt veraltete Linked-Server-Lösungen durch einen modernen PowerShell-Ansatz
     - [Spalten-Konfiguration (NEU in v2.10)](#spalten-konfiguration-neu-in-v210)
     - [Orphan-Cleanup (Löschungserkennung)](#orphan-cleanup-löschungserkennung)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
+    - [Namensregeln (seit v2.12)](#namensregeln-seit-v212)
     - [JSON-Schema-Validierung](#json-schema-validierung)
   - [Modul-Architektur](#modul-architektur)
   - [Verwendung in eigenen Skripten](#verwendung-in-eigenen-skripten)
@@ -143,7 +144,7 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
     "Charset": "UTF8"
   },
   "MSSQL": {
-    "Server": "SVRSQL03",
+    "Server": "SQLSERVER01",
     "Integrated Security": true,
     "Database": "STAGING",
     "Prefix": "FB_",
@@ -159,7 +160,7 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
 }
 ```
 
-_Hinweis zum MSSQL Port:_ Das Skript verwendet primär den `Server`-Parameter. Sollte ein nicht-standard Port (ungleich 1433) benötigt werden, geben Sie diesen bitte im Format `Servername,Port` im Feld `Server` an (z.B. `"SVRSQL03,1433"`).
+_Hinweis zum MSSQL Port:_ Das Skript verwendet primär den `Server`-Parameter. Sollte ein nicht-standard Port (ungleich 1433) benötigt werden, geben Sie diesen bitte im Format `Servername,Port` im Feld `Server` an (z.B. `"SQLSERVER01,1433"`).
 
 ### Schritt 3: SQL Server Umgebung (Automatisch)
 
@@ -177,6 +178,8 @@ Führe das Setup-Skript aus, um Passwörter verschlüsselt im Windows Credential
 ```powershell
 .\Setup_Credentials.ps1
 ```
+
+Abweichende Eintragsnamen (z. B. einer pro SQL Server): siehe [Credential Management](#credential-management).
 
 ### Schritt 5: Verbindung testen
 
@@ -282,6 +285,7 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 | `ForceFullSync`          | `false`           | `true` = **Truncate** der Zieltabelle + vollständige Neuladung     |
 | `NumberOfThreads`        | 4                 | Anzahl paralleler Threads für Tabellen-Sync                        |
 | `RunSanityCheck`         | `true`            | `false` = Überspringt COUNT-Vergleich                              |
+| `FailOnSanityError`      | `true`            | `false` = Sanity `FEHLER` führt nicht zu Exit-Code 11          |
 | `MaxRetries`             | 3                 | Wiederholungsversuche bei Fehler                                   |
 | `RetryDelaySeconds`      | 10                | Wartezeit zwischen Retries                                         |
 | `DeleteLogOlderThanDays` | 30                | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)             |
@@ -370,6 +374,12 @@ Steuern die Namensgebung im Zielsystem.
 - **Prefix**: `DWH_` -> Zieltabelle wird `DWH_KUNDE`
 - **Suffix**: `_V1` -> Zieltabelle wird `KUNDE_V1`
 
+### Namensregeln (seit v2.12)
+
+Tabellen- und Spaltennamen (`Tables`, `General.IdColumn`, `General.TimestampColumns`, `TableOverrides`-Schlüssel und -Werte) sowie `MSSQL.Database`, `MSSQL.Prefix` und `MSSQL.Suffix` dürfen nur `A-Z`, `a-z`, `0-9`, `_` und `$` enthalten und höchstens 63 Zeichen lang sein (Firebird-Limit). Prefix + Tabelle + Suffix dürfen 128 Zeichen nicht überschreiten (SQL-Server-Limit). Leer erlaubt nur bei `MSSQL.Database`, Prefix/Suffix und den Override-Spalten.
+
+Ein Verstoß bricht den Sync beim Laden der Konfiguration ab (Exit-Code 2, Meldung `Ungültiger Name in '<Feld>': …`), bevor eine Datenbankverbindung geöffnet wird. `Manage_Config_Tables.ps1` bietet Firebird-Tabellen mit ungültigem Namen nicht zur Übernahme an.
+
 ### JSON-Schema-Validierung
 
 Die Datei `config.schema.json` kann zur Validierung verwendet werden, um Tippfehler in der Config zu vermeiden:
@@ -433,6 +443,18 @@ Die Credentials werden im Windows Credential Manager unter folgenden Namen gespe
 - `SQLSync_Firebird`
 - `SQLSync_MSSQL`
 
+Das sind die Defaults. Die optionalen Schlüssel `Firebird.CredentialTarget` und `MSSQL.CredentialTarget` wählen einen anderen Eintrag, z. B. wenn mehrere SQL Server denselben Login (etwa `sa`) mit unterschiedlichen Passwörtern nutzen. Den Eintrag mit dem passenden Parameter anlegen:
+
+```powershell
+.\Setup_Credentials.ps1 -MSSQLTarget "SQLSync_MSSQL_sqltest"   # analog: -FirebirdTarget
+```
+
+```json
+"MSSQL": { "Server": "sqltest", "Database": "STAGING", "CredentialTarget": "SQLSync_MSSQL_sqltest" }
+```
+
+Das Log nennt den verwendeten Eintrag, z. B. `[Credentials] SQL Server: Credential Manager (SQLSync_MSSQL_sqltest)`. Die Einträge bleiben an das Windows-Konto gebunden, unter dem `Setup_Credentials.ps1` lief.
+
 ```powershell
 # Anzeigen
 cmdkey /list:SQLSync*
@@ -448,6 +470,21 @@ cmdkey /delete:SQLSync_MSSQL
 
 Alle Ausgaben werden automatisch in eine Log-Datei geschrieben:
 `Logs\Sync_<ConfigName>_YYYY-MM-DD_HHmm.log`
+
+### Exit-Codes
+
+| Code | Bedeutung |
+|---|---|
+| 0 | Alle Tabellen erfolgreich synchronisiert |
+| 1 | `SQLSyncCommon.psm1` nicht gefunden |
+| 2 | Konfigurationsfehler (inkl. ungültiger Tabellen-/Spaltennamen) |
+| 5 | Credentials nicht gefunden |
+| 7 | Firebird-Treiber nicht ladbar |
+| 9 | Pre-Flight (Datenbank / `sp_Merge_Generic`) fehlgeschlagen |
+| 10 | Mindestens eine Tabelle fehlgeschlagen |
+| 11 | Sanity Check `FEHLER` (Ziel hat weniger Zeilen als Quelle); abschaltbar über `FailOnSanityError` |
+
+Die Aufgabenplanung zeigt den Code als *Letztes Ausführungsergebnis* (z. B. `0xA` = 10).
 
 ---
 
@@ -499,6 +536,17 @@ Starten in: C:\Scripts
 ---
 
 ## Changelog
+
+### v2.12 (2026-10-08) - SQL-Identifier-Härtung
+- Neue Modulfunktion `Assert-SqlIdentifier`: Tabellen-/Spaltennamen, `MSSQL.Database`, Prefix/Suffix und `TableOverrides` werden beim Laden der Konfiguration gegen `^[A-Za-z0-9_$]+$` (max. 63 Zeichen) geprüft; Zieltabellenname max. 128 Zeichen; Verstoß → Exit 2
+- Alle SQL-Server-Tabellennamen in eckigen Klammern; Metadaten-Abfragen (`INFORMATION_SCHEMA`, `sys.indexes`) mit Parametern; `sp_Merge_Generic` wird als Stored Procedure mit Parametern aufgerufen
+- `Manage_Config_Tables.ps1` prüft `IdColumn`/`TimestampColumns` (Exit 2) und überspringt Firebird-Tabellen mit ungültigem Namen
+
+### v2.11 (2026-10-08) - Exit-Codes
+- Sync endet jetzt mit 10 (Tabellenfehler) bzw. 11 (Sanity `FEHLER`) statt immer mit 0
+- Fehler beim Einspielen von `sql_server_setup.sql` brechen den Pre-Flight ab (Exit 9) statt nur zu warnen
+- Neue Option `General.FailOnSanityError` (Default `true`)
+- Neue Optionen `Firebird.CredentialTarget` / `MSSQL.CredentialTarget` (Name des Credential-Manager-Eintrags, Defaults `SQLSync_Firebird` / `SQLSync_MSSQL`); `Setup_Credentials.ps1` erhält `-FirebirdTarget` / `-MSSQLTarget`
 
 ### v2.10 (2025-12-09) - Dynamische Spalten-Konfiguration
 

@@ -6,6 +6,7 @@
     "RecreateStoredProcedure": false,
     "NumberOfThreads": 4,
     "RunSanityCheck": true,
+    "FailOnSanityError": true,
     "MaxRetries": 3,
     "RetryDelaySeconds": 10,
     "DeleteLogOlderThanDays": 30,
@@ -23,10 +24,10 @@
     "DllPath": "C:\\Pfad\\Zur\\FirebirdSql.Data.FirebirdClient.dll"
   },
   "MSSQL": {
-    "Server": "SVRSQL03",
+    "Server": "SQLSERVER01",
     "Integrated Security": true,
-    "Username": "satest",
-    "Password": "123456",
+    "Username": "DEIN_BENUTZER",
+    "Password": "DEIN_PASSWORT",
     "Database": "STAGING",
     "Prefix": "FB_",
     "Suffix": "",

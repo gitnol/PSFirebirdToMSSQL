@@ -1,0 +1,262 @@
+# Erstinstallation / Setup – PSFirebirdToMSSQL
+
+Ziel: einen Windows-Host so einrichten, dass `Sync_Firebird_MSSQL_AutoSchema.ps1`
+Tabellen aus Firebird in die MS-SQL-Staging-Datenbank replizieren kann.
+Fortsetzung: `operations/DEPLOYMENT.md` (Updates), `operations/TASK_SCHEDULER.md`
+(Automatisierung), `operations/RUNBOOK.md` (Betrieb).
+
+---
+
+## Voraussetzungen
+
+| Was | Anforderung | Prüfung |
+|---|---|---|
+| Betriebssystem | Windows (advapi32 CredRead/CredWrite, `cmdkey`, Task Scheduler, `Out-GridView`) | – |
+| PowerShell | 7.0 oder neuer (`#Requires -Version 7.0`; `ForEach-Object -Parallel`, ternärer Operator). Windows PowerShell 5.1 reicht **nicht**. | `pwsh -v` |
+| Firebird-Server | 2.5+/3.x, erreichbar auf Port 3050 (bzw. konfigurierter Port), Leserechte auf die Quelltabellen | Test-SQLSyncConnections.ps1 |
+| MS SQL Server | 2017 oder neuer (`STRING_AGG`, `CREATE OR ALTER` in `sql_server_setup.sql`) | Test-SQLSyncConnections.ps1 |
+| Internet (einmalig) | Zugriff auf `globalcdn.nuget.org` für den Treiber-Download – oder Treiber-DLL manuell bereitstellen (`DllPath`) | – |
+| Adminrechte (einmalig) | für den Treiber-Download nach `%ProgramData%\SQLSync\Drivers\` und für `Setup-ScheduledTasks.ps1` | – |
+
+Keine Module aus der PowerShell Gallery nötig. Einzige externe Abhängigkeit ist
+der .NET-Treiber `FirebirdSql.Data.FirebirdClient` 10.3.4 (wird automatisch
+geladen, siehe Schritt 4). `System.Data.SqlClient` ist in PowerShell 7 enthalten.
+
+### Benötigte SQL-Server-Rechte (Sync-Konto)
+
+| Recht | Wofür | Pflicht? |
+|---|---|---|
+| `dbcreator` (Serverrolle) | Pre-Flight legt die Ziel-DB per `CREATE DATABASE` + `RECOVERY SIMPLE` an, falls sie fehlt | nur wenn die DB nicht vorab angelegt wird |
+| Zugriff auf `master` (Login/Connect) | Pre-Flight prüft `sys.databases` immer über `master` | ja |
+| DDL in der Ziel-DB (`CREATE TABLE`, `ALTER TABLE`, `CREATE/ALTER PROCEDURE`, `DROP TABLE`) | Staging-/Zieltabellen, PK, `dbo.sp_Merge_Generic` | ja |
+| `INSERT`/`UPDATE`/`DELETE`/`SELECT`, `TRUNCATE` (erfordert `ALTER` auf der Tabelle), `EXECUTE` | Bulk-Load, MERGE, Snapshot, Orphan-Cleanup | ja |
+| Bulk-Insert-Recht (`INSERT BULK` über SqlBulkCopy) | Laden der Staging-Tabellen | ja |
+
+Pragmatisch: `db_owner` auf der Ziel-DB, plus `dbcreator`, wenn die DB
+automatisch angelegt werden soll (siehe auch README.de.md). Firebird: nur
+Leserechte auf die konfigurierten Tabellen.
+
+---
+
+## Installation
+
+### 1. Dateien bereitstellen
+
+Alle Dateien liegen flach in einem Verzeichnis (kein Installer). Benötigt werden
+mindestens:
+
+```
+Sync_Firebird_MSSQL_AutoSchema.ps1
+SQLSyncCommon.psm1
+sql_server_setup.sql
+Setup_Credentials.ps1
+Test-SQLSyncConnections.ps1
+config.sample.json            (Vorlage)
+```
+
+Optional: `Manage_Config_Tables.ps1`, `Get_Firebird_Schema.ps1`,
+`Setup-ScheduledTasks.ps1`, `config.schema.json`.
+
+```powershell
+# Beispiel: Klon aus dem öffentlichen Repo oder Kopie in das Zielverzeichnis
+git clone https://github.com/gitnol/PSFirebirdToMSSQL.git E:\SQLSync_Firebird_to_MSSQL
+```
+
+Der Ordner `Logs\` wird beim ersten Lauf automatisch neben dem Skript angelegt.
+Details zum Zielverzeichnis: `operations/DEPLOYMENT.md`.
+
+**Nur für Entwickler-Klone (Commits ins öffentliche Repo):** Interna-Sperre aktivieren und die
+lokale Denylist anlegen (`CONVENTIONS.md` 6.2):
+
+```powershell
+git config core.hooksPath tools/git-hooks
+# .internal-terms (gitignored): ein interner Begriff pro Zeile, z. B. Hostnamen, Domäne, Pfade
+notepad .internal-terms
+```
+
+### 2. PowerShell 7 installieren
+
+```powershell
+winget install Microsoft.PowerShell
+# Prüfen
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
+```
+
+Execution Policy: Die Scheduled Tasks starten mit `-ExecutionPolicy Bypass`.
+Für interaktive Aufrufe ggf. einmalig:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+# Aus dem Internet geladene Dateien ggf. entsperren
+Get-ChildItem E:\SQLSync_Firebird_to_MSSQL -Filter *.ps* | Unblock-File
+```
+
+### 3. Konfiguration anlegen
+
+```powershell
+Copy-Item .\config.sample.json .\config.json
+notepad .\config.json
+```
+
+Mindestens anzupassen: `Firebird.Server`, `Firebird.Database` (Pfad zur `.FDB`),
+`MSSQL.Server`, `MSSQL.Database`, `MSSQL."Integrated Security"`, `Tables`.
+Alle Schlüssel und Defaults: `architecture/CONFIGURATION.md`.
+
+- **Passwörter NICHT in `config.json` eintragen**, sondern Schritt 5 nutzen.
+  Die Felder `Password` in `config.sample.json` sind nur ein unsicherer Fallback
+  (Warnung im Log) – in der eigenen `config.json` entfernen oder leer lassen.
+- `MSSQL.Port` aus der Vorlage wird vom Code ignoriert (siehe I10); einen
+  abweichenden Port im Feld `MSSQL.Server` angeben (`host,port`).
+- `config.json` und `config.json.*.bak` sind per `.gitignore` ausgeschlossen –
+  niemals committen.
+- Für mehrere Job-Profile (z. B. Daily Diff / Weekly Full) je Profil eine
+  eigene Konfigdatei anlegen und per `-ConfigFile` übergeben.
+
+### 4. Treiber einmalig als Administrator laden
+
+Der Firebird-Treiber wird beim ersten Lauf von NuGet geladen, per SHA-256
+geprüft und nach
+`%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\` entpackt.
+Ohne Adminrechte bricht das Skript mit „Bitte einmalig als ADMINISTRATOR
+ausführen" ab (Sync exit 7, Test-Skript exit 4).
+
+```powershell
+# PowerShell 7 "Als Administrator ausführen", dann:
+cd E:\SQLSync_Firebird_to_MSSQL
+.\Test-SQLSyncConnections.ps1     # lädt den Treiber und testet gleich die Verbindungen
+```
+
+Alternative ohne Internet: DLL (net8.0) manuell ablegen und `Firebird.DllPath`
+setzen. Achtung: eine per `DllPath` oder bereits in `%ProgramData%` liegende DLL
+wird **ohne** Hash-Prüfung geladen (S4, geplant in I7) – Schreibrechte auf
+diese Ordner auf Administratoren beschränken.
+
+### 5. Credentials hinterlegen
+
+```powershell
+.\Setup_Credentials.ps1
+```
+
+Das Skript fragt interaktiv Benutzer/Passwort ab und speichert sie im Windows
+Credential Manager (Typ Generic) unter den Targets `SQLSync_Firebird` und
+`SQLSync_MSSQL` (letzteres nur, wenn SQL-Authentifizierung gewählt wird; bei
+`"Integrated Security": true` nicht nötig).
+
+Andere Eintragsnamen per `-FirebirdTarget` / `-MSSQLTarget`, z. B. ein eigener Eintrag
+je SQL Server bei gleichem Login mit unterschiedlichen Passwörtern:
+
+```powershell
+.\Setup_Credentials.ps1 -MSSQLTarget "SQLSync_MSSQL_sqltest"
+```
+
+Den Namen dann in der Konfigdatei unter `MSSQL.CredentialTarget` (bzw.
+`Firebird.CredentialTarget`) eintragen. Ohne diese Schlüssel gelten die Defaults.
+
+**Wichtig:** Credential-Manager-Einträge gehören dem Windows-Konto, unter dem
+`Setup_Credentials.ps1` läuft. Es muss **dasselbe Konto** sein, unter dem später
+die Scheduled Tasks laufen (S13). Details: `architecture/CREDENTIAL_STRATEGY.md`,
+`operations/SECRETS_MANAGEMENT.md`.
+
+```powershell
+cmdkey /list:SQLSync*      # Kontrolle (zeigt keine Passwörter)
+```
+
+### 6. Verbindungen testen
+
+```powershell
+.\Test-SQLSyncConnections.ps1                         # nutzt config.json
+.\Test-SQLSyncConnections.ps1 -ConfigFile .\config_weekly_full.json
+```
+
+Geprüft werden: Firebird-Version, Anzahl Tabellen, Test-`COUNT` auf die erste
+konfigurierte Tabelle; SQL-Server-Version, vorhandene Tabellen, ob
+`sp_Merge_Generic` existiert. Exit-Codes: 0 OK, 1 Modul/Config fehlt oder ein
+Test fehlgeschlagen, 2 Config-Parse, 3 Credentials, 4 Treiber.
+
+Hinweis: Fehlt `sp_Merge_Generic`, ist das beim Erst-Setup normal – der erste
+Sync-Lauf installiert sie automatisch aus `sql_server_setup.sql`.
+
+### 7. Tabellen auswählen (optional)
+
+```powershell
+.\Manage_Config_Tables.ps1
+```
+
+Liest die Tabellenliste aus Firebird und zeigt sie in `Out-GridView`
+(Desktop-Sitzung nötig). Markierte Tabellen werden in `Tables` hinzugefügt bzw.
+entfernt; vorher wird `config.json.<yyyyMMdd_HHmmss>.bak` angelegt. Arbeitet
+fest auf `config.json` (kein `-ConfigFile`, siehe I6). Die `.bak`-Dateien
+enthalten ggf. dieselben Fallback-Passwörter wie `config.json` – aufräumen.
+
+Spaltentypen einer Tabelle vorab prüfen:
+
+```powershell
+.\Get_Firebird_Schema.ps1 -TableName BKUNDE
+```
+
+### 8. Erster Lauf
+
+```powershell
+.\Sync_Firebird_MSSQL_AutoSchema.ps1                  # config.json
+.\Sync_Firebird_MSSQL_AutoSchema.ps1 -ConfigFile .\config.json
+```
+
+Beim ersten Lauf werden ggf. Ziel-DB, `dbo.sp_Merge_Generic`, alle
+`STG_<Tabelle>`- und Zieltabellen angelegt und vollständig geladen. Danach die
+Zusammenfassungstabelle am Ende der Ausgabe bzw. im Log
+`Logs\Sync_<Konfigname>_<yyyy-MM-dd_HHmm>.log` prüfen: Jede Tabelle muss
+Status `Erfolg` und Sanity `OK` haben. Der Sync meldet das Ergebnis auch über
+den Exit-Code (`$LASTEXITCODE` nach dem Aufruf): `0` OK, `10` mindestens eine
+Tabelle fehlgeschlagen, `11` Sanity `FEHLER`, `9` Pre-Flight; die letzte
+Logzeile vor dem Transcript-Ende lautet `ERGEBNIS: …`. Beim Erst-Setup trotzdem
+die Tabelle lesen (Sanity `WARNUNG` ergibt Exit 0; Exit-Code-Verhalten noch
+nicht in einem echten Lauf abgenommen).
+
+### 9. Automatisierung (optional)
+
+```powershell
+# PowerShell 7 als Administrator
+.\Setup-ScheduledTasks.ps1
+```
+
+Vorher die hart codierten Pfade und Konfignamen im Skriptkopf anpassen –
+siehe `operations/TASK_SCHEDULER.md`.
+
+---
+
+## Wichtige Commands
+
+```powershell
+# Sync mit Standard-Konfig (config.json im Skriptordner)
+.\Sync_Firebird_MSSQL_AutoSchema.ps1
+
+# Sync mit bestimmtem Job-Profil (absolut oder relativ zum Skriptordner)
+.\Sync_Firebird_MSSQL_AutoSchema.ps1 -ConfigFile config_weekly_full.json
+
+# Diagnose
+.\Test-SQLSyncConnections.ps1 -ConfigFile config.json
+
+# Beispiel für zwei Läufe hintereinander
+.\Example_Sync_Start.ps1
+```
+
+Nicht vorhanden: `-WhatIf`/Dry-Run, `-Verbose`-Ausgabe über das Transcript
+hinaus, Versionsschalter, automatisierte Tests für die Einstiegsskripte (Unit-Tests gibt es nur
+für `SQLSyncCommon.psm1`, siehe `docs/testing/UNIT_TESTS.md`).
+
+---
+
+## Credentials / Konfiguration
+
+| Eintrag | Beschreibung | Fundort |
+|---|---|---|
+| `SQLSync_Firebird` | Firebird-Benutzer + Passwort (Fallback-Benutzer `SYSDBA`, Fallback-Passwort `Firebird.Password` in der Konfig mit Warnung) | Windows Credential Manager des Sync-Kontos; anlegen mit `Setup_Credentials.ps1` |
+| `SQLSync_MSSQL` | SQL-Login + Passwort, nur ohne Integrated Security | wie oben |
+| `Firebird.CredentialTarget` / `MSSQL.CredentialTarget` | optional: abweichender Name des Credential-Manager-Eintrags (Defaults `SQLSync_Firebird` / `SQLSync_MSSQL`); anlegen mit `-FirebirdTarget` / `-MSSQLTarget` | Konfigdatei |
+| `MSSQL."Integrated Security"` | `true` = Windows-Authentifizierung des ausführenden Kontos, dann kein `SQLSync_MSSQL` nötig | Konfigdatei |
+| Windows-Passwort des Task-Kontos | wird von `Setup-ScheduledTasks.ps1` per `Get-Credential` abgefragt und im Task Scheduler gespeichert | Task Scheduler |
+
+Zugangsdaten bezieht man beim Betreiber der Firebird- bzw. SQL-Server-Instanz.
+
+> **Niemals Passwörter in `config.json` committen.** `config.json`,
+> `config.json.*.bak` und `Logs/` müssen in `.gitignore` stehen.

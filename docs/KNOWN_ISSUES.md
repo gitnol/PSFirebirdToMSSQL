@@ -1,0 +1,47 @@
+# Bekannte Probleme – PSFirebirdToMSSQL
+
+Bugs, Quirks und Einschränkungen, die **nicht** akut behoben werden, aber
+dokumentiert sein müssen, damit niemand zweimal darüber stolpert.
+
+**Abgrenzung:**
+
+- `TODO.md` = Arbeit, die in einem priorisierten Inkrement aufgeräumt wird
+- `KNOWN_ISSUES.md` = bekannt, akzeptiert oder verschoben; mit Workaround
+- `BACKLOG.md` = noch unpriorisierte Ideen, keine konkreten Probleme
+
+Stand: Code `721d5e0`, aus Code-Analyse abgeleitet (nicht alle Punkte mit echten Daten reproduziert).
+
+---
+
+## Aktive Probleme
+
+| # | Beschreibung | Reproduktion | Workaround | Akzeptanzgrund | Geplant für |
+|---|---|---|---|---|---|
+| K2 | Firebird-`NUMERIC`/`DECIMAL` wird immer als `DECIMAL(18,4)` angelegt → Nachkommastellen > 4 werden still gerundet, Werte mit Precision > 18 laufen über; Inline-Mapping im Hauptskript kennt außerdem `Guid` nicht (→ `NVARCHAR(MAX)`) | Tabelle mit `NUMERIC(18,6)` synchronisieren, Werte vergleichen | Betroffene Spalten mit `Get_Firebird_Schema.ps1 -TableName <T>` identifizieren, Zieltabelle manuell mit passendem Typ anlegen (wird bei vorhandener Tabelle nicht überschrieben) | Änderung erfordert Neuaufbau bestehender Tabellen | `I5` |
+| K3 | Inkrementelles Wasserzeichen ist strikt `> MAX(ts)` der Zieltabelle: Datensätze mit gleichem Zeitstempel, die nach dem letzten Lauf committet wurden, oder lange Firebird-Transaktionen mit älterem Zeitstempel werden bis zum nächsten Full-Lauf übersprungen | Zwei Datensätze mit identischem Zeitstempel in zwei Transaktionen schreiben, dazwischen synchronisieren | Wöchentlicher Full-Lauf (`ForceFullSync`) holt die Lücken nach | Full-Lauf deckt den Fall ab | `I8` |
+| K4 | Löschungen in Firebird werden im Standardbetrieb nicht repliziert (bewusstes Design, siehe `sql_server_setup.sql`) | Datensatz in Firebird löschen, Incremental-Lauf → bleibt im Ziel | `CleanupOrphans: true` oder Weekly-Full-Lauf mit `ForceFullSync` | Design-Entscheidung (Performance, DWH-Historie) | „nie" (by design) |
+| K5 | Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle `#SourceIDs_<Tabelle>` als `BIGINT` an → bei nicht-numerischen IDs schlägt der Cleanup fehl; der Fehler erscheint nur in der Info-Spalte, Status bleibt „Erfolg" | Tabelle mit `VARCHAR`-ID und `CleanupOrphans: true` | `CleanupOrphans` für diese Tabelle nicht nutzen; Full-Lauf | selten genutzte Option | offen (`BACKLOG.md`) |
+| K6 | Schema-Drift: neue Spalten in Firebird werden weder in Staging noch Ziel automatisch ergänzt → BulkCopy-Fehler oder Spalte fehlt im Ziel | Spalte in Firebird hinzufügen, Incremental-Lauf | `RecreateStagingTable: true` (Staging) und Zieltabelle manuell per `ALTER TABLE` ergänzen | Automatische DDL am Ziel ist riskant | offen (`BACKLOG.md`) |
+| K7 | `config.schema.json` wird nie geprüft (kein Aufrufer übergibt `-SchemaPath` an `Get-SQLSyncConfig`); `MSSQL.Port` aus Sample/Schema wird ignoriert | Ungültigen Typ in `config.json` eintragen → keine Schema-Meldung | Konfig manuell gegen Schema prüfen: `Test-Json -Path config.json -SchemaFile config.schema.json` (PS 7.4+) | — | `I6` / `I10` |
+| K8 | `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` arbeiten fest mit `config.json` im Skriptordner | Zweites Job-Profil (z. B. Weekly-Full-Konfig) mit Manage-Skript bearbeiten wollen | Datei temporär nach `config.json` kopieren | — | `I6` |
+
+---
+
+## Behobene Probleme
+
+Letzte Einträge behalten bis zur nächsten Aufräum-Iteration (Spur für
+Lessons Learned). Danach archivieren oder löschen.
+
+| # | Beschreibung | Behoben in | Commit |
+|---|---|---|---|
+| ~~K1~~ | Sync endete immer mit Exit-Code 0, auch bei fehlgeschlagenen Tabellen; SP-Batch-Fehler nur als Warnung | `I2` (2026-10-08) | 9dd12b5 |
+
+---
+
+## Pflege
+
+- Neuer Bug ohne sofortigen Fix → Eintrag hier; TODO-Punkt **nur**, wenn
+  priorisiert wird.
+- Eintrag wird behoben → in „Behobene Probleme" verschieben, in der nächsten
+  Aufräum-Iteration löschen.
+- Diese Datei steht in der Trigger-Matrix in `KICKOFF.md` Phase 3a.
