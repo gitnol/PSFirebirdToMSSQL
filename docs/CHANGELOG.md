@@ -94,7 +94,7 @@ Abschnitt „Changelog" von `README.md`.
 ## 2026-10-08 Reflexion nach I3 (Phase 1c)
 
 ### Changed
-- `STATE.md`: I3-Commit `dd4a202` eingetragen, „Nächste Reflexion" auf I6 hochgezählt
+- `STATE.md`: I3-Commit eingetragen, „Nächste Reflexion" auf I6 hochgezählt
 - `BACKLOG.md`: Doku-Duplikate (Exit-Code-Tabelle an 5 Stellen) und drei ID-Systeme als technische Schuld
 
 ### Confidence / Ungeprüft

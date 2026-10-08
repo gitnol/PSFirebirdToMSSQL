@@ -88,7 +88,7 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 ## Abgeschlossen
 
-- I4 SQL-Identifier gehärtet (Whitelist-Validierung in `Get-SQLSyncConfig` inkl. `MSSQL.Database` und 128-Zeichen-Grenze, `[...]`/`QUOTENAME` überall, Metadaten-Abfragen und `sp_Merge_Generic` parametrisiert, `Manage_Config_Tables.ps1` markiert ungültige Namen) — [ABGESCHLOSSEN 2026-10-08] (Commit f2e8736)
-- I3 Pester-Testharness + Unit-Tests für `SQLSyncCommon.psm1` (74 Tests, alle exportierten Funktionen, Coverage 82,54 % bei Ziel 80 %, 13/13 Mutationen erkannt) — [ABGESCHLOSSEN 2026-10-08] (Commit dd4a202)
-- I2 Fehlschläge sichtbar machen (Exit-Codes 10/11, Pre-Flight-Abbruch bei SP-Fehlern; dazu konfigurierbare Credential-Targets) — [ABGESCHLOSSEN 2026-10-08] (Commits 9dd12b5, ce9345b; Abnahme gegen Firebird-Testserver → SQL-Testserver inkl. Aufgabenplanung `0xA`)
-- I1 docs/ initialisiert (docs_template v26, Stack `powershell-automation`) — [ABGESCHLOSSEN 2026-10-08] (Commit b1e53a9)
+- I4 SQL-Identifier gehärtet (Whitelist-Validierung in `Get-SQLSyncConfig` inkl. `MSSQL.Database` und 128-Zeichen-Grenze, `[...]`/`QUOTENAME` überall, Metadaten-Abfragen und `sp_Merge_Generic` parametrisiert, `Manage_Config_Tables.ps1` markiert ungültige Namen) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)
+- I3 Pester-Testharness + Unit-Tests für `SQLSyncCommon.psm1` (74 Tests, alle exportierten Funktionen, Coverage 82,54 % bei Ziel 80 %, 13/13 Mutationen erkannt) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)
+- I2 Fehlschläge sichtbar machen (Exit-Codes 10/11, Pre-Flight-Abbruch bei SP-Fehlern; dazu konfigurierbare Credential-Targets) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d; Abnahme gegen Firebird-Testserver → SQL-Testserver inkl. Aufgabenplanung `0xA`)
+- I1 docs/ initialisiert (docs_template v26, Stack `powershell-automation`) — [ABGESCHLOSSEN 2026-10-08] (Commit a082e9d)

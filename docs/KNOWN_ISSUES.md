@@ -34,7 +34,7 @@ Lessons Learned). Danach archivieren oder löschen.
 
 | # | Beschreibung | Behoben in | Commit |
 |---|---|---|---|
-| ~~K1~~ | Sync endete immer mit Exit-Code 0, auch bei fehlgeschlagenen Tabellen; SP-Batch-Fehler nur als Warnung | `I2` (2026-10-08) | 9dd12b5 |
+| ~~K1~~ | Sync endete immer mit Exit-Code 0, auch bei fehlgeschlagenen Tabellen; SP-Batch-Fehler nur als Warnung | `I2` (2026-10-08) | a082e9d |
 
 ---
 
