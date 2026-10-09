@@ -19,7 +19,6 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 - Strukturiertes Laufergebnis (JSON/CSV je Lauf neben dem Transcript) — maschinenlesbar für Monitoring/Dashboards; heute nur `Format-Table` im Transcript
 - Schema-Drift-Erkennung (`KNOWN_ISSUES.md` K6) — neue Firebird-Spalten erkennen und `ALTER TABLE ... ADD` für Staging und Ziel vorschlagen bzw. ausführen
 - Orphan-Cleanup für nicht-numerische IDs (`KNOWN_ISSUES.md` K5) — Typ der Temp-Tabelle aus der Zielspalte ableiten
-- CI mit GitHub Actions: PSScriptAnalyzer + Pester auf `windows-latest` — Voraussetzung (Pester-Harness, I3) erfüllt; Testlauf: `tests/pester.config.ps1` — eingeplant in I10b
 - Overlay `compliance-tisax` prüfen — falls die replizierten ERP-Daten (Kunden, Lieferanten, Personen) im TISAX-Scope des Betreibers liegen
 
 ---
@@ -39,6 +38,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 
 - `System.Data.SqlClient` → `Microsoft.Data.SqlClient` — Microsoft hat `System.Data.SqlClient` abgekündigt; wird teurer, sobald eine PowerShell-Version das Paket nicht mehr mitliefert
 - Firebird-Treiber-Version 10.3.4 fest im Code inkl. Hash — Updates erfordern Codeänderung; Ablauf in `security/DEPENDENCY_AUDIT.md`
+- PSScriptAnalyzer-Warnungen (Stand I10b, 1.25.0; blockieren die CI nicht): 156 `PSAvoidUsingWriteHost` (Konsolen-Ausgabe der Einstiegsskripte, überwiegend gewollt), 20 `PSAvoidUsingEmptyCatchBlock` (u. a. `Close()`/`Dispose()` im `finally`), 12 `PSUseBOMForUnicodeEncodedFile` (Umlaute in UTF-8 ohne BOM; relevant nur für Windows PowerShell 5.1), 6 `PSUseShouldProcessForStateChangingFunctions`, 5 `PSReviewUnusedParameter` (Tests), 3 `PSUseDeclaredVarsMoreThanAssignments`, 3 `PSUseSingularNouns`, 2 `PSAvoidUsingPlainTextForPassword` (`New-*ConnectionString`) — gezielt abbauen, wenn die Datei ohnehin geändert wird
 - Bereinigung alter `config.json.*.bak`-Dateien fehlt — Backups (ggf. mit Passwörtern) sammeln sich unbegrenzt an — eingeplant in I10a
 
 ---

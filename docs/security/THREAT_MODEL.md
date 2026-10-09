@@ -345,6 +345,22 @@ weiterhin jedem Host mit Netzzugang zum Firebird-Port, den Server abstürzen zu 
 
 ---
 
+## 7. CI-Workflow auf GitHub Actions (seit I10b)
+
+**Gefahr:** Der Workflow führt fremden Code aus (Action `actions/checkout`, Module aus der PSGallery) und
+bekommt ein `GITHUB_TOKEN`. Ein kompromittiertes Tag einer Action oder ein Workflow mit Schreibrechten
+könnte das öffentliche Repo verändern.
+
+**Maßnahmen:** `actions/checkout` per vollständigem Commit-SHA gepinnt (Tag nur als Kommentar);
+`permissions: contents: read` für den ganzen Workflow; `persist-credentials: false` (Token bleibt nicht im
+Arbeitsverzeichnis); keine Secrets, kein `pull_request_target`; Pester und PSScriptAnalyzer mit fester
+Version aus `tests/RequiredModules.psd1`. Die CI berührt weder Datenbanken noch den Betriebsserver.
+
+**Restrisiko:** Niedrig. Die PSGallery-Module sind per Version, nicht per Hash gepinnt; die
+Update-Prüfung der Action steht in `DEPENDENCY_AUDIT.md`.
+
+---
+
 ## Schwachstellen-Katalog (S-IDs)
 
 Die Kürzel `S1`–`S13` werden in `docs/features/`, `docs/operations/`, `docs/security/` und

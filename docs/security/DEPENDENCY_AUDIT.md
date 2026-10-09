@@ -97,7 +97,8 @@ anstoßen (Schweregrad High → innerhalb des aktuellen Inkrements klären).
 | Treiber-Integrität | `Get-FileHash "$env:ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\FirebirdSql.Data.FirebirdClient.dll" -Algorithm SHA256` | Hash | Muss `7DB04371…CBC05` (`lib\net8.0`) bzw. `8176C7D5…A323A` (`lib\netstandard2.1`) entsprechen (volle Werte oben); der Sync prüft das seit I7 bei jedem Laden selbst, `Test-SQLSyncConnections.ps1 -PreDeploy` ohne zu laden – der Befehl dient der manuellen Gegenprobe |
 | Treiber-Advisories | GitHub Advisory Database (`github.com/advisories?query=FirebirdSql.Data.FirebirdClient`) und NuGet-Paketseite (Hinweis „vulnerable" / „deprecated") | Advisory-Liste | Kein lokales Projekt → `dotnet list package --vulnerable` nicht anwendbar |
 | Firebird-/MSSQL-Serverversion | `.\Test-SQLSyncConnections.ps1 -ConfigFile <Konfig> -PreDeploy` | Versionszeilen beider Server; Firebird zusätzlich als `OK`/`WARNUNG` gegen `$script:FirebirdServerAdvisories` | Neue Advisories zuerst in die Liste aufnehmen; MSSQL gegen Microsoft-Lifecycle prüfen |
-| Statische Analyse (Härtung) | `Invoke-ScriptAnalyzer -Path . -Recurse` (PSScriptAnalyzer) | Regelverletzungen | Kein CVE-Scanner, aber Best-Practice-Ergänzung; CI-Einbindung im Backlog |
+| Statische Analyse (Härtung) | `Invoke-ScriptAnalyzer -Path . -Recurse` (PSScriptAnalyzer) | Regelverletzungen | Kein CVE-Scanner, aber Best-Practice-Ergänzung; seit I10b in der CI (`tests/scriptanalyzer.ps1`, Severity `Error` blockiert) |
+| CI-Actions | `gh api repos/actions/checkout/releases/latest` gegen den SHA in `.github/workflows/ci.yml` | Release + Commit-SHA | Bei neuem Release: Release Notes/Advisories prüfen, SHA und Tag-Kommentar gemeinsam aktualisieren |
 
 > Ergebnis als Artefakt sichern (`docs/audits/<YYYY-MM-DD>-deps.txt`; Ordner bei erstem Audit
 > anlegen), damit die Historie nachvollziehbar bleibt.

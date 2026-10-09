@@ -11,7 +11,7 @@ Keine. Das Projekt nutzt bewusst keine Module aus der PowerShell-Galerie; alles 
 
 Nur Entwicklung, nicht Laufzeit: `Pester` 5.7.1 für die Unit-Tests unter `tests/Unit/`, gepinnt in
 `tests/RequiredModules.psd1` und von `tests/pester.config.ps1` per `Import-Module -RequiredVersion` geladen,
-und — geplant — `PSScriptAnalyzer` für Gate 1. Installation mit `-Scope CurrentUser` auf Entwicklerrechnern
+und `PSScriptAnalyzer` 1.25.0 für Gate 1 (`tests/scriptanalyzer.ps1`), beide gepinnt in `tests/RequiredModules.psd1`. Installation mit `-Scope CurrentUser` auf Entwicklerrechnern und in der CI
 (Befehl in `docs/testing/UNIT_TESTS.md`); auf dem Betriebsserver nicht nötig.
 
 ---
@@ -87,6 +87,7 @@ Der Sync prüft den Hash beim Laden selbst; eine manuelle Gegenprobe mit `Get-Fi
 | Firebird-Server | `Firebird.Server`:`Firebird.Port` (Default 3050), Datenbankdatei `Firebird.Database` | Quelle (nur lesend) | Phasen 1–7: Test-Skript Exit 1; im Sync scheitert jede Tabelle (Retry, dann Status `Fehler`) |
 | MS SQL Server | `MSSQL.Server`, Datenbank `MSSQL.Database` (+ `master` für Pre-Flight) | Ziel (Staging, Zieltabellen, Prozedur) | Pre-Flight-Abbruch mit Exit 9 |
 | NuGet-CDN | `https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg` | einmaliger Treiber-Download | `throw "Download fehlgeschlagen …"` → Sync-Exit-Code 7; danach nicht mehr benötigt |
+| GitHub Actions (nur Entwicklung) | Runner `windows-latest`; `actions/checkout` v7.0.1, per Commit-SHA gepinnt; PSGallery für Pester/PSScriptAnalyzer | CI (`.github/workflows/ci.yml`) | Kein Einfluss auf den Betrieb; Check rot/ausstehend → lokal dieselben Skripte ausführen |
 
 Credentials für Firebird/SQL Server: siehe `docs/architecture/CREDENTIAL_STRATEGY.md`.
 Verbindungen sind derzeit **nicht** explizit verschlüsselt konfiguriert (kein `Encrypt`/`WireCrypt` im Connection String;

@@ -411,6 +411,7 @@ function Resolve-MSSQLCredentials {
     Erstellt einen Firebird Connection String.
 #>
 function New-FirebirdConnectionString {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingUsernameAndPasswordParams', '', Justification = 'Baut einen Connection String aus aufgelösten Credentials (Credential Manager); Passwort als String oder SecureString')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -457,6 +458,7 @@ function New-FirebirdConnectionString {
     Erstellt einen MSSQL Connection String.
 #>
 function New-MSSQLConnectionString {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingUsernameAndPasswordParams', '', Justification = 'Baut einen Connection String aus aufgelösten Credentials (Credential Manager); Passwort als String oder SecureString')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]

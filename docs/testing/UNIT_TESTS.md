@@ -9,16 +9,18 @@
 > 95,63 %, Stand nach I8 Überlappungsfenster). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
 > (Modul 13 von 13, Incremental-Extrakt aus I8 7 von 7, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt,
 > siehe Abschnitt 8.6).
-> Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
+> CI (seit I10b): `.github/workflows/ci.yml` führt bei Push auf `main`, bei PRs und manuell
+> (`workflow_dispatch`) `tests/scriptanalyzer.ps1` und `tests/pester.config.ps1` auf `windows-latest` aus.
+> Weiterhin offen: keine automatisierten Tests für die übrigen Einstiegsskripte
 > (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
 
 Framework: Pester 5.x. Auf dem Entwicklungsrechner sind Pester 3.4.0 (Windows-Bordmittel),
 5.7.1 und 6.1.0 installiert — verbindlich ist die in `tests/RequiredModules.psd1` gepinnte
-Version 5.7.1, damit lokale Setups und eine spätere CI auf demselben Stand sind:
+Version 5.7.1 (dazu PSScriptAnalyzer 1.25.0), damit lokale Setups und die CI auf demselben Stand sind:
 
 ```powershell
 # tests/RequiredModules.psd1
-@{ Pester = @{ RequiredVersion = '5.7.1' } }
+@{ Pester = @{ RequiredVersion = '5.7.1' }; PSScriptAnalyzer = @{ RequiredVersion = '1.25.0' } }
 
 # Lokales Setup (einmalig) / im CI-Workflow vor dem Testlauf
 $req = Import-PowerShellDataFile ./tests/RequiredModules.psd1
@@ -368,7 +370,7 @@ Invoke-Pester -Configuration $Config
 ```
 
 - `Run.Exit = $true`: Exit-Code 1 bei einem roten Test oder Coverage unter dem Ziel — damit als
-  Gate in Skripten und einer späteren CI verwendbar.
+  Gate in Skripten und in der CI verwendbar.
 - Coverage nur auf `SQLSyncCommon.psm1`; die Einstiegsskripte gehen nicht in die Coverage ein
   (auch nicht `Setup-ScheduledTasks.ps1`, dessen Tests nur den `-WhatIf`-Pfad abdecken).
 - Kalibrierung: gemessen am 2026-10-08 82,54 % (315 Kommandos, I3), nach I5 84,42 % (353), nach I6 86,52 % (371), Ziel 80 %. Das Ziel wird nur
