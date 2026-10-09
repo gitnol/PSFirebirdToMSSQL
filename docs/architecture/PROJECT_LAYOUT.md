@@ -14,7 +14,7 @@ Verbindet sich mit den Prinzipien [[SEPARATION_OF_CONCERNS]] und [[ORTHOGONALITY
 flowchart TD
     P[Einstiegspunkte / Präsentation<br/>Sync_Firebird_MSSQL_AutoSchema.ps1 · Test-SQLSyncConnections.ps1<br/>Get_Firebird_Schema.ps1 · Manage_Config_Tables.ps1 · Setup-*.ps1]
     A[Orchestrierung<br/>Sync-Ablauf, Retry, Wasserzeichen, Merge, Sanity<br/>im Parallel-Block des Sync-Skripts]
-    I[Infrastruktur<br/>SQLSyncCommon.psm1: Konfig, Credentials,<br/>Connection Strings, Treiber, Typmapping,<br/>Spalten-/Strategieermittlung]
+    I[Infrastruktur<br/>SQLSyncCommon.psm1: Konfig, Credentials,<br/>Connection Strings, Treiber, Typmapping,<br/>Spalten-/Strategieermittlung,<br/>Wasserzeichen und Extrakt-Abfrage]
     DB[Datenbank-Seite<br/>sql_server_setup.sql: sp_Merge_Generic]
 
     P --> A
@@ -31,7 +31,9 @@ flowchart TD
   `ForEach-Object -Parallel`-Block des Sync-Skripts. Modulfunktionen sind im Parallel-Runspace nicht
   automatisch geladen; der Block importiert das Modul daher selbst (`Import-Module $using:ModulePath`) und
   nutzt `Get-TableColumnConfig` (Spalten/Strategie) und `ConvertTo-SqlServerType` (Typmapping) — keine
-  Kopie dieser Logik im Skript (seit v2.14).
+  Kopie dieser Logik im Skript (seit v2.14). Seit v2.18 (I8) kommen Wasserzeichen, Untergrenze und
+  Extrakt-Abfrage aus dem Modul (`Get-SQLSyncIncrementalWatermark`, `Get-SQLSyncIncrementalLowerBound`,
+  `Get-SQLSyncExtractQuery`); die Reihenfolge der Schritte steuert weiter das Skript.
 
 ---
 
@@ -73,7 +75,7 @@ Tests (Pester-5-Harness seit I3, Details in `docs/testing/UNIT_TESTS.md`):
 |---|---|
 | `tests/RequiredModules.psd1` | gepinnte Testabhängigkeit: Pester 5.7.1 |
 | `tests/pester.config.ps1` | Testlauf mit gepinntem Pester und Coverage auf `SQLSyncCommon.psm1` (Ziel 80 %); Exit 1 bei rotem Test oder Coverage unter Ziel |
-| `tests/Unit/SQLSyncCommon.Tests.ps1` | 125 Unit-Tests (138 inkl. `Setup-ScheduledTasks.Tests.ps1`), jede exportierte Funktion von `SQLSyncCommon.psm1` |
+| `tests/Unit/SQLSyncCommon.Tests.ps1` | 163 Unit-Tests (176 inkl. `Setup-ScheduledTasks.Tests.ps1`), jede exportierte Funktion von `SQLSyncCommon.psm1` |
 | `tests/Unit/Setup-ScheduledTasks.Tests.ps1` | 13 Unit-Tests für `Setup-ScheduledTasks.ps1`, nur mit `-WhatIf` (Registrierung und Passwortabfrage gemockt) |
 | `tests/coverage.xml` | Coverage-Report, vom Testlauf erzeugt, gitignored |
 

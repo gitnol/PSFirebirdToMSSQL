@@ -359,6 +359,7 @@ Für getrennte Jobs (z.B. Täglich inkrementell vs. Wöchentlich Full) kann eine
 | `NumberOfThreads`        | 4                 | Anzahl paralleler Threads für Tabellen-Sync                        |
 | `RunSanityCheck`         | `true`            | `false` = Überspringt COUNT-Vergleich                              |
 | `FailOnSanityError`      | `true`            | `false` = Sanity `FEHLER` führt nicht zu Exit-Code 11          |
+| `IncrementalOverlapMinutes` | 10             | Incremental: liest ab `MAX(Zeitstempel)` im Ziel minus X Minuten (0–1440) |
 | `MaxRetries`             | 3                 | Wiederholungsversuche bei Fehler                                   |
 | `RetryDelaySeconds`      | 10                | Wartezeit zwischen Retries                                         |
 | `DeleteLogOlderThanDays` | 30                | Löscht Logs automatisch nach X Tagen (0 = Deaktiviert)             |
@@ -620,7 +621,14 @@ Starten in: C:\Scripts
 
 ## Changelog
 
-Die Versionsnummern bezeichnen den Stand des Repositorys. Jedes Skript trägt die Nummer der letzten Version, die es geändert hat (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 – v2.13 und v2.17 betrafen nur andere Dateien; `Test-SQLSyncConnections.ps1`: 2.1).
+Die Versionsnummern bezeichnen den Stand des Repositorys. Jedes Skript trägt die Nummer der letzten Version, die es geändert hat (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.18 – v2.13 und v2.17 betrafen nur andere Dateien; `Test-SQLSyncConnections.ps1`: 2.1).
+
+### v2.18 (2026-10-09) - Überlappungsfenster im Incremental
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.18: Der inkrementelle Extrakt liest ab dem Wasserzeichen (`MAX(Zeitstempel)` der Zieltabelle) **minus Überlappungsfenster**, inklusive (`>= @LastDate`; bis v2.16 strikt `> MAX(ts)`). Datensätze mit Zeitstempel ≤ Wasserzeichen, die erst nach dem letzten Lauf committet wurden, werden nachgeholt, sofern die Verzögerung kleiner als das Fenster ist (bekannte Einschränkung K3). Längere Verzögerungen holt weiterhin erst der wöchentliche Full-Lauf (`ForceFullSync`)
+- Neuer optionaler Konfigschlüssel `General.IncrementalOverlapMinutes` (Ganzzahl 0–1440, Default 10; 0 = ab dem Wasserzeichen selbst, inklusive). Werte außerhalb des Bereichs weisen Schema und `Get-SQLSyncConfig` ab
+- `RowsLoaded` enthält jetzt auch die im Fenster erneut gelesenen Zeilen und ist daher auch ohne Quelländerung oft > 0 (der MERGE ist idempotent, keine Duplikate)
+- Scheitert die `MAX`-Abfrage auf eine vorhandene Zieltabelle (z. B. Zeitstempelspalte fehlt im Ziel, Timeout), läuft die Tabelle durch die Retry-Schleife und endet mit Status `Fehler` (Exit-Code 10); bis v2.16 folgte daraus still ein Vollabzug ab 1900-01-01. Fehlende oder leere Zieltabelle → Vollabzug mit Info `(Erstlauf (Zieltabelle fehlt) - Vollabzug)` bzw. `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)`
+- Neue Modulfunktionen `Get-SQLSyncIncrementalLowerBound`, `Get-SQLSyncIncrementalWatermark` und `Get-SQLSyncExtractQuery` (erster Schnitt der Zerlegung des Hauptskripts; der Extrakt ist damit unit-getestet); 176 Pester-Tests
 
 ### v2.17 (2026-10-09) - Rollout-Check (`-PreDeploy`)
 - `Test-SQLSyncConnections.ps1` v2.1: neuer Schalter `-PreDeploy`, rein lesend (nur `SELECT`s). Prüft alle `config*.json` im Skriptordner gegen Schema und Namensregeln, die Treiber-DLL gegen die erlaubten SHA-256 (ohne sie zu laden), die Firebird-Serverversion gegen bekannte Server-Advisories, eine Anmeldung als `SYSDBA` und Altbestand-Zielspalten, deren `DECIMAL`-Typ Quellwerte kürzt. Ausgabe als Tabelle Status/Prüfung/Detail; Exit-Code 6 bei mindestens einem `FEHLER` (`WARNUNG` lässt Exit-Code 0 zu)

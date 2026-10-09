@@ -51,6 +51,7 @@ Tatsächlich geprüft (Fail-Fast per `throw` → Exit-Code 2):
 | `General.GlobalTimeout > 0` | `GlobalTimeout muss größer als 0 sein.` |
 | `Tables` vorhanden und nicht leer | `Keine Tabellen in der Konfiguration definiert.` |
 | `General.OrphanCleanupBatchSize >= 1000` | `OrphanCleanupBatchSize muss mindestens 1000 sein.` |
+| `General.IncrementalOverlapMinutes` zwischen 0 und 1440 | `IncrementalOverlapMinutes muss zwischen 0 und 1440 liegen.` |
 | Namen nicht leer (außer wo leer erlaubt) | `Ungültiger Name in '<Feld>': leer.` |
 | Namen höchstens 63 Zeichen (Firebird-Limit) | `Ungültiger Name in '<Feld>': '<Name>' ist länger als 63 Zeichen.` |
 | Namen nur aus `A-Z`, `a-z`, `0-9`, `_`, `$` | `Ungültiger Name in '<Feld>': '<Name>' (erlaubt sind nur A-Z, a-z, 0-9, _ und $).` |
@@ -143,6 +144,7 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 | `NumberOfThreads` | int | `4` | FILE | `-ThrottleLimit` der Parallel-Schleife (gleichzeitig verarbeitete Tabellen). Schema: 1–8 |
 | `RunSanityCheck` | bool | `true` | FILE | Nach dem Sync `COUNT(*)` in Firebird und Ziel vergleichen (OK / WARNUNG (+n) / FEHLER (-n)) |
 | `FailOnSanityError` | bool | `true` | FILE | Sanity `FEHLER (-n)` (Ziel hat weniger Zeilen) beendet den Sync mit Exit-Code `11`, sofern keine Tabelle `Fehler` hat (dann `10`). `false` = Sanity-Fehler nur im Log, Exit `0`. Ohne `RunSanityCheck` wirkungslos |
+| `IncrementalOverlapMinutes` | int (min) | `10` | FILE | Überlappungsfenster des Incremental-Extrakts (seit v2.18): gelesen wird ab Wasserzeichen (`MAX(<ts>)` der Zieltabelle) minus n Minuten, inklusive (`>= @LastDate`). Holt Datensätze nach, die mit Zeitstempel ≤ Wasserzeichen erst nach dem letzten Lauf committet wurden (K3); `0` = ab dem Wasserzeichen selbst. Größere Werte lesen mehr Zeilen erneut (`RowsLoaded` steigt, MERGE idempotent). Code: 0–1440; Schema: 0–1440 |
 | `MaxRetries` | int | `3` | FILE | Zusätzliche Versuche pro Tabelle nach einem Fehler (insgesamt `MaxRetries + 1`). Schema: 0–10 |
 | `RetryDelaySeconds` | int (s) | `10` | FILE | Wartezeit vor jedem Wiederholungsversuch. Schema: 1–300 |
 | `DeleteLogOlderThanDays` | int (Tage) | `30` | FILE | Löscht `Logs\Sync_*.log` älter als n Tage; `0` = Rotation aus. Schema: 0–365 |

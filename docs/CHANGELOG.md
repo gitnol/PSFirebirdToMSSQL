@@ -12,6 +12,56 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 I8 – Wasserzeichen mit Überlappungsfenster
+
+### Added
+- Konfigschlüssel `General.IncrementalOverlapMinutes` (0..1440, Default 10) in Schema, Sample und
+  `Get-SQLSyncConfig` (Bereichsprüfung, Fail-Fast)
+- Modulfunktionen `Get-SQLSyncIncrementalLowerBound`, `Get-SQLSyncIncrementalWatermark`,
+  `Get-SQLSyncExtractQuery` — erster Schnitt der Hauptskript-Zerlegung, Extrakt damit unit-testbar
+- 19 Pester-Tests (176 gesamt, Coverage 95,63 %), 7/7 Mutationen erkannt
+
+### Changed
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.18: Incremental liest ab `MAX(ts) − Überlappung` inklusive (`>=`)
+  statt strikt `> MAX(ts)` (K3); `RowsLoaded` enthält dadurch die erneut gelesenen Zeilen des Fensters
+- Wasserzeichen: fehlende bzw. leere Zieltabelle → Vollabzug mit Hinweis in der Info-Spalte; scheitert die
+  `MAX`-Abfrage auf einer vorhandenen Zieltabelle → Retry, danach Status „Fehler" (Exit 10)
+
+### Fixed
+- Stiller Vollabzug ab 1900-01-01, wenn die `MAX`-Abfrage scheiterte (z. B. Zeitstempelspalte fehlt im Ziel)
+- K3 weitgehend: Datensätze mit Zeitstempel ≤ Wasserzeichen, die nach dem letzten Lauf committet wurden
+
+### Lessons Learned
+- L8: Mutationsläufe — Original als Datei sichern, Testrunner im Kindprozess (ein In-Prozess-Lauf hat die
+  installierte `Pester.ps1` des Benutzers überschrieben und zwei Mutanten im Modul hinterlassen; beides
+  bemerkt, das Modul vor dem Commit per Diff/Mutationskontrolle wiederhergestellt)
+- L9: `AddWithValue(DateTime)` vergleicht als `datetime` (3,33 ms) — im Testhilfsskript wäre sonst die
+  Wasserzeichen-Zeile selbst gelöscht worden
+
+### Iterations-Log
+- Tests zuerst: strukturell rot (Funktionen fehlten), mit Stubs 18/18 behavioral rot („Expected 10, but got
+  $null" u. a.), dann grün. Zwei Implementierungsfehler unterwegs: `[Nullable[datetime]]` wird von PowerShell
+  entpackt (`.Value` war `$null`); `Assert-SqlIdentifier` hätte Zielnamen > 63 Zeichen abgelehnt (Ziel darf
+  128) — eigener Test ergänzt, per Mutation abgesichert.
+- Beim Lesen bestätigt: Der alte `catch` deckte auch den legitimen Erstlauf ab (Zieltabelle entsteht erst nach
+  dem Extrakt) — deshalb Unterscheidung fehlt / leer / Fehler statt bloßem Entfernen.
+
+### Confidence / Ungeprüft
+- Integration (Test-Datenbank, Ceteris paribus — nur die Codeversion variiert): Zieldatensatz ~14 s unter dem
+  Wasserzeichen gelöscht → v2.16 lädt 0 Zeilen, Datensatz fehlt, Sanity FEHLER (-1), Exit 11; v2.18 lädt 2
+  Zeilen, Datensatz wieder da, OK, Exit 0. Leere Zieltabelle → Hinweis + Vollabzug; gelöschte Zieltabelle →
+  Erstlauf-Hinweis, neu angelegt, Folgelauf wieder inkrementell.
+- **Nicht** Ende-zu-Ende getestet: scheiternde `MAX`-Abfrage auf vorhandener Tabelle (nur Unit-Test). Folge
+  beim Deployment: Zieltabellen, deren Zeitstempelspalte im Ziel fehlt, liefen bisher still als Vollabzug und
+  enden jetzt mit „Fehler"/Exit 10 — `-PreDeploy` prüft das nicht.
+- Annahme ungeprüft: 10 Minuten decken die realen Commit-Verzögerungen der Quelle; gemessen wurde nichts.
+  Längere Transaktionen holt weiter erst der Full-Lauf.
+- Volle Suite lief mit einer sauberen Pester-5.7.1-Kopie (PSGallery, Signatur gültig) statt der beschädigten
+  installierten; deren Reparatur steht aus (Datei außerhalb des Repos, Bestätigung des Prompters nötig).
+- Nicht gegen die produktive Umgebung gelaufen.
+
+---
+
 ## 2026-10-09 Roadmap nach I11 (KICKOFF 2a)
 
 ### Changed

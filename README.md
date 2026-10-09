@@ -358,6 +358,7 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 | `NumberOfThreads`        | 4                 | Number of parallel threads for table sync                |
 | `RunSanityCheck`         | `true`            | `false` = Skip COUNT comparison                          |
 | `FailOnSanityError`      | `true`            | `false` = Sanity `FEHLER` does not cause exit code 11   |
+| `IncrementalOverlapMinutes` | 10             | Incremental: read from `MAX(timestamp)` in target minus X minutes (0–1440) |
 | `MaxRetries`             | 3                 | Retry attempts on error                                  |
 | `RetryDelaySeconds`      | 10                | Wait time between retries                                |
 | `DeleteLogOlderThanDays` | 30                | Automatically delete logs after X days (0 = Disabled)    |
@@ -619,7 +620,14 @@ Start in: C:\Scripts
 
 ## Changelog
 
-Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 — v2.13 and v2.17 changed other files only; `Test-SQLSyncConnections.ps1`: 2.1).
+Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.18 — v2.13 and v2.17 changed other files only; `Test-SQLSyncConnections.ps1`: 2.1).
+
+### v2.18 (2026-10-09) - Incremental Overlap Window
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.18: the incremental extract reads from the watermark (`MAX(timestamp)` of the target table) **minus an overlap window**, inclusive (`>= @LastDate`; up to v2.16 strictly `> MAX(ts)`). Records with a timestamp ≤ watermark that were committed only after the previous run are now picked up, as long as the commit delay is shorter than the window (known issue K3). Longer delays are still only caught by the weekly full run (`ForceFullSync`)
+- New optional config key `General.IncrementalOverlapMinutes` (integer 0–1440, default 10; 0 = from the watermark itself, inclusive). Values outside the range are rejected by the schema and by `Get-SQLSyncConfig`
+- `RowsLoaded` now includes the rows re-read inside the window, so it is often > 0 even without source changes (the MERGE is idempotent, no duplicates)
+- If the `MAX` query on an existing target table fails (e.g. timestamp column missing in the target, timeout), the table now goes through the retry loop and ends with status `Fehler` (exit code 10); up to v2.16 this silently fell back to a full extract from 1900-01-01. Missing or empty target table → full extract with info `(Erstlauf (Zieltabelle fehlt) - Vollabzug)` or `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)`
+- New module functions `Get-SQLSyncIncrementalLowerBound`, `Get-SQLSyncIncrementalWatermark` and `Get-SQLSyncExtractQuery` (first step of splitting up the main script; the extract is now unit-tested); 176 Pester tests
 
 ### v2.17 (2026-10-09) - Rollout Check (`-PreDeploy`)
 - `Test-SQLSyncConnections.ps1` v2.1: new switch `-PreDeploy`, read-only (only `SELECT` statements). Checks all `config*.json` in the script folder against schema and naming rules, the driver DLL against the allowed SHA-256 values (without loading it), the Firebird server version against known server advisories, a login as `SYSDBA`, and legacy target columns whose `DECIMAL` type truncates source values. Output as a table status/check/detail; exit code 6 if at least one `FEHLER` was found (`WARNUNG` keeps exit code 0)

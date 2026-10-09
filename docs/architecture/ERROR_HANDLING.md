@@ -64,7 +64,9 @@ Implementiert im Parallel-Block des Sync-Skripts (Abschnitt 8):
   Einschränkung: bei `ForceFullSync` wird die Zieltabelle vor dem Merge geleert — scheitert der Versuch danach,
   ist die Zieltabelle bis zum nächsten erfolgreichen Versuch leer.
 - Es wird **nicht** zwischen transienten (Netzwerk, Deadlock, Timeout) und permanenten Fehlern (fehlende Spalte,
-  Typkonflikt, Rechte) unterschieden — permanente Fehler verbrauchen alle Versuche.
+  Typkonflikt, Rechte) unterschieden — permanente Fehler verbrauchen alle Versuche. Beispiel seit v2.18: fehlt die
+  Zeitstempelspalte in einer vorhandenen Zieltabelle, scheitert die Wasserzeichen-Abfrage in jedem Versuch
+  (`Invalid column name '<TS-Spalte>'`) und die Tabelle endet mit `Fehler` (bis v2.16 stiller Vollabzug).
 - Keine Retries in den Phasen 1–7 (Konfig, Credentials, Treiber, Pre-Flight): dort Fail-Fast mit Exit-Code.
 
 ---
@@ -148,7 +150,7 @@ Inkrement I2 hat nur die Sync-Codes `10`/`11` ergänzt; eine Vereinheitlichung �
 
 | Stelle | Verhalten | Folge | Inkrement |
 |---|---|---|---|
-| Wasserzeichen `SELECT MAX(ts)` | `catch { $LastSyncDate = 1900-01-01 }` ohne Meldung | stiller Voll-Extrakt (langsam, aber durch MERGE korrekt) | offen (nicht Teil von I2) |
+| ~~Wasserzeichen `SELECT MAX(ts)`~~ | ~~`catch { $LastSyncDate = 1900-01-01 }` ohne Meldung~~ | ~~stiller Voll-Extrakt (langsam, aber durch MERGE korrekt)~~ | behoben in I8 / v2.18: `Get-SQLSyncIncrementalWatermark` wirft bei einem Fehler auf eine vorhandene Zieltabelle (z. B. Zeitstempelspalte fehlt im Ziel, Timeout) → Retry-Schleife → Status `Fehler`, Exit `10`. Vollabzug nur noch bei fehlender (`Erstlauf (Zieltabelle fehlt) - Vollabzug`) oder leerer Zieltabelle (`Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug`), jeweils sichtbar in `Info` |
 | Zieltabelle: ID-Spalte auf `NOT NULL` ändern | `try { … } catch { }` | nachfolgende PK-Anlage scheitert; nur als `(PK Err: …)` in `Info` | offen (nicht Teil von I2) |
 | Staging-PK anlegen | leeres `catch { }` | Merge ohne Index (Performance) | offen (nicht Teil von I2) |
 | Orphan-Cleanup | Fehler nur in `Info` (`Cleanup-Fehler: …`), Status bleibt `Erfolg` | z. B. nicht-numerische IDs (Temp-Tabelle `BIGINT`) werden nie bereinigt | Backlog |

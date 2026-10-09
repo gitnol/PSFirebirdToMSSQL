@@ -332,8 +332,8 @@ pwsh -NoProfile -File .\tests\pester.config.ps1           # Gate 4 — Unit-Test
 
 **Stand 2026-10-08:** Keine PSScriptAnalyzer-Settings und keine CI; Gate 1 wird manuell ausgeführt.
 Gate 4 ist seit I3 vorhanden: `tests/pester.config.ps1` lädt das in `tests/RequiredModules.psd1`
-gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (157, Stand 2026-10-09) und endet mit Exit-Code 1 bei einem
-roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 95,29 % am 2026-10-09). Schneller Lauf
+gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (176, Stand 2026-10-09) und endet mit Exit-Code 1 bei einem
+roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 95,63 % am 2026-10-09). Schneller Lauf
 ohne Coverage: `Invoke-Pester ./tests`. Details in `docs/testing/UNIT_TESTS.md`. Die Einstiegsskripte
 sind nicht unit-getestet; für sie bleibt als Minimal-Gate: `Test-SQLSyncConnections.ps1 -PreDeploy` gegen eine
 Testumgebung liefert Exit-Code 0 (kein `FEHLER`; rein lesend).

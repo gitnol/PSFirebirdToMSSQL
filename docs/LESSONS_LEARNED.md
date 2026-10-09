@@ -110,6 +110,35 @@ alle vier Quellen gemeinsam lesen, je Treffer bewusst bündeln / umordnen / getr
 beachten, Roadmap-Änderung als eigener `docs:`-Commit.
 
 ---
+## L8: Mutationsläufe — Original per Dateikopie sichern, Testrunner im eigenen Prozess
+- Inkrement: I8
+- Scope: generisch-stack
+- Backport-Ziel: `stacks/powershell-automation/` Testing-Konventionen (Mutationsprüfung, ergänzt L3)
+- Status: offen
+
+Ein Hilfsskript hielt das Original im Speicher (`$orig`), schrieb Mutanten nach `$p` und stellte im
+`finally` per `WriteAllText($p, $orig)` wieder her — und rief `Invoke-Pester` **im selben Prozess** auf.
+Danach zeigte `$p` auf die `Pester.ps1` der installierten Pester-Version: Das `finally` überschrieb sie
+mit dem Modulinhalt (Pester für alle Projekte des Benutzers kaputt), und zwei Mutanten blieben im Modul
+stehen. Bemerkt nur, weil danach *alle* Tests rot waren — auch ohne Mutation. Regeln: Original als
+**Datei** sichern (`cp`) und nach jedem Mutanten per `cmp` gegen die Kopie zurückprüfen; Testrunner
+pro Mutant in einem **Kindprozess** starten; zuerst einen Kontrolllauf ohne Mutation (muss grün sein);
+„alle Tests rot" ist ein Befund über das Werkzeug, nicht über die Tests.
+
+---
+## L9: `AddWithValue` mit `DateTime` vergleicht als `datetime`, nicht `datetime2`
+- Inkrement: I8
+- Scope: generisch-stack
+- Backport-Ziel: `stacks/powershell-automation/CONVENTIONS.md` (SQL-Server-Zugriff)
+- Status: offen
+
+`SqlParameterCollection.AddWithValue('@m', [DateTime])` erzeugt einen Parameter vom Typ `datetime`
+(Auflösung 3,33 ms). Ein Gleichheitsvergleich gegen eine `datetime2`-Spalte findet den Wert dann nicht
+(…39.912 wird zu …39.913), Bereichsabfragen verschieben sich. Im Testhilfsskript wäre dadurch genau der
+Wasserzeichen-Datensatz als „Kandidat unter dem Wasserzeichen" gelöscht worden. Abhilfe: Vergleiche in
+SQL selbst formulieren (Unterabfrage) oder den Parameter explizit als `SqlDbType.DateTime2` anlegen.
+
+---
 ## Pflege
 
 - Neuer „Lessons Learned"-Block im `CHANGELOG.md` → Eintrag `## L<N>:` hier anlegen.

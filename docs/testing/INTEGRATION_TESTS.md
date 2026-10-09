@@ -7,7 +7,7 @@ Stack: PowerShell 7+ gegen **echte** Firebird- und SQL-Server-Testinstanzen
 > Einziger vorhandener Integrations-/Smoke-Test ist das Diagnoseskript
 > `Test-SQLSyncConnections.ps1`, mit `-PreDeploy` als umfassender, rein lesender Lauf
 > (Abschnitt 2.1). Der Pester-5-Harness für Unit-Tests ist seit I3 vorhanden
-> (`tests/Unit/`, 157 Tests, Pester 5.7.1 gepinnt in
+> (`tests/Unit/`, 176 Tests, Pester 5.7.1 gepinnt in
 > `tests/RequiredModules.psd1`, siehe `UNIT_TESTS.md`), deckt aber nur `SQLSyncCommon.psm1`
 > ohne echte Instanzen ab. Die Struktur unten ist der Zielzustand; Integrations-Tests bauen auf
 > diesem Harness auf.
@@ -152,7 +152,9 @@ Ablauf (Create → Test → Teardown):
    `STG_<Tabelle>` existieren, `sp_Merge_Generic` existiert mit 4 Parametern.
 3. **Prüfen:** `COUNT(*)` Firebird == `COUNT(*)` Zieltabelle (entspricht dem Sanity Check „OK").
 4. **Lauf 2 (Inkrementell):** erneut starten ohne Quelländerung → Zeilenanzahl unverändert
-   (MERGE ist idempotent).
+   (MERGE ist idempotent). Seit v2.18 ist `RowsLoaded` dabei meist > 0: die Zeilen im
+   Überlappungsfenster (`General.IncrementalOverlapMinutes`) werden erneut gelesen. Nicht auf
+   `RowsLoaded = 0` prüfen.
 5. **Teardown** im `finally`: Ziel- und Staging-Tabelle in der Test-Ziel-DB droppen (oder
    die ganze Test-DB, wenn sie vom Test angelegt wurde).
 
@@ -224,6 +226,29 @@ zeigen. Achtung: Der Sync legt das Transcript-Log im Skriptordner an (`Logs\`), 
 Optionale Folge-Szenarien (jeweils eigener Test, Opt-in): `ForceFullSync = true`,
 `CleanupOrphans = true` (Orphan-Cleanup, nur numerische IDs — S7), Tabelle ohne ID
 (Strategie Snapshot), Tabelle mit `TableOverrides`.
+
+### 4.1 Überlappungsfenster / K3 (I8, manuell)
+
+Prüft, dass der Incremental-Extrakt Datensätze mit Zeitstempel ≤ Wasserzeichen nachholt
+(`General.IncrementalOverlapMinutes`, Default 10). Ablauf in der Test-Ziel-DB: nach einem
+erfolgreichen Lauf in der Zieltabelle einen Datensatz löschen, dessen Zeitstempel knapp
+(Sekunden) unter dem Wasserzeichen `MAX(<ts>)` liegt – das simuliert einen Datensatz, der
+erst nach dem letzten Lauf committet wurde. Dann den Sync ohne Quelländerung starten.
+
+Manuell belegt am 2026-10-09 gegen die Testumgebung (Firebird-Testserver → SQL-Testserver,
+Incremental-Tabelle in der Test-Datenbank, gelöschter Datensatz ~14 s unter dem Wasserzeichen):
+
+| Szenario | Ergebnis |
+|---|---|
+| Lauf mit v2.16 (striktes `> MAX(ts)`) | 0 Zeilen geladen, Datensatz fehlt weiter, Sanity `FEHLER (-1)`, Exit 11 |
+| Lauf mit v2.18 (Fenster 10 Min, `>=`) | 2 Zeilen geladen, Datensatz wieder vorhanden, Sanity `OK`, Exit 0 |
+| Läufe ohne Änderungen | je Tabelle 1 bzw. 2 Zeilen geladen (Zeilen im Fenster), Ziel inhaltlich unverändert |
+| Zieltabelle geleert (`TRUNCATE`) | Info `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)`, alle Zeilen geladen |
+| Zieltabelle gelöscht (`DROP TABLE`) | Zieltabelle neu angelegt, Info `(Erstlauf (Zieltabelle fehlt) - Vollabzug)`; Folgelauf wieder inkrementell |
+
+Die DML/DDL (Datensatz löschen, Tabelle leeren bzw. löschen) wurde manuell in der Test-Ziel-DB
+ausgeführt. Nicht im Integrationslauf nachgestellt: scheiternde `MAX`-Abfrage auf eine vorhandene
+Zieltabelle (→ `Fehler`, Exit 10); das ist per Unit-Test belegt (`UNIT_TESTS.md`).
 
 ---
 

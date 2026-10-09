@@ -20,12 +20,13 @@ Commit-Messages oder in Doku verwenden.
 | Zieltabelle | SQL-Server-Tabelle `<Prefix><Quelltabelle><Suffix>`, in die per MERGE bzw. Snapshot geschrieben wird | Hauptskript Schritt E, `$TargetTableName` | Staging-Tabelle |
 | Temp-Tabelle | Ausschließlich `#SourceIDs_<Quelltabelle>` beim Orphan-Cleanup | Hauptskript Schritt G | Staging-Tabelle |
 | Sync-Strategie | Pro Tabelle und Lauf ermittelte Verarbeitungsart: `Incremental`, `FullMerge`, `FullMerge (Forced)`, `Snapshot` | Hauptskript, `Get-TableColumnConfig` | — |
-| Incremental | ID- und Timestamp-Spalte vorhanden: nur Zeilen mit Zeitstempel > Wasserzeichen werden geladen und gemergt | Hauptskript | FullMerge |
+| Incremental | ID- und Timestamp-Spalte vorhanden: nur Zeilen mit Zeitstempel ≥ Wasserzeichen minus Überlappungsfenster werden geladen und gemergt (bis v2.16: > Wasserzeichen) | Hauptskript, `Get-SQLSyncExtractQuery` | FullMerge |
 | FullMerge | ID vorhanden, keine Timestamp-Spalte: alle Zeilen laden und mergen; `FullMerge (Forced)` = durch `ForceFullSync` erzwungen (Ziel wird vorher geleert) | Hauptskript | Snapshot |
 | Snapshot | Keine ID-Spalte: Zieltabelle wird geleert und komplett neu befüllt | Hauptskript | FullMerge |
 | ID-Spalte | Primärschlüssel-Spalte für MERGE und PK, global `IdColumn` oder per `TableOverrides` | `Get-SQLSyncConfig`, `sp_Merge_Generic` | — |
 | Timestamp-Spalte | Änderungszeitstempel einer Tabelle; erste vorhandene aus `TimestampColumns` oder `TableOverrides.<T>.TimestampColumn` | `Get-SQLSyncConfig`, `Get-TableColumnConfig` | Wasserzeichen |
-| Wasserzeichen | `MAX(<Timestamp-Spalte>)` der Zieltabelle zu Beginn des Laufs; Untergrenze für den Incremental-Extrakt (Default `1900-01-01`) | Hauptskript Schritt C | Timestamp-Spalte |
+| Wasserzeichen | `MAX(<Timestamp-Spalte>)` der Zieltabelle zu Beginn eines Versuchs; abzüglich Überlappungsfenster die Untergrenze `@LastDate` des Incremental-Extrakts. Zieltabelle fehlt oder leer → kein Wasserzeichen, Untergrenze `1900-01-01` (Vollabzug) | Hauptskript Schritt C, `Get-SQLSyncIncrementalWatermark` | Timestamp-Spalte, Untergrenze |
+| Überlappungsfenster | `General.IncrementalOverlapMinutes` (Default 10): so viele Minuten unter dem Wasserzeichen beginnt der Incremental-Extrakt, damit spät committete Datensätze mit älterem Zeitstempel nachgeholt werden (K3); die Zeilen im Fenster werden bei jedem Lauf erneut gelesen | `Get-SQLSyncIncrementalLowerBound`, Konfigdatei | Retry-Wartezeit |
 | TableOverrides | Tabellenspezifische Abweichungen für ID- und Timestamp-Spalte | `config.json`, `Get-SQLSyncConfig` | — |
 | Orphan | Datensatz in der Zieltabelle, dessen ID in der Quelltabelle nicht mehr existiert | Hauptskript Schritt G | — |
 | Orphan-Cleanup | Optionales Löschen von Orphans (`CleanupOrphans`) über einen ID-Abgleich | Hauptskript Schritt G | Full-Lauf |

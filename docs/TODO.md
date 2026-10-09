@@ -24,18 +24,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Mittlere Priorität
 
-### I8: Inkrementelles Wasserzeichen mit Überlappungsfenster
-
-Bezug: `KNOWN_ISSUES.md` K3.
-
-- [ ] Neuer Konfigschlüssel `General.IncrementalOverlapMinutes` (Default z. B. 10); Extrakt mit `ts >= MAX(ts) - Overlap` (MERGE ist idempotent)
-- [ ] Untergrenze und Extrakt-Abfrage als Modulfunktion aus dem Hauptskript ziehen (erster, kleiner Schnitt des Backlog-Punkts „Hauptskript zerlegen"; macht den Extrakt unit-testbar)
-- [ ] Stiller Rückfall beseitigen: schlägt die `MAX(ts)`-Abfrage fehl, liest der Extrakt heute ohne Hinweis ab 1900 (Vollabzug); künftig sichtbar in Status/Info (gebündelt, KICKOFF 2a — dieselben Zeilen)
-- [ ] Schema, Sample, README und `architecture/CONFIGURATION.md` ergänzen
-- **DoD:** Unit-Test für die Untergrenze (behaviorales Rot); Integrationstest: Datensatz mit identischem Zeitstempel wie das Wasserzeichen wird übernommen; gemeinsame DoD erfüllt
-- Bewusst nicht gebündelt: K5 (Orphan-Cleanup) und K6 (Schema-Drift) betreffen andere Schritte des Hauptskripts und würden die Größengrenze sprengen.
-- Danach Reflexion (`REFLECTION.md`): korrigiert nur Prozess-Docs (KICKOFF, STATE, KNOWN_ISSUES) und liefert die Befundliste für I10c.
-
 ### I10b: CI auf GitHub
 
 Vorgezogen (KICKOFF 2a): Integration läuft ohne Pull Requests (lokaler Merge, Push auf `main`) — die CI ist damit das einzige automatische Prüftor und sichert den Modulumbau in I10a ab.
@@ -72,6 +60,7 @@ Doku-Teil der bisherigen I10a; Umfang ergänzt um die Befundliste der Reflexion 
 
 ## Abgeschlossen
 
+- I8 Wasserzeichen mit Überlappungsfenster: `General.IncrementalOverlapMinutes` (Default 10), Extrakt ab `MAX(ts) − Überlappung` inklusive, Wasserzeichen/Untergrenze/Abfrage als Modulfunktionen; kein stiller Vollabzug mehr (fehlende/leere Zieltabelle mit Hinweis, MAX-Fehler → Retry/Fehler) — [ABGESCHLOSSEN 2026-10-09] (Commit ab1de66)
 - I11 Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (rein lesend) prüft Konfigs gegen Schema/Namensregeln, Treiber-Hash, Firebird-Version gegen CVEs, SYSDBA-Anmeldung und `decimal`-Altbestand; Exit 6 bei FEHLER — [ABGESCHLOSSEN 2026-10-09] (Commit 89e4565)
 - I7 Treiber-Integrität: SHA-256-Prüfung für jede DLL vor dem Laden (Download, vorhanden, `DllPath`), Original-Hashes net8.0 + netstandard2.1, Ausnahme nur über `Firebird.DllSha256`; Admin-Check mockbar, `SecurityProtocol` wird wiederhergestellt — [ABGESCHLOSSEN 2026-10-09] (Commit e173ac2)
 - I6 Konfig gegen `config.schema.json` geprüft (Fail-Fast, Exit 2; Schema-Muster an die Namens-Whitelist angeglichen), gemeinsame Pfadauflösung `Resolve-SQLSyncConfigPath`, `-ConfigFile` für `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` — [ABGESCHLOSSEN 2026-10-09] (Commit c5f94f0)
