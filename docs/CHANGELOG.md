@@ -12,6 +12,28 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Übernahme aus lokalem Branch `fix/folgepunkte-doku-83-sha`
+
+### Removed
+- Ungenutzte, nicht exportierte Helfer `Invoke-WithFirebirdConnection` / `Invoke-WithMSSQLConnection` aus
+  `SQLSyncCommon.psm1` (übernommen aus lokalem Commit `1ed31c6`); stattdessen Beispiel für das
+  `try/finally`-Muster mit `Close-DatabaseConnection` im Modul-Kommentar
+
+### Changed
+- Entscheidung zur Treiberprüfung dokumentiert: Der zweite Commit des Branches (`73b8d6b`) prüfte nur die
+  zentrale `net8.0`-DLL und ließ eine per `DllPath` konfigurierte DLL bewusst ungeprüft. **Beibehalten wird
+  die strengere I7-Variante** (jede DLL wird geprüft; Ausnahme nur mit `Firebird.DllSha256`), weil
+  (a) gemessen normale Benutzer im Treiberordner unter `%ProgramData%` Dateien anlegen dürfen und auch ein
+  `DllPath`-Ziel fremd beschreibbar sein kann, (b) die vorhandenen Konfigs auf die Original-DLL zeigen und
+  unverändert laufen, (c) eine abweichende DLL weiterhin möglich ist — als dokumentierte Entscheidung über
+  den Hash statt als stille Ausnahme. `73b8d6b` wird daher nicht übernommen.
+
+### Confidence / Ungeprüft
+- 138 Pester-Tests grün; Coverage 94,04 % (gestiegen, da toter Code entfernt); kein Aufrufer der entfernten
+  Funktionen im Repo (`grep`).
+
+---
+
 ## 2026-10-09 Doku-Abgleich vor dem ersten Push
 
 ### Fixed

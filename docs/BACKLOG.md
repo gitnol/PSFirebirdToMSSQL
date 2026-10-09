@@ -27,7 +27,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 ## Refactoring-Kandidaten
 
 - Hauptskript in Modulfunktionen zerlegen (`Invoke-TableSync`, `Invoke-PreFlight`) — 743 Zeilen in einer Datei, Logik nur schwer testbar; Aufnahme nach I3/I5
-- Ungenutzte/teilweise genutzte Exporte prüfen (`Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`)
+- Ungenutzte/teilweise genutzte Exporte prüfen (nicht exportierte Helfer `Invoke-With…Connection` seit 2026-10-09 entfernt; `Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`)
 - Wiederholter Code in `Setup_Credentials.ps1` (Firebird/MSSQL-Blöcke identisch) in eine Funktion ziehen
 
 ---

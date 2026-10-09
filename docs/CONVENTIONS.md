@@ -74,8 +74,9 @@ Import-Module $ModulePath -Force
   *Bestand weicht ab:* `Get-ConfigValue` und `Protect-SqlString` haben kein `[CmdletBinding()]`.
 - **Export explizit:** `Export-ModuleMember -Function @(...)` am Modulende ist eine **explizite Liste** (kein `'*'`).
   Es gibt kein Manifest (`.psd1`); kommt eins hinzu, gilt dort `FunctionsToExport` ebenfalls explizit.
-  *Bestand:* `Invoke-WithFirebirdConnection` / `Invoke-WithMSSQLConnection` sind definiert, aber bewusst **nicht** exportiert
-  (Kommentar im Modul: `$using:` funktioniert in normalen ScriptBlocks nicht).
+  Nicht exportierte Funktionen nur, wenn sie modulintern aufgerufen werden (z. B. `Test-SQLSyncIsAdministrator`);
+  ungenutzter Code wird entfernt statt „bewusst nicht exportiert" stehen gelassen (seit 2026-10-09 erledigt für die
+  früheren `Invoke-With…Connection`-Helfer – `$using:` funktioniert in normalen ScriptBlocks nicht).
 - **Rückgabe:** Hashtables (`@{ Username = …; Password = …; Source = … }`) bzw. `PSCustomObject` — keine Ausgabe-Nebenprodukte.
   Wertrückgebende Aufrufe nur zur Seitenwirkung mit `[void]`/`$null =`/`| Out-Null` verwerfen
   (Bestand: `[void]$Cmd.ExecuteNonQuery()`, `New-Item … | Out-Null`). Sonst leckt die Rückgabe in den Output-Stream

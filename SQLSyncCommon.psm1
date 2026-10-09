@@ -648,94 +648,21 @@ function Initialize-FirebirdDriver {
 
 <#
 .SYNOPSIS
-    Führt eine Aktion mit einer Firebird-Verbindung aus und garantiert Cleanup.
-
-.DESCRIPTION
-    Öffnet eine Verbindung, führt den ScriptBlock aus und schließt die Verbindung
-    im finally-Block - auch bei Fehlern.
-
-.PARAMETER ConnectionString
-    Der Firebird Connection String.
-
-.PARAMETER Action
-    Der auszuführende ScriptBlock. Erhält $Connection als Parameter.
-
-.EXAMPLE
-    Invoke-WithFirebirdConnection -ConnectionString $cs -Action {
-        param($conn)
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT * FROM MYTABLE"
-        $cmd.ExecuteReader()
-    }
-#>
-function Invoke-WithFirebirdConnection {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ConnectionString,
-
-        [Parameter(Mandatory)]
-        [scriptblock]$Action
-    )
-
-    $Connection = $null
-    try {
-        $Connection = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
-        $Connection.Open()
-        
-        # ScriptBlock ausführen mit Connection als Parameter
-        & $Action $Connection
-    }
-    finally {
-        if ($Connection) {
-            try { $Connection.Close() } catch { }
-            try { $Connection.Dispose() } catch { }
-        }
-    }
-}
-
-<#
-.SYNOPSIS
-    Führt eine Aktion mit einer MSSQL-Verbindung aus und garantiert Cleanup.
-
-.PARAMETER ConnectionString
-    Der MSSQL Connection String.
-
-.PARAMETER Action
-    Der auszuführende ScriptBlock. Erhält $Connection als Parameter.
-#>
-function Invoke-WithMSSQLConnection {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ConnectionString,
-
-        [Parameter(Mandatory)]
-        [scriptblock]$Action
-    )
-
-    $Connection = $null
-    try {
-        $Connection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
-        $Connection.Open()
-        
-        & $Action $Connection
-    }
-    finally {
-        if ($Connection) {
-            try { $Connection.Close() } catch { }
-            try { $Connection.Dispose() } catch { }
-        }
-    }
-}
-
-<#
-.SYNOPSIS
     Schließt und disposed eine Datenbankverbindung sicher.
 
 .DESCRIPTION
     Kann für beliebige Connection-Objekte verwendet werden.
     Fängt alle Exceptions ab um Folgefehler zu vermeiden.
+    Empfohlenes Muster für Verbindungen:
+
+        $Conn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
+        try {
+            $Conn.Open()
+            # ... Abfragen ...
+        }
+        finally {
+            Close-DatabaseConnection -Connection $Conn
+        }
 
 .PARAMETER Connection
     Das zu schließende Connection-Objekt.
@@ -1094,9 +1021,9 @@ Export-ModuleMember -Function @(
     'Initialize-FirebirdDriver'
     
     # Safe Operations
-    # HINWEIS: Invoke-WithFirebirdConnection und Invoke-WithMSSQLConnection wurden entfernt,
-    # da $using: in normalen ScriptBlocks nicht funktioniert. Stattdessen direkt 
-    # try/finally mit Close-DatabaseConnection verwenden.
+    # HINWEIS: Invoke-WithFirebirdConnection und Invoke-WithMSSQLConnection wurden entfernt
+    # (auch aus dem Code), da $using: in normalen ScriptBlocks nicht funktioniert.
+    # Stattdessen direkt try/finally mit Close-DatabaseConnection verwenden (Beispiel dort).
     'Close-DatabaseConnection'
     
     # Helpers
