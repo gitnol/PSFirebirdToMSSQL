@@ -12,13 +12,22 @@
     - Ist eine Tabelle BEREITS in der Config -> Wird ENTFERNT.
     - Nicht ausgewählte Tabellen bleiben UNVERÄNDERT.
 
+.PARAMETER ConfigFile
+    Optional. Zu bearbeitende Konfigurationsdatei (Default: config.json im Skriptordner);
+    relativ zum Skriptordner oder absolut.
+
 .NOTES
-    Version: 2.0 (Refactored - Modul-basiert)
+    Version: 2.1 (-ConfigFile, Schema-Prüfung vor dem Bearbeiten)
 
 .LINK
-    https://github.com/gitnol/PSFirebirdToMSSQL    
+    https://github.com/gitnol/PSFirebirdToMSSQL
 
 #>
+
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$ConfigFile
+)
 
 # -----------------------------------------------------------------------------
 # 0. MODUL IMPORTIEREN
@@ -35,11 +44,20 @@ Import-Module $ModulePath -Force
 # -----------------------------------------------------------------------------
 # 1. KONFIGURATION LADEN
 # -----------------------------------------------------------------------------
-$ConfigPath = Join-Path $ScriptDir "config.json"
+$ConfigPath = Resolve-SQLSyncConfigPath -ConfigFile $ConfigFile -ScriptDir $ScriptDir
 
-if (-not (Test-Path $ConfigPath)) { 
-    Write-Error "config.json fehlt!" 
-    exit 1 
+if (-not (Test-Path $ConfigPath)) {
+    Write-Error "Konfigurationsdatei nicht gefunden: $ConfigPath"
+    exit 1
+}
+
+# Vor dem Bearbeiten prüfen (Schema + Namens-Whitelist, wie beim Sync) – keine kaputte Konfig weiterbearbeiten
+try {
+    $null = Get-SQLSyncConfig -ConfigPath $ConfigPath -SchemaPath (Join-Path $ScriptDir "config.schema.json")
+}
+catch {
+    Write-Error "Fehler beim Laden der Konfiguration: $($_.Exception.Message)"
+    exit 2
 }
 
 # Raw Config laden (für Modifikation)
@@ -53,10 +71,9 @@ if ($Config.Tables) {
 }
 
 # Column Configuration (v2.10)
-$RawIdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
-$IdColumn = Protect-SqlString $RawIdColumn # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
-$RawTimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
-$TimestampColumns = $RawTimestampColumns | ForEach-Object { Protect-SqlString $_ } # Testweise SQL-Injection Schutz, müsste aber an vielen anderen Stellen auch gemacht werden
+# Spaltennamen werden unten in SQL-Text eingesetzt; die Whitelist-Prüfung hat Get-SQLSyncConfig oben erledigt
+$IdColumn = Get-ConfigValue $Config.General "IdColumn" "ID"
+$TimestampColumns = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
 
 # -----------------------------------------------------------------------------
 # 2. CREDENTIALS AUFLÖSEN
@@ -74,7 +91,8 @@ catch {
 # -----------------------------------------------------------------------------
 try {
     $DllPath = Get-ConfigValue $Config.Firebird "DllPath" ""
-    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $DllPath -ScriptDir $ScriptDir
+    $DllSha256 = Get-ConfigValue $Config.Firebird "DllSha256" $null
+    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $DllPath -ScriptDir $ScriptDir -ExpectedSha256 $DllSha256
 }
 catch {
     Write-Error $_.Exception.Message
@@ -141,11 +159,15 @@ try {
         }
 
         $Hinweis = ""
-        if (-not $HatId) { $Hinweis = "ACHTUNG: Keine $IdColumn Spalte (Snapshot Modus)" }
+        $NameGueltig = $true
+        try { Assert-SqlIdentifier -Name $Name -Field "Tables" } catch { $NameGueltig = $false }
+
+        if (-not $NameGueltig) { $Hinweis = "UNGÜLTIGER NAME (nur A-Z, a-z, 0-9, _, `$; max. 63 Zeichen) - wird nicht übernommen" }
+        elseif (-not $HatId) { $Hinweis = "ACHTUNG: Keine $IdColumn Spalte (Snapshot Modus)" }
         elseif (-not $HatDatum) { $Hinweis = "Warnung: Kein Timestamp (Full Merge)" }
 
         $TableList += [PSCustomObject]@{
-            Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } else { "Hinzufügen bei Auswahl" } 
+            Aktion      = if ($Status -like "Aktiv*") { "Löschen bei Auswahl" } elseif (-not $NameGueltig) { "Keine (ungültiger Name)" } else { "Hinzufügen bei Auswahl" }
             Tabelle     = $Name
             Status      = $Status
             "Hat ID"    = $HatId
@@ -211,6 +233,11 @@ foreach ($Tab in $Config.Tables) {
 # Neue hinzufügen
 foreach ($Sel in $SelectedNames) {
     if ($Sel -notin $Config.Tables) {
+        try { Assert-SqlIdentifier -Name $Sel -Field "Tables" }
+        catch {
+            Write-Host "  [!] Übersprungen: $($_.Exception.Message)" -ForegroundColor Yellow
+            continue
+        }
         # War NICHT drin UND wurde ausgewählt -> HINZUFÜGEN
         $TablesToAdd += $Sel
         $FinalTableList.Add($Sel)
@@ -226,6 +253,12 @@ $FinalTableList.Sort()
 if ($TablesToAdd.Count -eq 0 -and $TablesToRemove.Count -eq 0) {
     Write-Host "Keine effektiven Änderungen." -ForegroundColor Yellow
     exit 0
+}
+
+# Schema und Sync verlangen mindestens eine Tabelle – keine Konfig schreiben, die beim nächsten Lauf durchfällt
+if ($FinalTableList.Count -eq 0) {
+    Write-Host "Abbruch: Es würden alle Tabellen entfernt. Mindestens eine Tabelle muss konfiguriert bleiben." -ForegroundColor Red
+    exit 4
 }
 
 Write-Host "GEPLANTE ÄNDERUNGEN:" -ForegroundColor Cyan

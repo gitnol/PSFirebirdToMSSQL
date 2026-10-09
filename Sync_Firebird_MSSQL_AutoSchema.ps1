@@ -22,7 +22,17 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.10 (Dynamic Column Configuration)
+    Version: 2.16 (Treiber-DLL wird per SHA-256 geprüft; DllSha256 wird durchgereicht)
+
+    Exit-Codes:
+    0  = alle Tabellen erfolgreich
+    1  = SQLSyncCommon.psm1 fehlt
+    2  = Konfiguration fehlerhaft
+    5  = Credentials nicht gefunden
+    7  = Firebird-Treiber nicht ladbar
+    9  = Pre-Flight (Datenbank / sp_Merge_Generic) fehlgeschlagen
+    10 = mindestens eine Tabelle mit Status "Fehler"
+    11 = Sanity Check "FEHLER" (Ziel hat weniger Zeilen als Quelle), abschaltbar per General.FailOnSanityError
 
 .LINK
     https://github.com/gitnol/PSFirebirdToMSSQL    
@@ -50,20 +60,8 @@ Import-Module $ModulePath -Force
 # -----------------------------------------------------------------------------
 # 2. KONFIGURATIONSDATEI ERMITTELN
 # -----------------------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($ConfigFile)) {
-    $ConfigPath = Join-Path $ScriptDir "config.json"
-}
-else {
-    if (Test-Path $ConfigFile) {
-        $ConfigPath = Convert-Path $ConfigFile
-    }
-    elseif (Test-Path (Join-Path $ScriptDir $ConfigFile)) {
-        $ConfigPath = Join-Path $ScriptDir $ConfigFile
-    }
-    else {
-        $ConfigPath = $ConfigFile
-    }
-}
+$ConfigPath = Resolve-SQLSyncConfigPath -ConfigFile $ConfigFile -ScriptDir $ScriptDir
+$SchemaPath = Join-Path $ScriptDir "config.schema.json"
 
 # -----------------------------------------------------------------------------
 # 3. LOGGING STARTEN
@@ -85,7 +83,7 @@ Write-Host "--------------------------------------------------------" -Foregroun
 # 4. KONFIGURATION LADEN (via Modul)
 # -----------------------------------------------------------------------------
 try {
-    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath
+    $Config = Get-SQLSyncConfig -ConfigPath $ConfigPath -SchemaPath $SchemaPath
 }
 catch {
     Write-Error "KRITISCH: $($_.Exception.Message)"
@@ -142,7 +140,7 @@ catch {
 # 6. TREIBER LADEN & CONNECTION STRINGS
 # -----------------------------------------------------------------------------
 try {
-    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir
+    $ResolvedDllPath = Initialize-FirebirdDriver -DllPath $Config.DllPath -ScriptDir $ScriptDir -ExpectedSha256 $Config.DllSha256
 }
 catch {
     Write-Error "KRITISCH: $($_.Exception.Message)"
@@ -281,9 +279,9 @@ try {
                     [void]$InstallCmd.ExecuteNonQuery()
                 }
                 catch {
-                    # Ignoriere "Database already exists" Fehler, warne bei anderen
+                    # "Database already exists" ist harmlos; jeder andere Fehler bricht den Pre-Flight ab (exit 9)
                     if ($_.Exception.Message -notmatch "Database.*already exists") {
-                        Write-Host ("Warnung beim Ausführen eines SQL-Batch: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+                        throw ("Fehler beim Ausführen eines SQL-Batch aus '{0}': {1}" -f $SqlFileName, $_.Exception.Message)
                     }
                 }
             }
@@ -314,7 +312,10 @@ Write-Host "Konfiguration geladen. Tabellen: $($Tabellen.Count). Retries: $MaxRe
 
 $Results = $Tabellen | ForEach-Object -Parallel {
     $Tabelle = $_
-    
+
+    # Jeder Parallel-Runspace startet leer: Modul für Typmapping/Strategie laden
+    Import-Module $using:ModulePath
+
     # Variablen in Scope holen
     $FbCS = $using:FirebirdConnString
     $SqlCS = $using:SqlConnString
@@ -384,36 +385,19 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             $SchemaTable = $ReaderSchema.GetSchemaTable()
             $ReaderSchema.Close()
 
-            $ColNames = $SchemaTable | ForEach-Object { $_.ColumnName }
-            
-            # Dynamische Spalten-Ermittlung (NEU in v2.10)
-            $Override = $null
-            if ($LocalTableOverrides.ContainsKey($Tabelle)) {
-                $Override = $LocalTableOverrides[$Tabelle]
-            }
-            
-            # ID-Spalte bestimmen
-            $IdColumnName = if ($Override -and $Override.IdColumn) { $Override.IdColumn } else { $DefaultIdColumn }
-            $HasID = $IdColumnName -in $ColNames
-            
-            # Timestamp-Spalte bestimmen
-            $TimestampColumnName = $null
-            if ($Override -and $Override.TimestampColumn) {
-                $TimestampColumnName = $Override.TimestampColumn
-            } else {
-                foreach ($tsCol in $DefaultTimestampColumns) {
-                    if ($tsCol -in $ColNames) {
-                        $TimestampColumnName = $tsCol
-                        break
-                    }
-                }
-            }
-            $HasDate = $null -ne $TimestampColumnName -and $TimestampColumnName -in $ColNames
+            $ColNames = @($SchemaTable | ForEach-Object { $_.ColumnName })
 
-            $SyncStrategy = "Incremental"
-            if (-not $HasID) { $SyncStrategy = "Snapshot" }
-            elseif (-not $HasDate) { $SyncStrategy = "FullMerge" }
-            
+            # ID-/Timestamp-Spalte und Strategie über das Modul (v2.14, vorher Inline-Duplikat)
+            $ColumnConfig = Get-TableColumnConfig -TableName $Tabelle -ActualColumns $ColNames -Config @{
+                IdColumn         = $DefaultIdColumn
+                TimestampColumns = $DefaultTimestampColumns
+                TableOverrides   = $LocalTableOverrides
+            }
+            $IdColumnName = $ColumnConfig.IdColumn
+            $HasID = $ColumnConfig.HasId
+            $TimestampColumnName = $ColumnConfig.TimestampColumn
+            $SyncStrategy = $ColumnConfig.SyncStrategy
+
             if ($ForceFull -and $SyncStrategy -eq "Incremental") { $SyncStrategy = "FullMerge (Forced)" }
             $Strategy = $SyncStrategy
 
@@ -421,38 +405,29 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             $StagingTableName = "STG_$Tabelle"
             $CmdCheck = $SqlConn.CreateCommand()
             $CmdCheck.CommandTimeout = $Timeout
-            $CmdCheck.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '$StagingTableName'"
+            # Tabellen-/Spaltennamen aus der Konfig sind in Get-SQLSyncConfig per Whitelist geprüft (I4);
+            # in SQL-Text trotzdem immer quoten, Metadaten-Abfragen parametrisieren.
+            $CmdCheck.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @TableName"
+            [void]$CmdCheck.Parameters.AddWithValue("@TableName", $StagingTableName)
             $TableExists = $CmdCheck.ExecuteScalar() -gt 0
 
             if ($ForceRecreate -or -not $TableExists) {
-                $CreateSql = "IF OBJECT_ID('$StagingTableName') IS NOT NULL DROP TABLE $StagingTableName; CREATE TABLE $StagingTableName ("
+                $CreateSql = "IF OBJECT_ID(N'[$StagingTableName]') IS NOT NULL DROP TABLE [$StagingTableName]; CREATE TABLE [$StagingTableName] ("
                 $Cols = @()
                 foreach ($Row in $SchemaTable) {
                     $ColName = $Row.ColumnName
-                    $DotNetType = $Row.DataType
-                    $Size = $Row.ColumnSize
                     $AllowDBNull = $Row.AllowDBNull
-                    
-                    $SqlType = switch ($DotNetType.Name) {
-                        "Int16" { "SMALLINT" }
-                        "Int32" { "INT" }
-                        "Int64" { "BIGINT" }
-                        "String" { if ($Size -gt 0 -and $Size -le 4000) { "NVARCHAR($Size)" } else { "NVARCHAR(MAX)" } }
-                        "DateTime" { "DATETIME2" }
-                        "TimeSpan" { "TIME" }
-                        "Decimal" { "DECIMAL(18,4)" }
-                        "Double" { "FLOAT" }
-                        "Single" { "REAL" }
-                        "Byte[]" { "VARBINARY(MAX)" }
-                        "Boolean" { "BIT" }
-                        Default { "NVARCHAR(MAX)" }
-                    }
-                    
+
+                    # Typmapping über das Modul inkl. Precision/Scale (v2.14, vorher fest DECIMAL(18,4))
+                    $SqlType = ConvertTo-SqlServerType -DotNetTypeName $Row.DataType.Name -Size $Row.ColumnSize `
+                        -Precision $Row.NumericPrecision -Scale $Row.NumericScale
+
                     if (-not $AllowDBNull -or $ColName -eq $IdColumnName) {
                         $SqlType += " NOT NULL"
                     }
                     
-                    $Cols += "[$ColName] $SqlType"
+                    # Spaltennamen stammen aus den Firebird-Metadaten (nicht aus der Konfig): ] verdoppeln
+                    $Cols += "[$($ColName.Replace(']', ']]'))] $SqlType"
                 }
                 $CreateSql += [string]::Join(", ", $Cols) + ");"
                 
@@ -467,7 +442,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             if ($SyncStrategy -eq "Incremental") {
                 $CmdMax = $SqlConn.CreateCommand()
                 $CmdMax.CommandTimeout = $Timeout
-                $CmdMax.CommandText = "SELECT ISNULL(MAX([$TimestampColumnName]), '1900-01-01') FROM $TargetTableName" 
+                $CmdMax.CommandText = "SELECT ISNULL(MAX([$TimestampColumnName]), '1900-01-01') FROM [$TargetTableName]"
                 try { $LastSyncDate = [DateTime]$CmdMax.ExecuteScalar() } catch { $LastSyncDate = [DateTime]"1900-01-01" }
                 
                 $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"" WHERE ""$TimestampColumnName"" > @LastDate"
@@ -480,7 +455,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             
             # D: LOAD (BULK -> Staging)
             $BulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($SqlConn)
-            $BulkCopy.DestinationTableName = $StagingTableName
+            $BulkCopy.DestinationTableName = "[$StagingTableName]"
             $BulkCopy.BulkCopyTimeout = $Timeout
             for ($i = 0; $i -lt $ReaderData.FieldCount; $i++) {
                 $ColName = $ReaderData.GetName($i)
@@ -490,7 +465,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             if (-not $ForceRecreate) {
                 $TruncCmd = $SqlConn.CreateCommand()
                 $TruncCmd.CommandTimeout = $Timeout
-                $TruncCmd.CommandText = "TRUNCATE TABLE $StagingTableName"
+                $TruncCmd.CommandText = "TRUNCATE TABLE [$StagingTableName]"
                 [void]$TruncCmd.ExecuteNonQuery()
             }
             $BulkCopy.WriteToServer($ReaderData)
@@ -499,19 +474,20 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             # E: MERGE / STRUKTUR (Ziel = $TargetTableName)
             $RowsCopied = $SqlConn.CreateCommand()
             $RowsCopied.CommandTimeout = $Timeout
-            $RowsCopied.CommandText = "SELECT COUNT(*) FROM $StagingTableName"
+            $RowsCopied.CommandText = "SELECT COUNT(*) FROM [$StagingTableName]"
             $Count = $RowsCopied.ExecuteScalar()
             $RowsLoaded = $Count
             
             # Zieltabelle anlegen?
             $CheckFinal = $SqlConn.CreateCommand()
             $CheckFinal.CommandTimeout = $Timeout
-            $CheckFinal.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '$TargetTableName'"
+            $CheckFinal.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @TableName"
+            [void]$CheckFinal.Parameters.AddWithValue("@TableName", $TargetTableName)
             $FinalTableExists = $CheckFinal.ExecuteScalar() -gt 0
             if (-not $FinalTableExists) {
                 $InitCmd = $SqlConn.CreateCommand()
                 $InitCmd.CommandTimeout = $Timeout
-                $InitCmd.CommandText = "SELECT * INTO $TargetTableName FROM $StagingTableName WHERE 1=0;" 
+                $InitCmd.CommandText = "SELECT * INTO [$TargetTableName] FROM [$StagingTableName] WHERE 1=0;"
                 [void]$InitCmd.ExecuteNonQuery()
             }
 
@@ -520,11 +496,14 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 try {
                     $IdxCheckCmd = $SqlConn.CreateCommand()
                     $IdxCheckCmd.CommandTimeout = $Timeout
-                    $IdxCheckCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('$TargetTableName') AND is_primary_key = 1"
+                    $IdxCheckCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(QUOTENAME(@TableName)) AND is_primary_key = 1"
+                    [void]$IdxCheckCmd.Parameters.AddWithValue("@TableName", $TargetTableName)
                     if (($IdxCheckCmd.ExecuteScalar()) -eq 0) {
                         # Repair Nullable ID
                         $GetTypeCmd = $SqlConn.CreateCommand()
-                        $GetTypeCmd.CommandText = "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '$TargetTableName' AND COLUMN_NAME = '$IdColumnName'"
+                        $GetTypeCmd.CommandText = "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @TableName AND COLUMN_NAME = @ColumnName"
+                        [void]$GetTypeCmd.Parameters.AddWithValue("@TableName", $TargetTableName)
+                        [void]$GetTypeCmd.Parameters.AddWithValue("@ColumnName", $IdColumnName)
                         $IdType = $GetTypeCmd.ExecuteScalar()
                         if ($IdType) {
                             $AlterColCmd = $SqlConn.CreateCommand()
@@ -551,8 +530,11 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                     try {
                         $StgIdxCmd = $SqlConn.CreateCommand()
                         $StgIdxCmd.CommandTimeout = $Timeout
-                        $StgIdxCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID('$StagingTableName') AND name = 'PK_$StagingTableName'"
+                        $StgIdxCmd.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(QUOTENAME(@TableName)) AND name = @IndexName"
+                        [void]$StgIdxCmd.Parameters.AddWithValue("@TableName", $StagingTableName)
+                        [void]$StgIdxCmd.Parameters.AddWithValue("@IndexName", "PK_$StagingTableName")
                         if (($StgIdxCmd.ExecuteScalar()) -eq 0) {
+                            $StgIdxCmd.Parameters.Clear()
                             $StgIdxCmd.CommandText = "ALTER TABLE [$StagingTableName] ADD CONSTRAINT [PK_$StagingTableName] PRIMARY KEY CLUSTERED ([$IdColumnName] ASC);"
                             [void]$StgIdxCmd.ExecuteNonQuery()
                         }
@@ -563,22 +545,26 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 if ($SyncStrategy -eq "Snapshot") {
                     $FinalCmd = $SqlConn.CreateCommand()
                     $FinalCmd.CommandTimeout = $Timeout
-                    $FinalCmd.CommandText = "TRUNCATE TABLE $TargetTableName; INSERT INTO $TargetTableName SELECT * FROM $StagingTableName;"
+                    $FinalCmd.CommandText = "TRUNCATE TABLE [$TargetTableName]; INSERT INTO [$TargetTableName] SELECT * FROM [$StagingTableName];"
                     [void]$FinalCmd.ExecuteNonQuery()
                 }
                 else {
                     if ($ForceFull) {
                         $FinalCmd = $SqlConn.CreateCommand()
                         $FinalCmd.CommandTimeout = $Timeout
-                        $FinalCmd.CommandText = "TRUNCATE TABLE $TargetTableName;" 
+                        $FinalCmd.CommandText = "TRUNCATE TABLE [$TargetTableName];"
                         [void]$FinalCmd.ExecuteNonQuery()
                     }
                     
-                    # SP-Aufruf mit dynamischen Spaltennamen (v2.10)
+                    # SP-Aufruf mit dynamischen Spaltennamen (v2.10), parametrisiert (v2.12)
                     $MergeCmd = $SqlConn.CreateCommand()
                     $MergeCmd.CommandTimeout = $Timeout
-                    $TsParam = if ($TimestampColumnName) { ", @TimestampColumnName = '$TimestampColumnName'" } else { ", @TimestampColumnName = NULL" }
-                    $MergeCmd.CommandText = "EXEC sp_Merge_Generic @TargetTableName = '$TargetTableName', @StagingTableName = '$StagingTableName', @IdColumnName = '$IdColumnName'$TsParam"
+                    $MergeCmd.CommandType = [System.Data.CommandType]::StoredProcedure
+                    $MergeCmd.CommandText = "dbo.sp_Merge_Generic"
+                    [void]$MergeCmd.Parameters.AddWithValue("@TargetTableName", $TargetTableName)
+                    [void]$MergeCmd.Parameters.AddWithValue("@StagingTableName", $StagingTableName)
+                    [void]$MergeCmd.Parameters.AddWithValue("@IdColumnName", $IdColumnName)
+                    [void]$MergeCmd.Parameters.AddWithValue("@TimestampColumnName", $(if ($TimestampColumnName) { $TimestampColumnName } else { [DBNull]::Value }))
                     [void]$MergeCmd.ExecuteNonQuery()
                     
                     if ($ForceFull) { $Message += "(Reset & Reload) " }
@@ -595,7 +581,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                     $TempTableName = "#SourceIDs_$Tabelle"
                     $CreateTempCmd = $SqlConn.CreateCommand()
                     $CreateTempCmd.CommandTimeout = $Timeout
-                    $CreateTempCmd.CommandText = "CREATE TABLE $TempTableName ([$IdColumnName] BIGINT NOT NULL PRIMARY KEY);"
+                    $CreateTempCmd.CommandText = "CREATE TABLE [$TempTableName] ([$IdColumnName] BIGINT NOT NULL PRIMARY KEY);"
                     [void]$CreateTempCmd.ExecuteNonQuery()
                     
                     # Alle IDs aus Firebird laden (nur ID-Spalte)
@@ -605,7 +591,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                     
                     # BulkCopy für IDs in Batches
                     $IdBulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($SqlConn)
-                    $IdBulkCopy.DestinationTableName = $TempTableName
+                    $IdBulkCopy.DestinationTableName = "[$TempTableName]"
                     $IdBulkCopy.BulkCopyTimeout = $Timeout
                     $IdBulkCopy.BatchSize = $CleanupBatchSize
                     [void]$IdBulkCopy.ColumnMappings.Add($IdColumnName, $IdColumnName)
@@ -617,14 +603,14 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                     $DeleteOrphansCmd.CommandTimeout = $Timeout
                     $DeleteOrphansCmd.CommandText = @'
                         DELETE FROM [{0}] 
-                        WHERE [{1}] NOT IN (SELECT [{1}] FROM {2});
+                        WHERE [{1}] NOT IN (SELECT [{1}] FROM [{2}]);
                         SELECT @@ROWCOUNT;
 '@ -f $TargetTableName, $IdColumnName, $TempTableName
                     $OrphansDeleted = [int]$DeleteOrphansCmd.ExecuteScalar()
                     
                     # Temp-Tabelle aufräumen
                     $DropTempCmd = $SqlConn.CreateCommand()
-                    $DropTempCmd.CommandText = "DROP TABLE $TempTableName;"
+                    $DropTempCmd.CommandText = "DROP TABLE [$TempTableName];"
                     [void]$DropTempCmd.ExecuteNonQuery()
                     
                     if ($OrphansDeleted -gt 0) {
@@ -646,7 +632,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
                 
                 $SqlCountCmd = $SqlConn.CreateCommand()
                 $SqlCountCmd.CommandTimeout = $Timeout
-                $SqlCountCmd.CommandText = "SELECT COUNT(*) FROM $TargetTableName"
+                $SqlCountCmd.CommandText = "SELECT COUNT(*) FROM [$TargetTableName]"
                 $SqlCount = [int64]$SqlCountCmd.ExecuteScalar()
                 
                 $CountDiff = $SqlCount - $FbCount
@@ -740,4 +726,18 @@ else {
 Write-Host "GESAMTLAUFZEIT: $($TotalStopwatch.Elapsed.ToString("hh\:mm\:ss"))" -ForegroundColor Green
 Write-Host "LOGDATEI: $LogFile" -ForegroundColor Gray
 
+# -----------------------------------------------------------------------------
+# 11. EXIT-CODE (0 = OK, 10 = Tabellenfehler, 11 = Sanity FEHLER)
+# -----------------------------------------------------------------------------
+$ExitCode = Get-SyncExitCode -Results @($Results) -FailOnSanityError $Config.FailOnSanityError -ExpectedTableCount $Tabellen.Count
+if ($ExitCode -eq 0) {
+    Write-Host "ERGEBNIS: OK (Exit-Code 0)" -ForegroundColor Green
+}
+else {
+    $FailedTables = @($Results | Where-Object { $_.Status -ne "Erfolg" -or "$($_.SanityCheck)" -like "FEHLER*" } | ForEach-Object { $_.Tabelle })
+    $FailedTables += @($Tabellen | Where-Object { $_ -notin @($Results | ForEach-Object { $_.Tabelle }) } | ForEach-Object { "$_ (kein Ergebnis)" })
+    Write-Host ("ERGEBNIS: FEHLER (Exit-Code {0}) - betroffene Tabellen: {1}" -f $ExitCode, ($FailedTables -join ", ")) -ForegroundColor Red
+}
+
 Stop-Transcript
+exit $ExitCode

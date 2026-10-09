@@ -15,6 +15,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
   - [Features](#features)
   - [File Structure](#file-structure)
   - [Prerequisites](#prerequisites)
+    - [Firebird Driver (Integrity Check)](#firebird-driver-integrity-check)
   - [Installation](#installation)
     - [Step 1: Copy Files](#step-1-copy-files)
     - [Step 2: Create Configuration](#step-2-create-configuration)
@@ -33,6 +34,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
     - [Column Configuration (NEW in v2.10)](#column-configuration-new-in-v210)
     - [Orphan Cleanup (Deletion Detection)](#orphan-cleanup-deletion-detection)
     - [MSSQL Prefix \& Suffix](#mssql-prefix--suffix)
+    - [Naming Rules (since v2.12)](#naming-rules-since-v212)
     - [JSON Schema Validation](#json-schema-validation)
   - [Module Architecture](#module-architecture)
   - [Usage in Custom Scripts](#usage-in-custom-scripts)
@@ -67,7 +69,7 @@ Replaces outdated Linked Server solutions with a modern PowerShell approach usin
 - **Secure Credentials**: Windows Credential Manager instead of plaintext passwords.
 - **GUI Config Manager**: Convenient tool for table selection with metadata preview.
 - **Module Architecture**: Reusable functions in `SQLSyncCommon.psm1`.
-- **JSON Schema Validation**: Optional configuration file validation.
+- **JSON Schema Validation**: Every script checks the configuration against `config.schema.json` when loading (fail-fast, exit code 2).
 - **Secure Connection Handling**: No resource leaks through guaranteed cleanup (try/finally).
 
 ---
@@ -79,7 +81,7 @@ PSFirebirdToMSSQL/
 ├── SQLSyncCommon.psm1                   # CORE MODULE: Shared functions (MUST be present!)
 ├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Main script (Extract -> Staging -> Merge)
 ├── Setup_Credentials.ps1                # One-time: Store passwords securely
-├── Setup-ScheduledTasks.ps1             # Template for Windows Tasks (adjust paths!)
+├── Setup-ScheduledTasks.ps1             # Creates the Windows Tasks (parameters, -WhatIf preview)
 ├── Manage_Config_Tables.ps1             # GUI tool for table management
 ├── Get_Firebird_Schema.ps1              # Helper tool: Data type analysis
 ├── sql_server_setup.sql                 # SQL template for DB & SP (used by main script)
@@ -87,7 +89,7 @@ PSFirebirdToMSSQL/
 ├── Test-SQLSyncConnections.ps1          # Connection test
 ├── config.json                          # Credentials & settings (git-ignored)
 ├── config.sample.json                   # Configuration template
-├── config.schema.json                   # JSON schema for validation (optional)
+├── config.schema.json                   # JSON schema, checked on every config load
 ├── .gitignore                           # Protects config.json
 └── Logs/                                # Log files (created automatically)
 ```
@@ -102,6 +104,19 @@ PSFirebirdToMSSQL/
 | Firebird .NET Provider | Automatically installed via NuGet                                           |
 | Firebird Access        | Read permissions on the source database                                     |
 | MSSQL Access           | Permission to create DBs (`db_creator`) or at least `db_owner` on target DB |
+
+### Firebird Driver (Integrity Check)
+
+On the first run (as administrator) `Initialize-FirebirdDriver` downloads `FirebirdSql.Data.FirebirdClient` 10.3.4 from NuGet to `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\`. **Every** DLL is checked by SHA-256 before it is loaded - the fresh download, a DLL already present in `%ProgramData%` and a DLL configured via `Firebird.DllPath`. Only the original DLLs from the NuGet package 10.3.4 are accepted:
+
+| DLL | SHA-256 |
+|---|---|
+| `lib\net8.0` | `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05` |
+| `lib\netstandard2.1` | `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A` |
+
+On a mismatch the script stops before any database connection (`SHA-256 der Treiber-DLL ... stimmt nicht ... Treiber wurde NICHT geladen`, sync exit code 7). Do **not** simply copy the reported hash into the configuration - fetch the file again from the official package (delete the driver folder and run once as administrator). To use a different driver version on purpose, set its expected hash in `Firebird.DllSha256` (64 hex characters, computed yourself from the official package); then only this hash is accepted. Write access to `%ProgramData%\SQLSync\Drivers` should be limited to administrators (check with `icacls "$env:ProgramData\SQLSync\Drivers"`).
+
+**Firebird account:** use a dedicated read-only account (only `SELECT` on the configured tables, no DDL, no `CREATE FUNCTION`) instead of `SYSDBA`, and keep the Firebird server at 5.0.4 / 4.0.7 / 3.0.14 or later. Background: CVE-2026-40342 (CVSS 9.9) lets an authenticated user with `CREATE FUNCTION` execute code as the OS account of the Firebird server on older versions.
 
 ---
 
@@ -136,13 +151,13 @@ Copy `config.sample.json` to `config.json` and adjust the values.
     "TimestampColumns": ["GESPEICHERT", "MODIFIED_DATE", "LAST_UPDATE"]
   },
   "Firebird": {
-    "Server": "svrerp01",
+    "Server": "FIREBIRD01",
     "Database": "D:\\DB\\LA01_ECHT.FDB",
     "Port": 3050,
     "Charset": "UTF8"
   },
   "MSSQL": {
-    "Server": "SVRSQL03",
+    "Server": "SQLSERVER01",
     "Integrated Security": true,
     "Database": "STAGING",
     "Prefix": "FB_",
@@ -158,7 +173,7 @@ Copy `config.sample.json` to `config.json` and adjust the values.
 }
 ```
 
-_Note on MSSQL Port:_ The script primarily uses the `Server` parameter. If a non-standard port (other than 1433) is needed, specify it in the format `ServerName,Port` in the `Server` field (e.g., `"SVRSQL03,1433"`).
+_Note on MSSQL Port:_ The script primarily uses the `Server` parameter. If a non-standard port (other than 1433) is needed, specify it in the format `ServerName,Port` in the `Server` field (e.g., `"SQLSERVER01,1433"`).
 
 ### Step 3: SQL Server Environment (Automatic)
 
@@ -177,6 +192,8 @@ Run the setup script to store passwords encrypted in the Windows Credential Mana
 .\Setup_Credentials.ps1
 ```
 
+Different entry names (e.g. one per SQL Server): see [Credential Management](#credential-management).
+
 ### Step 5: Test Connection
 
 ```powershell
@@ -189,6 +206,8 @@ Start the GUI manager to select tables:
 
 ```powershell
 .\Manage_Config_Tables.ps1
+# another job profile:
+.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json
 ```
 
 The manager offers a **toggle logic**:
@@ -196,20 +215,38 @@ The manager offers a **toggle logic**:
 - Selected tables that are _not_ in the config -> Will be **added**.
 - Selected tables that are _already_ in the config -> Will be **removed**.
 
+Before the GridView opens, the configuration is validated (schema + naming rules; violation → exit 2, no backup). A selection that would remove the last table is rejected (exit 4), so a config without tables is never written. `Get_Firebird_Schema.ps1 -TableName <table>` also accepts `-ConfigFile`.
+
 ### Step 7: Automatic Task Scheduling (Optional)
 
 Use the provided script to set up synchronization in the Windows Task Scheduler. The script creates tasks for Daily Diff & Weekly Full.
 
-**WARNING:** The script `Setup-ScheduledTasks.ps1` serves as a template and contains example paths (e.g., `E:\SQLSync_...`).
+**WARNING:** Paths and config names are parameters – the script no longer needs to be edited. Defaults: installation folder = folder of the script, `config.json` (daily) and `config_weekly_full.json` (weekly). Always check the result with `-WhatIf` first: missing files only produce a warning, the tasks would still be created.
 
-1.  Open `Setup-ScheduledTasks.ps1` in an editor.
-2.  Adjust the variables `$ScriptPath`, `$WorkDir`, and config names to your environment.
-3.  Run it as Administrator only after making adjustments.
+| Parameter | Default |
+|---|---|
+| `-InstallDir` | folder of the script |
+| `-DailyConfigFile` / `-WeeklyConfigFile` | `config.json` / `config_weekly_full.json` (relative to `-InstallDir` or absolute) |
+| `-DailyTaskName` / `-WeeklyTaskName` | `SQLSync_Firebird_Daily_Diff` / `SQLSync_Firebird_Weekly_Full` |
+| `-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours` | `06:01`, Monday–Friday, `30`, `15` |
+| `-WeeklyDay`, `-WeeklyStart` | `Sunday`, `05:13` |
+| `-RunAsUser` | current user (Windows password is prompted) |
+| `-GmsaAccount` | – (gMSA as `DOMAIN\name$`, no stored password) |
 
 ```powershell
-# Run as Administrator!
-.\Setup-ScheduledTasks.ps1
+# 1. Preview: no admin rights, no password prompt, nothing is registered
+.\Setup-ScheduledTasks.ps1 -InstallDir D:\Apps\SQLSync -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json -WhatIf
+
+# 2. Register (run as Administrator!)
+.\Setup-ScheduledTasks.ps1 -InstallDir D:\Apps\SQLSync -DailyConfigFile config.json -WeeklyConfigFile config_weekly_full.json
+
+# Optional: run as gMSA instead of the current user
+.\Setup-ScheduledTasks.ps1 -GmsaAccount 'EXAMPLE\svc-sqlsync$'
 ```
+
+Note on gMSA: Credential Manager entries are bound to the account that creates them. With a gMSA, use mainly `"Integrated Security": true` for SQL Server; Firebird credentials would have to be created in the context of the gMSA.
+
+**Existing installations:** If you used the paths and config names previously hard-coded in the script, pass `-InstallDir`, `-DailyConfigFile` and `-WeeklyConfigFile` explicitly when re-creating the tasks (check with `-WhatIf` first). Tasks that are already registered are not affected.
 
 ---
 
@@ -281,6 +318,7 @@ For separate jobs (e.g., Daily incremental vs. Weekly Full), a configuration fil
 | `ForceFullSync`          | `false`           | `true` = **Truncate** target table + complete reload     |
 | `NumberOfThreads`        | 4                 | Number of parallel threads for table sync                |
 | `RunSanityCheck`         | `true`            | `false` = Skip COUNT comparison                          |
+| `FailOnSanityError`      | `true`            | `false` = Sanity `FEHLER` does not cause exit code 11   |
 | `MaxRetries`             | 3                 | Retry attempts on error                                  |
 | `RetryDelaySeconds`      | 10                | Wait time between retries                                |
 | `DeleteLogOlderThanDays` | 30                | Automatically delete logs after X days (0 = Disabled)    |
@@ -369,13 +407,28 @@ Control naming in the target system.
 - **Prefix**: `DWH_` -> Target table becomes `DWH_KUNDE`
 - **Suffix**: `_V1` -> Target table becomes `KUNDE_V1`
 
+### Naming Rules (since v2.12)
+
+Table and column names (`Tables`, `General.IdColumn`, `General.TimestampColumns`, `TableOverrides` keys and values) as well as `MSSQL.Database`, `MSSQL.Prefix` and `MSSQL.Suffix` may only contain `A-Z`, `a-z`, `0-9`, `_` and `$`, with at most 63 characters (Firebird limit). Prefix + table + suffix must not exceed 128 characters (SQL Server limit). Empty values are allowed only for `MSSQL.Database`, Prefix/Suffix and the override columns.
+
+Violations stop the sync while loading the configuration (exit code 2; message from the schema check `Konfiguration verletzt das Schema …`, or `Ungültiger Name in '<field>': …` from the code check) before any database connection is opened. `Manage_Config_Tables.ps1` does not offer Firebird tables with invalid names.
+
 ### JSON Schema Validation
 
-The file `config.schema.json` can be used for validation to avoid typos in the config:
+Since v2.15 every script (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `Test-SQLSyncConnections.ps1`, `Get_Firebird_Schema.ps1`, `Manage_Config_Tables.ps1`) validates the configuration against `config.schema.json` when loading it (`Get-SQLSyncConfig -SchemaPath`). Any violation stops the script with exit code 2 before a database connection is opened, e.g.:
+
+```
+Konfiguration verletzt das Schema (config.schema.json): ... bei "/General/GlobalTimeout"; ...
+```
+
+Each violation names its JSON path. Wrong types (`"7200"` instead of `7200`), missing required fields, values outside the limits and **unknown keys** (typos such as `ForceFulSync`, because the schema uses `additionalProperties: false`) are detected. New configuration keys must therefore always be added to the schema as well.
+
+`config.schema.json` is part of every installation. If it is missing, only a warning is shown and the run continues without the schema check.
+
+Check a configuration manually (e.g. before an update), without database access:
 
 ```powershell
-$json = Get-Content "config.json" -Raw
-Test-Json -Json $json -SchemaFile "config.schema.json"
+Test-Json -Json (Get-Content .\config.json -Raw) -Schema (Get-Content .\config.schema.json -Raw)
 ```
 
 ---
@@ -387,10 +440,10 @@ PSFirebirdToMSSQL uses a shared PowerShell module (`SQLSyncCommon.psm1`) for reu
 The module centrally provides the following functions:
 
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
-- **Configuration:** `Get-SQLSyncConfig` (including schema validation)
+- **Configuration:** `Get-SQLSyncConfig` (including fail-fast schema validation), `Resolve-SQLSyncConfigPath` (shared `-ConfigFile` resolution)
 - **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
 - **Driver Loading:** `Initialize-FirebirdDriver`
-- **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types)
+- **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types; `Decimal` with precision/scale from the Firebird schema). Since v2.14 the parallel sync block imports the module and uses `ConvertTo-SqlServerType` and `Get-TableColumnConfig` directly
 
 ---
 
@@ -432,6 +485,18 @@ Credentials are stored in the Windows Credential Manager under the following nam
 - `SQLSync_Firebird`
 - `SQLSync_MSSQL`
 
+These are the defaults. The optional keys `Firebird.CredentialTarget` and `MSSQL.CredentialTarget` select a different entry, e.g. when several SQL Servers use the same login (such as `sa`) with different passwords. Store the entry with the matching parameter:
+
+```powershell
+.\Setup_Credentials.ps1 -MSSQLTarget "SQLSync_MSSQL_sqltest"   # also: -FirebirdTarget
+```
+
+```json
+"MSSQL": { "Server": "sqltest", "Database": "STAGING", "CredentialTarget": "SQLSync_MSSQL_sqltest" }
+```
+
+The log names the entry used, e.g. `[Credentials] SQL Server: Credential Manager (SQLSync_MSSQL_sqltest)`. Entries remain bound to the Windows account that ran `Setup_Credentials.ps1`.
+
 ```powershell
 # Display
 cmdkey /list:SQLSync*
@@ -448,6 +513,21 @@ cmdkey /delete:SQLSync_MSSQL
 All output is automatically written to a log file:
 `Logs\Sync_<ConfigName>_YYYY-MM-DD_HHmm.log`
 
+### Exit Codes
+
+| Code | Meaning |
+|---|---|
+| 0 | All tables synchronized successfully |
+| 1 | `SQLSyncCommon.psm1` not found |
+| 2 | Configuration error (incl. schema violation and invalid table/column names) |
+| 5 | Credentials not found |
+| 7 | Firebird driver could not be loaded (incl. SHA-256 mismatch of the driver DLL) |
+| 9 | Pre-flight (database / `sp_Merge_Generic`) failed |
+| 10 | At least one table failed |
+| 11 | Sanity check `FEHLER` (target has fewer rows than source); disable via `FailOnSanityError` |
+
+Task Scheduler shows the code as *Last Run Result* (e.g. `0xA` = 10).
+
 ---
 
 ## Important Notes
@@ -459,7 +539,7 @@ Alternatively, `CleanupOrphans: true` can be used to compare IDs.
 
 ### Task Scheduler Integration (Path Adjustment)
 
-It is recommended to use the script `Setup-ScheduledTasks.ps1` as a template. **Important:** Since the script uses environment variables like `$WorkDir` and `$ScriptPath` with example values, **it must be edited before execution** to point to your actual installation.
+It is recommended to create the tasks with `Setup-ScheduledTasks.ps1` (see Step 7). The installation folder and config names are passed as parameters (`-InstallDir`, `-DailyConfigFile`, `-WeeklyConfigFile`); `-WhatIf` shows the resulting task definitions without registering anything.
 
 Manual call parameters for custom integrations:
 
@@ -498,6 +578,49 @@ Start in: C:\Scripts
 ---
 
 ## Changelog
+
+Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 — v2.13 changed other files only).
+
+### v2.16 (2026-10-09) - Driver Integrity Check
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.16: passes `Firebird.DllSha256` to the driver check
+- `Initialize-FirebirdDriver` checks **every** DLL by SHA-256 before `Add-Type`: fresh download, DLL already present in `%ProgramData%\SQLSync\Drivers\...` and DLL configured via `Firebird.DllPath` (previously only the download). Accepted: original hashes of `lib\net8.0` and `lib\netstandard2.1` from the NuGet package 10.3.4. Mismatch → `SHA-256 der Treiber-DLL (vorhanden|Download) stimmt nicht ... Treiber wurde NICHT geladen`, sync exit code 7 (`Test-SQLSyncConnections.ps1` 4, `Get_Firebird_Schema.ps1` and `Manage_Config_Tables.ps1` 3); a mismatching download folder is discarded
+- New optional config key `Firebird.DllSha256` (schema `^[A-Fa-f0-9]{64}$`) / parameter `-ExpectedSha256` for a different driver DLL; then only this hash is accepted. All four scripts pass it through
+- `ServicePointManager.SecurityProtocol` is only changed for the download and restored afterwards
+- Admin check is now the module function `Test-SQLSyncIsAdministrator` (not exported), so the download/hash path is unit-tested (138 Pester tests)
+- Limitation: if the assembly is already loaded in the session (e.g. by another module), it is reused without a check
+- Security note: Firebird server CVE-2026-40342 (CVSS 9.9, < 5.0.4 / < 4.0.7 / < 3.0.14) - use a read-only Firebird account instead of `SYSDBA` and update the server
+
+### v2.15 (2026-10-09) - Schema Validation Active
+- `Get-SQLSyncConfig -SchemaPath` now validates fail-fast against `config.schema.json` (`Test-Json -Schema`, available in all PowerShell 7 versions): error `Konfiguration verletzt das Schema (config.schema.json): …` with the JSON path of each violation; unknown keys (typos) are detected. If the schema file is missing, only a warning is shown
+- All four scripts pass `-SchemaPath`; a violation ends them with exit code 2 before any database connection (`Manage_Config_Tables.ps1` also before GridView and backup)
+- New module function `Resolve-SQLSyncConfigPath` replaces the copied `-ConfigFile` resolution in the sync and test scripts
+- `Get_Firebird_Schema.ps1` and `Manage_Config_Tables.ps1` have a new `-ConfigFile` parameter (previously fixed to `config.json`). `Manage_Config_Tables.ps1` v2.1 validates via `Get-SQLSyncConfig` on start and refuses to remove the last table (exit 4)
+- `config.schema.json`: name patterns aligned with the identifier whitelist (`Tables`, `IdColumn`, `TimestampColumns`, override columns `^[A-Za-z0-9_$]+$`, max. 63; Prefix/Suffix `^[A-Za-z0-9_$]*$`)
+- **Existing installations:** deploy `config.schema.json` and check every productive config before the update: `Test-Json -Json (Get-Content <cfg> -Raw) -Schema (Get-Content config.schema.json -Raw)`
+
+### v2.14 (2026-10-08) - Precision/Scale for DECIMAL
+- `ConvertTo-SqlServerType` has new parameters `-Precision`/`-Scale` (values `NumericPrecision`/`NumericScale` from `GetSchemaTable`, DBNull allowed): `Decimal` becomes `DECIMAL(p,s)`; precision > 38 is capped at 38; precision missing but scale known → `DECIMAL(38,s)`; both missing → previous fallback `DECIMAL(18,4)`. Other types unchanged
+- `Sync_Firebird_MSSQL_AutoSchema.ps1`: the duplicated inline type mapping and inline column/strategy detection were removed; the parallel block imports the module and uses `ConvertTo-SqlServerType` (now also `Guid` → `UNIQUEIDENTIFIER`) and `Get-TableColumnConfig`. Strategy selection is unchanged
+- `Get_Firebird_Schema.ps1`: output has new columns `Precision`/`Scale`; the type proposal takes them into account
+- **Existing installations:** the sync never alters existing tables. Target tables created with v2.13 or older keep `DECIMAL(18,4)` and keep rounding values with more than 4 decimal places, even when the staging table is recreated. Check affected columns (`Get_Firebird_Schema.ps1 -TableName <table>`) and fix them with `ALTER TABLE ... ALTER COLUMN ... DECIMAL(p,s)` or by dropping the target table and running once with `RecreateStagingTable: true` + `ForceFullSync: true`
+
+### v2.13 (2026-10-08) - Parameterized Task Setup
+- `Setup-ScheduledTasks.ps1` no longer contains hard-coded paths or config names: new parameters `-InstallDir` (default: folder of the script), `-DailyConfigFile` (`config.json`), `-WeeklyConfigFile` (`config_weekly_full.json`), task names, schedule (`-DailyStart`, `-DailyDays`, `-DailyIntervalMinutes`, `-DailyDurationHours`, `-WeeklyDay`, `-WeeklyStart`) and account (`-RunAsUser`)
+- `-WhatIf` computes and outputs the task definitions without admin rights, password prompt or registration; output is one object per task (`TaskName`, `Action`, `Trigger`, `Settings`, `Principal`, `Registered`)
+- New option `-GmsaAccount` (`DOMAIN\name$`): tasks run as a gMSA without a stored password
+- Admin check at runtime (exit 1) instead of `#Requires -RunAsAdministrator`; cancelled password prompt exits with 1
+- **Existing installations:** pass `-InstallDir`, `-DailyConfigFile` and `-WeeklyConfigFile` explicitly when re-creating the tasks; already registered tasks are not affected
+
+### v2.12 (2026-10-08) - SQL Identifier Hardening
+- New module function `Assert-SqlIdentifier`: table/column names, `MSSQL.Database`, Prefix/Suffix and `TableOverrides` are checked against `^[A-Za-z0-9_$]+$` (max. 63 characters) when the configuration is loaded; target table name max. 128 characters; violations exit with 2
+- All SQL Server table names are bracket-quoted; metadata queries (`INFORMATION_SCHEMA`, `sys.indexes`) use parameters; `sp_Merge_Generic` is called as a stored procedure with parameters
+- `Manage_Config_Tables.ps1` validates `IdColumn`/`TimestampColumns` (exit 2) and skips Firebird tables with invalid names
+
+### v2.11 (2026-10-08) - Exit Codes
+- Sync now exits with 10 (table failed) or 11 (sanity `FEHLER`) instead of always 0
+- Errors while installing `sql_server_setup.sql` abort the pre-flight (exit 9) instead of only warning
+- New option `General.FailOnSanityError` (default `true`)
+- New options `Firebird.CredentialTarget` / `MSSQL.CredentialTarget` (Credential Manager entry name, defaults `SQLSync_Firebird` / `SQLSync_MSSQL`); `Setup_Credentials.ps1` gains `-FirebirdTarget` / `-MSSQLTarget`
 
 ### v2.10 (2025-12-09) - Dynamic Column Configuration
 

@@ -1,160 +1,208 @@
 #Requires -Version 7.0
-#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
     Erstellt die Windows Aufgabenplanung (Task Scheduler) Jobs für SQLSync.
 
 .DESCRIPTION
-    Legt zwei Aufgaben an:
-    1. "SQLSync_Firebird_Daily_Diff": Mo-Fr, 06:01 - 21:01 alle 30 Min.
-    2. "SQLSync_Firebird_Weekly_Full": So, 05:13 (Einmalig/Full).
-    
-    Die Aufgaben laufen UNABHÄNGIG von der Benutzeranmeldung (Passwort wird abgefragt).
+    Legt zwei Aufgaben an (Namen, Konfigdateien und Zeitpläne per Parameter):
+    1. Tageslauf (Default "SQLSync_Firebird_Daily_Diff"): Mo-Fr ab 06:01 alle 30 Min. für 15 Std.
+    2. Wochenlauf (Default "SQLSync_Firebird_Weekly_Full"): So 05:13.
+
+    Ausführungskonto:
+    - Standard: der aktuelle (bzw. per -RunAsUser angegebene) Benutzer; das Windows-Passwort wird
+      abgefragt, damit die Aufgabe auch ohne Anmeldung läuft.
+    - -GmsaAccount: Group Managed Service Account, kein Passwort nötig. Achtung: Credential-Manager-
+      Einträge (Setup_Credentials.ps1) sind an das Konto gebunden, das sie anlegt – für ein gMSA
+      eignet sich daher v. a. "Integrated Security" für SQL Server (siehe docs/architecture/CREDENTIAL_STRATEGY.md).
+
+    Mit -WhatIf werden die Aufgaben nur berechnet und ausgegeben (keine Adminrechte, keine
+    Passwortabfrage, keine Registrierung).
+
+.PARAMETER InstallDir
+    Ordner mit Sync_Firebird_MSSQL_AutoSchema.ps1 und den Konfigdateien (Default: Ordner dieses Skripts).
+
+.PARAMETER DailyConfigFile
+    Konfigdatei des Tageslaufs; relativ zu InstallDir oder absolut (Default: config.json).
+
+.PARAMETER WeeklyConfigFile
+    Konfigdatei des Wochenlaufs; relativ zu InstallDir oder absolut (Default: config_weekly_full.json).
+
+.PARAMETER RunAsUser
+    Ausführungskonto (Default: aktueller Benutzer). Wird ignoriert, wenn -GmsaAccount gesetzt ist.
+
+.PARAMETER GmsaAccount
+    gMSA im Format DOMAIN\name$ – Aufgaben laufen ohne gespeichertes Passwort.
+
+.EXAMPLE
+    .\Setup-ScheduledTasks.ps1 -WhatIf
+
+.EXAMPLE
+    .\Setup-ScheduledTasks.ps1 -InstallDir D:\Apps\SQLSync -DailyConfigFile config_daily.json -WeeklyConfigFile config_full.json
 
 .NOTES
-    Fixes & Anpassungen:
-    - MultipleInstances: IgnoreNew (verhindert parallele Starts wenn ein Job hängt)
-    - LogonType Parameter entfernt (wird durch -Password impliziert)
-    - StopAtDurationEnd deaktiviert (kein harter Abbruch um 21:01)
+    - MultipleInstances: IgnoreNew (keine parallelen Starts, wenn ein Lauf hängt)
+    - StopAtDurationEnd deaktiviert (kein harter Abbruch am Ende des Wiederholungsfensters)
+    - Ohne -WhatIf sind Administratorrechte nötig.
 
 .LINK
     https://github.com/gitnol/PSFirebirdToMSSQL
 #>
 
-# -----------------------------------------------------------------------------
-# KONFIGURATION
-# -----------------------------------------------------------------------------
-$ScriptPath = "E:\SQLSync_Firebird_to_MSSQL\Sync_Firebird_MSSQL_AutoSchema.ps1"
-$WorkDir = "E:\SQLSync_Firebird_to_MSSQL"
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [ValidateNotNullOrEmpty()]
+    [string]$InstallDir = $PSScriptRoot,
 
-# Prüfen, ob wir wirklich in PowerShell Core (7+) laufen. (Sollte durch Direktive weiter oben schon sichergestellt sein)
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Error "KRITISCH: Dieses Skript muss mit PowerShell 7 (pwsh.exe) ausgeführt werden!"
-    Write-Host "Aktuelle Version: $($PSVersionTable.PSVersion.ToString())" -ForegroundColor Red
-    exit 1
+    [ValidateNotNullOrEmpty()]
+    [string]$DailyConfigFile = "config.json",
+
+    [ValidateNotNullOrEmpty()]
+    [string]$WeeklyConfigFile = "config_weekly_full.json",
+
+    [ValidateNotNullOrEmpty()]
+    [string]$DailyTaskName = "SQLSync_Firebird_Daily_Diff",
+
+    [ValidateNotNullOrEmpty()]
+    [string]$WeeklyTaskName = "SQLSync_Firebird_Weekly_Full",
+
+    [ValidatePattern('^\d{2}:\d{2}$')]
+    [string]$DailyStart = "06:01",
+
+    [System.DayOfWeek[]]$DailyDays = @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'),
+
+    [ValidateRange(1, 1440)]
+    [int]$DailyIntervalMinutes = 30,
+
+    [ValidateRange(1, 24)]
+    [int]$DailyDurationHours = 15,
+
+    [System.DayOfWeek]$WeeklyDay = 'Sunday',
+
+    [ValidatePattern('^\d{2}:\d{2}$')]
+    [string]$WeeklyStart = "05:13",
+
+    [string]$RunAsUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+
+    [ValidatePattern('^[^\\]+\\[^\\]+\$$')]
+    [string]$GmsaAccount
+)
+
+# -----------------------------------------------------------------------------
+# VORBEDINGUNGEN
+# -----------------------------------------------------------------------------
+$IsWhatIf = [bool]$WhatIfPreference
+
+if (-not $IsWhatIf) {
+    $Principal = [System.Security.Principal.WindowsPrincipal][System.Security.Principal.WindowsIdentity]::GetCurrent()
+    if (-not $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Error "Dieses Skript benötigt Administrator-Rechte (oder -WhatIf für eine Vorschau)."
+        exit 1
+    }
 }
 
-# Sicherer Pfad zur aktuellen Executable (jetzt wissen wir, dass es v7 ist)
+# Pfade auflösen (relative Konfignamen gegen InstallDir)
+function Resolve-InstallPath([string]$Path) {
+    if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
+    return Join-Path $InstallDir $Path
+}
+$ScriptPath = Join-Path $InstallDir "Sync_Firebird_MSSQL_AutoSchema.ps1"
+$DailyConfigPath = Resolve-InstallPath $DailyConfigFile
+$WeeklyConfigPath = Resolve-InstallPath $WeeklyConfigFile
+
+foreach ($p in @($ScriptPath, $DailyConfigPath, $WeeklyConfigPath)) {
+    if (-not (Test-Path $p)) {
+        Write-Warning "Nicht gefunden: $p (die Aufgabe wird trotzdem angelegt)."
+    }
+}
+
+# Pfad zur PowerShell-7-Executable der aktuellen Sitzung
 $PwshPath = (Get-Process -Id $PID).Path
-
-if (-not (Test-Path $PwshPath)) { $PwshPath = "pwsh.exe" } # Fallback auf PATH
-
-# Task 1: Daily Diff
-$TaskName1 = "SQLSync_Firebird_Daily_Diff"
-$ConfigPath1 = "E:\SQLSync_Firebird_to_MSSQL\config_LEWAECHT_DIFF_ONLY.json"
-
-# Task 2: Weekly Full
-$TaskName2 = "SQLSync_Firebird_Weekly_Full"
-$ConfigPath2 = "E:\SQLSync_Firebird_to_MSSQL\config_LEWAECHT_RecreateTable_ForceFullSync.json"
+if (-not $PwshPath -or -not (Test-Path $PwshPath)) { $PwshPath = "pwsh.exe" }
 
 # -----------------------------------------------------------------------------
-# HELPER
+# TASK-DEFINITIONEN
 # -----------------------------------------------------------------------------
-function Test-Admin {
-    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $Principal = [System.Security.Principal.WindowsPrincipal]$Identity
-    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+function New-SyncAction([string]$ConfigPath) {
+    New-ScheduledTaskAction `
+        -Execute $PwshPath `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`" -ConfigFile `"$ConfigPath`"" `
+        -WorkingDirectory $InstallDir
 }
 
-if (-not (Test-Admin)) {
-    Write-Warning "Dieses Skript benötigt Administrator-Rechte."
-    Write-Warning "Bitte starte PowerShell als Administrator neu."
-    exit
-}
+# Tageslauf: Wiederholung über einen Hilfs-Trigger erzeugen und in den Wochen-Trigger übernehmen
+$RepetitionTrigger = New-ScheduledTaskTrigger -Once -At "00:00" `
+    -RepetitionInterval (New-TimeSpan -Minutes $DailyIntervalMinutes) `
+    -RepetitionDuration (New-TimeSpan -Hours $DailyDurationHours)
+$RepetitionTrigger.Repetition.StopAtDurationEnd = $false
 
-if (-not (Test-Path $ScriptPath)) {
-    Write-Warning "ACHTUNG: Skript nicht gefunden unter: $ScriptPath"
-    Write-Host "Die Tasks werden trotzdem angelegt." -ForegroundColor Yellow
-}
+$DailyTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $DailyDays -At $DailyStart
+$DailyTrigger.Repetition = $RepetitionTrigger.Repetition
 
-$CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-
-Write-Host "Erstelle Tasks für Benutzer: $CurrentUser" -ForegroundColor Cyan
-Write-Host "HINWEIS: Damit die Tasks auch laufen, wenn niemand angemeldet ist," -ForegroundColor Yellow
-Write-Host "muss das Windows-Passwort hinterlegt werden." -ForegroundColor Yellow
-Write-Host "--------------------------------------------------------" -ForegroundColor Gray
-
-# Passwort sicher abfragen
-try {
-    $Creds = Get-Credential -UserName $CurrentUser -Message "Bitte Windows-Passwort eingeben (für Task-Planer)"
-    $UserPassword = $Creds.GetNetworkCredential().Password
-}
-catch {
-    Write-Error "Passwort-Eingabe abgebrochen. Skript beendet."
-    exit
-}
-
-# -----------------------------------------------------------------------------
-# TASK 1: Mo-Fr, 06:01 - 21:01, alle 30 Min
-# -----------------------------------------------------------------------------
-Write-Host "Konfiguriere Task 1: $TaskName1 ..." -ForegroundColor Yellow
-
-$Action1 = New-ScheduledTaskAction `
-    -Execute $PwshPath `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`" -ConfigFile `"$ConfigPath1`"" `
-    -WorkingDirectory $WorkDir
-
-# TRICK: Wir erstellen einen 'Dummy' Trigger (Einmalig)
-$DummyTrigger = New-ScheduledTaskTrigger -Once -At "00:00" `
-    -RepetitionInterval (New-TimeSpan -Minutes 30) `
-    -RepetitionDuration (New-TimeSpan -Hours 15)
-
-# WICHTIG: Verhindert, dass der Task um 21:01 hart gekillt wird, falls er noch läuft
-$DummyTrigger.Repetition.StopAtDurationEnd = $false
-
-# Der echte Trigger (Mo-Fr)
-$Trigger1 = New-ScheduledTaskTrigger `
-    -Weekly `
-    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
-    -At "06:01"
-
-# Das Repetition-Objekt vom Dummy in den echten Trigger injizieren
-$Trigger1.Repetition = $DummyTrigger.Repetition
+$WeeklyTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $WeeklyDay -At $WeeklyStart
 
 $Settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
-    -MultipleInstances IgnoreNew # HIER GEÄNDERT: Neue Instanz wird ignoriert, wenn alte noch läuft
+    -MultipleInstances IgnoreNew
 
-# Task registrieren (Mit Passwort, OHNE expliziten LogonType Parameter)
-Unregister-ScheduledTask -TaskName $TaskName1 -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask `
-    -TaskName $TaskName1 `
-    -Action $Action1 `
-    -Trigger $Trigger1 `
-    -Settings $Settings `
-    -User $CurrentUser `
-    -Password $UserPassword `
-    -Description "Firebird Sync: Inkrementell (Mo-Fr, alle 30 Min)" `
-    -Force | Out-Null
+if ($GmsaAccount) {
+    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId $GmsaAccount -LogonType Password
+}
+else {
+    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType Password
+}
 
-Write-Host "OK: $TaskName1 erstellt." -ForegroundColor Green
-
+$Tasks = @(
+    [PSCustomObject]@{ TaskName = $DailyTaskName; Action = (New-SyncAction $DailyConfigPath); Trigger = $DailyTrigger
+        Description = "Firebird Sync: Inkrementell ($($DailyDays -join ','), alle $DailyIntervalMinutes Min.)" }
+    [PSCustomObject]@{ TaskName = $WeeklyTaskName; Action = (New-SyncAction $WeeklyConfigPath); Trigger = $WeeklyTrigger
+        Description = "Firebird Sync: Weekly Full & Repair ($WeeklyDay)" }
+)
 
 # -----------------------------------------------------------------------------
-# TASK 2: Sonntag, 05:13
+# REGISTRIEREN
 # -----------------------------------------------------------------------------
-Write-Host "Konfiguriere Task 2: $TaskName2 ..." -ForegroundColor Yellow
+$Password = $null
+if (-not $IsWhatIf -and -not $GmsaAccount) {
+    Write-Host "Aufgaben laufen als: $RunAsUser" -ForegroundColor Cyan
+    Write-Host "HINWEIS: Damit die Aufgaben auch ohne Anmeldung laufen, wird das Windows-Passwort hinterlegt." -ForegroundColor Yellow
+    try {
+        $Creds = Get-Credential -UserName $RunAsUser -Message "Windows-Passwort für die Aufgabenplanung"
+        $Password = $Creds.GetNetworkCredential().Password
+    }
+    catch {
+        Write-Error "Passwort-Eingabe abgebrochen. Skript beendet."
+        exit 1
+    }
+}
 
-$Action2 = New-ScheduledTaskAction `
-    -Execute $PwshPath `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`" -ConfigFile `"$ConfigPath2`"" `
-    -WorkingDirectory $WorkDir
+foreach ($Task in $Tasks) {
+    $Registered = $false
+    if ($PSCmdlet.ShouldProcess($Task.TaskName, "Aufgabe registrieren ($($Task.Action.Arguments))")) {
+        Unregister-ScheduledTask -TaskName $Task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+        $RegisterParams = @{
+            TaskName    = $Task.TaskName
+            Action      = $Task.Action
+            Trigger     = $Task.Trigger
+            Settings    = $Settings
+            Description = $Task.Description
+            Force       = $true
+        }
+        if ($GmsaAccount) { $RegisterParams.Principal = $TaskPrincipal }
+        else { $RegisterParams.User = $RunAsUser; $RegisterParams.Password = $Password }
+        Register-ScheduledTask @RegisterParams | Out-Null
+        $Registered = $true
+        Write-Host "OK: $($Task.TaskName) erstellt." -ForegroundColor Green
+    }
 
-$Trigger2 = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At "05:13"
-
-Register-ScheduledTask `
-    -TaskName $TaskName2 `
-    -Action $Action2 `
-    -Trigger $Trigger2 `
-    -Settings $Settings `
-    -User $CurrentUser `
-    -Password $UserPassword `
-    -Description "Firebird Sync: Weekly Full & Repair (Sonntag)" `
-    -Force | Out-Null
-
-Write-Host "OK: $TaskName2 erstellt." -ForegroundColor Green
-Write-Host "--------------------------------------------------------" -ForegroundColor Gray
-Write-Host "FERTIG. Bitte prüfe die Aufgaben in der Aufgabenplanung." -ForegroundColor Cyan
+    [PSCustomObject]@{
+        TaskName   = $Task.TaskName
+        Action     = $Task.Action
+        Trigger    = $Task.Trigger
+        Settings   = $Settings
+        Principal  = $TaskPrincipal
+        Registered = $Registered
+    }
+}

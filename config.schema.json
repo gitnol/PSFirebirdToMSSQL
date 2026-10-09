@@ -44,6 +44,11 @@
           "description": "COUNT-Vergleich zwischen Quelle und Ziel durchführen",
           "default": true
         },
+        "FailOnSanityError": {
+          "type": "boolean",
+          "description": "Sanity Check 'FEHLER' (Ziel hat weniger Zeilen als Quelle) beendet den Lauf mit Exit-Code 11",
+          "default": true
+        },
         "MaxRetries": {
           "type": "integer",
           "description": "Wiederholungsversuche bei Verbindungsfehlern",
@@ -81,7 +86,7 @@
           "type": "string",
           "description": "Standard-Name der ID-Spalte für alle Tabellen",
           "minLength": 1,
-          "pattern": "^[A-Z0-9_]+$",
+          "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
           "default": "ID",
           "examples": ["ID", "PK_ID", "ROW_ID"]
         },
@@ -93,7 +98,7 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$"
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63
           },
           "default": ["GESPEICHERT"],
           "examples": [
@@ -114,7 +119,7 @@
           "type": "string",
           "description": "Hostname oder IP-Adresse des Firebird-Servers",
           "minLength": 1,
-          "examples": ["svrerp01", "192.168.1.100"]
+          "examples": ["FIREBIRD01", "192.168.1.100"]
         },
         "Database": {
           "type": "string",
@@ -140,6 +145,11 @@
           "type": "string",
           "description": "Pfad zur FirebirdSql.Data.FirebirdClient.dll"
         },
+        "DllSha256": {
+          "type": "string",
+          "description": "Erwarteter SHA-256 einer abweichenden Treiber-DLL (DllPath); ohne Angabe gelten nur die Original-Hashes der Version 10.3.4",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
         "User": {
           "type": "string",
           "description": "Firebird Benutzername (Fallback wenn Credential Manager leer)",
@@ -148,6 +158,12 @@
         "Password": {
           "type": "string",
           "description": "Firebird Passwort (UNSICHER! Besser: Credential Manager)"
+        },
+        "CredentialTarget": {
+          "type": "string",
+          "description": "Name des Eintrags im Windows Credential Manager (anlegen mit Setup_Credentials.ps1 -FirebirdTarget)",
+          "minLength": 1,
+          "default": "SQLSync_Firebird"
         }
       },
       "additionalProperties": false
@@ -161,7 +177,7 @@
           "type": "string",
           "description": "SQL Server Hostname oder Instance-Name",
           "minLength": 1,
-          "examples": ["SVRSQL03", "localhost\\SQLEXPRESS", "server.domain.local,1433"]
+          "examples": ["SQLSERVER01", "localhost\\SQLEXPRESS", "server.domain.local,1433"]
         },
         "Database": {
           "type": "string",
@@ -190,16 +206,23 @@
           "type": "string",
           "description": "SQL Server Passwort (UNSICHER! Besser: Credential Manager)"
         },
+        "CredentialTarget": {
+          "type": "string",
+          "description": "Name des Eintrags im Windows Credential Manager (anlegen mit Setup_Credentials.ps1 -MSSQLTarget); nur bei SQL Auth",
+          "minLength": 1,
+          "default": "SQLSync_MSSQL",
+          "examples": ["SQLSync_MSSQL", "SQLSync_MSSQL_sqltest"]
+        },
         "Prefix": {
           "type": "string",
           "description": "Prefix für Zieltabellen (z.B. 'DWH_' -> DWH_KUNDE)",
-          "pattern": "^[a-zA-Z0-9_]*$",
+          "pattern": "^[A-Za-z0-9_$]*$",
           "default": ""
         },
         "Suffix": {
           "type": "string",
           "description": "Suffix für Zieltabellen (z.B. '_V1' -> KUNDE_V1)",
-          "pattern": "^[a-zA-Z0-9_]*$",
+          "pattern": "^[A-Za-z0-9_$]*$",
           "default": ""
         }
       },
@@ -214,7 +237,7 @@
         "type": "string",
         "description": "Firebird Tabellenname (case-sensitive)",
         "minLength": 1,
-        "pattern": "^[A-Z0-9_]+$"
+        "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63
       },
       "examples": [
         ["BKUNDE", "BLIEF", "BSA"],
@@ -232,14 +255,14 @@
             "type": "string",
             "description": "Überschreibt die Standard-ID-Spalte für diese Tabelle",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$",
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
             "examples": ["ORDER_ID", "LOG_ID", "ITEM_KEY"]
           },
           "TimestampColumn": {
             "type": "string",
             "description": "Überschreibt die automatische Timestamp-Erkennung für diese Tabelle",
             "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$",
+            "pattern": "^[A-Za-z0-9_$]+$", "maxLength": 63,
             "examples": ["CHANGED_AT", "MODIFIED_DATE", "UPDATE_TS"]
           }
         },

@@ -142,16 +142,20 @@ function Get-SQLSyncConfig {
         throw "Fehler beim Parsen der Konfiguration: $($_.Exception.Message)"
     }
 
-    # Optional: Schema-Validierung (PowerShell 6+)
-    if ($SchemaPath -and (Test-Path $SchemaPath)) {
-        try {
-            $ValidationResult = Test-Json -Json $JsonContent -SchemaFile $SchemaPath -ErrorAction Stop
-            if (-not $ValidationResult) {
-                throw "Konfiguration entspricht nicht dem Schema."
-            }
+    # Schema-Validierung (Fail-Fast). -Schema (String) statt -SchemaFile: in allen PowerShell-7-Versionen vorhanden.
+    if ($SchemaPath) {
+        if (-not (Test-Path $SchemaPath -PathType Leaf)) {
+            # Fehlende Schema-Datei bricht bestehende Installationen nicht, ist aber sichtbar
+            Write-Warning "Schema-Datei nicht gefunden, Konfiguration wird nicht gegen das Schema geprüft: $SchemaPath"
         }
-        catch {
-            Write-Warning "Schema-Validierung fehlgeschlagen: $($_.Exception.Message)"
+        else {
+            $SchemaErrors = $null
+            $IsValid = Test-Json -Json $JsonContent -Schema (Get-Content -Path $SchemaPath -Raw) `
+                -ErrorAction SilentlyContinue -ErrorVariable SchemaErrors
+            if (-not $IsValid) {
+                $Details = @($SchemaErrors | ForEach-Object { $_.Exception.Message }) -join "; "
+                throw "Konfiguration verletzt das Schema ($([System.IO.Path]::GetFileName($SchemaPath))): $Details"
+            }
         }
     }
 
@@ -169,7 +173,8 @@ function Get-SQLSyncConfig {
         DeleteLogOlderThanDays  = Get-ConfigValue $Config.General "DeleteLogOlderThanDays" 30
         CleanupOrphans          = Get-ConfigValue $Config.General "CleanupOrphans" $false
         OrphanCleanupBatchSize  = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
-        
+        FailOnSanityError       = [bool](Get-ConfigValue $Config.General "FailOnSanityError" $true)
+
         # Column Configuration (NEU in v2.10)
         IdColumn                = Get-ConfigValue $Config.General "IdColumn" "ID"
         TimestampColumns        = @(Get-ConfigValue $Config.General "TimestampColumns" @("GESPEICHERT"))
@@ -180,6 +185,7 @@ function Get-SQLSyncConfig {
         FBPort                  = Get-ConfigValue $Config.Firebird "Port" 3050
         FBCharset               = Get-ConfigValue $Config.Firebird "Charset" "UTF8"
         DllPath                 = $Config.Firebird.DllPath
+        DllSha256               = Get-ConfigValue $Config.Firebird "DllSha256" $null
 
         # MSSQL Settings
         MSSQLServer             = $Config.MSSQL.Server
@@ -219,7 +225,53 @@ function Get-SQLSyncConfig {
         throw "OrphanCleanupBatchSize muss mindestens 1000 sein."
     }
 
+    # Identifier-Whitelist (Fail-Fast): alle Namen, die in SQL-Text eingesetzt werden
+    foreach ($Table in $Result.Tables) { Assert-SqlIdentifier -Name $Table -Field "Tables" }
+    Assert-SqlIdentifier -Name $Result.IdColumn -Field "General.IdColumn"
+    foreach ($TsCol in $Result.TimestampColumns) { Assert-SqlIdentifier -Name $TsCol -Field "General.TimestampColumns" }
+    Assert-SqlIdentifier -Name $Result.MSSQLDatabase -Field "MSSQL.Database" -AllowEmpty
+    Assert-SqlIdentifier -Name $Result.MSSQLPrefix -Field "MSSQL.Prefix" -AllowEmpty
+    Assert-SqlIdentifier -Name $Result.MSSQLSuffix -Field "MSSQL.Suffix" -AllowEmpty
+    foreach ($Key in $Result.TableOverrides.Keys) {
+        Assert-SqlIdentifier -Name $Key -Field "TableOverrides"
+        Assert-SqlIdentifier -Name $Result.TableOverrides[$Key].IdColumn -Field "TableOverrides.$Key.IdColumn" -AllowEmpty
+        Assert-SqlIdentifier -Name $Result.TableOverrides[$Key].TimestampColumn -Field "TableOverrides.$Key.TimestampColumn" -AllowEmpty
+    }
+    # SQL Server erlaubt 128 Zeichen pro Name; Ziel = Prefix + Tabelle + Suffix
+    foreach ($Table in $Result.Tables) {
+        $TargetName = "$($Result.MSSQLPrefix)$Table$($Result.MSSQLSuffix)"
+        if ($TargetName.Length -gt 128) {
+            throw "Ungültiger Name: Zieltabelle '$TargetName' (MSSQL.Prefix + Tables + MSSQL.Suffix) ist länger als 128 Zeichen."
+        }
+    }
+
     return $Result
+}
+
+<#
+.SYNOPSIS
+    Löst den Pfad der Konfigurationsdatei auf (gemeinsam für alle Skripte).
+
+.DESCRIPTION
+    Reihenfolge: leer -> <ScriptDir>\config.json; existierender Pfad -> vollständiger Pfad;
+    Name relativ zum Skriptordner -> <ScriptDir>\<Name>; sonst unverändert
+    (die Fehlermeldung "nicht gefunden" kommt dann aus Get-SQLSyncConfig).
+#>
+function Resolve-SQLSyncConfigPath {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [string]$ConfigFile,
+
+        [Parameter(Mandatory)]
+        [string]$ScriptDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ConfigFile)) { return (Join-Path $ScriptDir "config.json") }
+    if (Test-Path $ConfigFile -PathType Leaf) { return (Convert-Path $ConfigFile) }
+    $InScriptDir = Join-Path $ScriptDir $ConfigFile
+    if (Test-Path $InScriptDir -PathType Leaf) { return $InScriptDir }
+    return $ConfigFile
 }
 
 <#
@@ -264,10 +316,11 @@ function Resolve-FirebirdCredentials {
         [object]$Config
     )
 
-    # 1. Versuch: Credential Manager
-    $Cred = Get-StoredCredential -Target "SQLSync_Firebird"
+    # 1. Versuch: Credential Manager (Eintrag aus Firebird.CredentialTarget, Default SQLSync_Firebird)
+    $Target = Get-ConfigValue $Config.Firebird "CredentialTarget" "SQLSync_Firebird"
+    $Cred = Get-StoredCredential -Target $Target
     if ($Cred) {
-        Write-Host "[Credentials] Firebird: Credential Manager" -ForegroundColor Green
+        Write-Host "[Credentials] Firebird: Credential Manager ($Target)" -ForegroundColor Green
         return @{
             Username = $Cred.Username
             Password = $Cred.Password
@@ -286,7 +339,7 @@ function Resolve-FirebirdCredentials {
         }
     }
 
-    throw "Keine Firebird Credentials gefunden! Führe Setup_Credentials.ps1 aus."
+    throw "Keine Firebird Credentials gefunden (Credential-Manager-Eintrag '$Target')! Führe Setup_Credentials.ps1 aus."
 }
 
 <#
@@ -318,10 +371,11 @@ function Resolve-MSSQLCredentials {
         }
     }
 
-    # 1. Versuch: Credential Manager
-    $Cred = Get-StoredCredential -Target "SQLSync_MSSQL"
+    # 1. Versuch: Credential Manager (Eintrag aus MSSQL.CredentialTarget, Default SQLSync_MSSQL)
+    $Target = Get-ConfigValue $Config.MSSQL "CredentialTarget" "SQLSync_MSSQL"
+    $Cred = Get-StoredCredential -Target $Target
     if ($Cred) {
-        Write-Host "[Credentials] SQL Server: Credential Manager" -ForegroundColor Green
+        Write-Host "[Credentials] SQL Server: Credential Manager ($Target)" -ForegroundColor Green
         return @{
             Username           = $Cred.Username
             Password           = $Cred.Password
@@ -341,7 +395,7 @@ function Resolve-MSSQLCredentials {
         }
     }
 
-    throw "Keine SQL Server Credentials gefunden! Führe Setup_Credentials.ps1 aus oder aktiviere 'Integrated Security'."
+    throw "Keine SQL Server Credentials gefunden (Credential-Manager-Eintrag '$Target')! Führe Setup_Credentials.ps1 aus oder aktiviere 'Integrated Security'."
 }
 
 #endregion
@@ -444,26 +498,32 @@ function New-MSSQLConnectionString {
 
 <#
 .SYNOPSIS
-    Lädt den Firebird .NET Treiber.
-
-.PARAMETER DllPath
-    Konfigurierter Pfad zur DLL.
-
-.PARAMETER ScriptDir
-    Skript-Verzeichnis für relative Pfade.
-
-.OUTPUTS
-    Der aufgelöste Pfad zur DLL.
+    Prüft, ob die aktuelle Sitzung Administratorrechte hat (eigene Funktion, damit in Tests mockbar).
 #>
+function Test-SQLSyncIsAdministrator {
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 <#
 .SYNOPSIS
-    Lädt den Firebird .NET Treiber (Version 10.3.4).
+    Lädt den Firebird .NET Treiber (Version 10.3.4) – nur nach SHA-256-Prüfung.
     Installiert ihn bei Bedarf systemweit in C:\ProgramData (benötigt Admin-Rechte).
+
+.DESCRIPTION
+    Jede DLL wird vor Add-Type gegen ihren SHA-256 geprüft – egal ob frisch heruntergeladen,
+    bereits in %ProgramData% vorhanden oder per DllPath konfiguriert. Zulässig sind die
+    Original-Hashes der DLLs lib\net8.0 und lib\netstandard2.1 aus dem NuGet-Paket 10.3.4.
+    Eine andere DLL (z. B. andere Treiberversion) wird nur mit explizit erwartetem Hash
+    (-ExpectedSha256, Konfig: Firebird.DllSha256) geladen; dann gilt ausschließlich dieser Hash.
 
 .PARAMETER DllPath
     Optional: Ein expliziter Pfad zur DLL (überschreibt die Automatik).
 .PARAMETER ScriptDir
     Optional: Skript-Verzeichnis für relative Pfade.
+.PARAMETER ExpectedSha256
+    Optional: erwarteter SHA-256 der DLL (64 Hex-Zeichen). Ersetzt die eingebauten Original-Hashes.
 
 .OUTPUTS
     Der aufgelöste Pfad zur DLL.
@@ -472,27 +532,32 @@ function Initialize-FirebirdDriver {
     [CmdletBinding()]
     param(
         [string]$DllPath,
-        [string]$ScriptDir
+        [string]$ScriptDir,
+        [string]$ExpectedSha256
     )
 
-    # Konstanten
+    # Konstanten – bei einem Versionswechsel PackageVersion, Download-URL und Hashes gemeinsam anpassen
     $PackageVersion = "10.3.4"
     $PackageName = "FirebirdSql.Data.FirebirdClient"
-    # SHA-256 der DLL lib\net8.0 aus dem NuGet-Paket 10.3.4 — der Download wird nur geladen, wenn sie übereinstimmt.
-    # Bei einem Versionswechsel PackageVersion und ExpectedSha256 gemeinsam anpassen.
-    $ExpectedSha256 = "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
+    $DownloadUrl = "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg"
+    # SHA-256 der Original-DLLs aus dem NuGet-Paket 10.3.4 (lib\net8.0 bzw. lib\netstandard2.1)
+    $KnownSha256 = @(
+        "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
+        "8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A"
+    )
+    $AllowedSha256 = if ($ExpectedSha256) { @($ExpectedSha256.ToUpperInvariant()) } else { $KnownSha256 }
     $CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$PackageName.$PackageVersion"
-    
-    # Helper: Admin-Check
-    function Test-IsAdministrator {
-        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-        return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    function Assert-DriverHash([string]$Path, [string]$Origin) {
+        $Actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash
+        if ($Actual -notin $AllowedSha256) {
+            throw ("SHA-256 der Treiber-DLL ({0}) stimmt nicht: {1} (erhalten {2}, erlaubt {3}). Treiber wurde NICHT geladen." -f $Origin, $Path, $Actual, ($AllowedSha256 -join " / "))
+        }
     }
 
     # --- SCHRITT A: Prüfen, ob Assembly schon geladen ist (Verhindert Fehler) ---
-    $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | 
-    Where-Object { $_.GetName().Name -eq $PackageName } | 
+    $LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() |
+    Where-Object { $_.GetName().Name -eq $PackageName } |
     Select-Object -First 1
 
     if ($LoadedAssembly) {
@@ -522,8 +587,8 @@ function Initialize-FirebirdDriver {
     # --- SCHRITT C: Installieren (wenn Datei fehlt) ---
     if (-not $ResolvedPath) {
         Write-Host "Firebird Treiber ($PackageVersion) nicht gefunden." -ForegroundColor Yellow
-        
-        if (-not (Test-IsAdministrator)) {
+
+        if (-not (Test-SQLSyncIsAdministrator)) {
             throw "Der Firebird-Treiber fehlt in $CentralInstallDir. Bitte einmalig als ADMINISTRATOR ausführen."
         }
 
@@ -531,25 +596,34 @@ function Initialize-FirebirdDriver {
         if (-not (Test-Path $CentralInstallDir)) { New-Item -ItemType Directory -Path $CentralInstallDir -Force | Out-Null }
 
         $ZipPath = Join-Path $CentralInstallDir "package.zip"
+        # Prozessweite Einstellung nur für den Download ändern und danach wiederherstellen
+        $PreviousProtocol = [Net.ServicePointManager]::SecurityProtocol
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg" -OutFile $ZipPath -ErrorAction Stop
+            Invoke-WebRequest -Uri $DownloadUrl -OutFile $ZipPath -ErrorAction Stop
             Expand-Archive -Path $ZipPath -DestinationPath $CentralInstallDir -Force
             Remove-Item -Path $ZipPath -Force -ErrorAction SilentlyContinue
-            
+
             # Neu aufgelöster Pfad
             $ResolvedPath = Join-Path $CentralInstallDir "lib\net8.0\$PackageName.dll"
         }
         catch {
             throw "Download fehlgeschlagen: $($_.Exception.Message)"
         }
-
-        # Integrität prüfen, bevor die DLL geladen wird
-        $ActualSha256 = (Get-FileHash -Path $ResolvedPath -Algorithm SHA256).Hash
-        if ($ActualSha256 -ne $ExpectedSha256) {
-            Remove-Item -Path $CentralInstallDir -Recurse -Force -ErrorAction SilentlyContinue
-            throw "SHA-256 der heruntergeladenen Treiber-DLL stimmt nicht (erwartet $ExpectedSha256, erhalten $ActualSha256). Treiber wurde NICHT geladen."
+        finally {
+            [Net.ServicePointManager]::SecurityProtocol = $PreviousProtocol
         }
+
+        # Integrität des Downloads prüfen; bei Abweichung den Ordner verwerfen
+        try { Assert-DriverHash $ResolvedPath "Download" }
+        catch {
+            Remove-Item -Path $CentralInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+            throw
+        }
+    }
+    else {
+        # Vorhandene bzw. konfigurierte DLL: vor dem Laden ebenfalls prüfen (S4)
+        Assert-DriverHash $ResolvedPath "vorhanden"
     }
 
     # --- SCHRITT D: Laden ---
@@ -559,7 +633,7 @@ function Initialize-FirebirdDriver {
 
     try {
         Add-Type -Path $ResolvedPath
-        Write-Host "[Driver] Firebird .NET Provider geladen: $ResolvedPath" -ForegroundColor DarkGray
+        Write-Host "[Driver] Firebird .NET Provider geladen (SHA-256 geprüft): $ResolvedPath" -ForegroundColor DarkGray
     }
     catch {
         # Falls Add-Type trotz Vorab-Check fehlschlägt (sehr selten)
@@ -574,94 +648,21 @@ function Initialize-FirebirdDriver {
 
 <#
 .SYNOPSIS
-    Führt eine Aktion mit einer Firebird-Verbindung aus und garantiert Cleanup.
-
-.DESCRIPTION
-    Öffnet eine Verbindung, führt den ScriptBlock aus und schließt die Verbindung
-    im finally-Block - auch bei Fehlern.
-
-.PARAMETER ConnectionString
-    Der Firebird Connection String.
-
-.PARAMETER Action
-    Der auszuführende ScriptBlock. Erhält $Connection als Parameter.
-
-.EXAMPLE
-    Invoke-WithFirebirdConnection -ConnectionString $cs -Action {
-        param($conn)
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT * FROM MYTABLE"
-        $cmd.ExecuteReader()
-    }
-#>
-function Invoke-WithFirebirdConnection {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ConnectionString,
-
-        [Parameter(Mandatory)]
-        [scriptblock]$Action
-    )
-
-    $Connection = $null
-    try {
-        $Connection = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
-        $Connection.Open()
-        
-        # ScriptBlock ausführen mit Connection als Parameter
-        & $Action $Connection
-    }
-    finally {
-        if ($Connection) {
-            try { $Connection.Close() } catch { }
-            try { $Connection.Dispose() } catch { }
-        }
-    }
-}
-
-<#
-.SYNOPSIS
-    Führt eine Aktion mit einer MSSQL-Verbindung aus und garantiert Cleanup.
-
-.PARAMETER ConnectionString
-    Der MSSQL Connection String.
-
-.PARAMETER Action
-    Der auszuführende ScriptBlock. Erhält $Connection als Parameter.
-#>
-function Invoke-WithMSSQLConnection {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ConnectionString,
-
-        [Parameter(Mandatory)]
-        [scriptblock]$Action
-    )
-
-    $Connection = $null
-    try {
-        $Connection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
-        $Connection.Open()
-        
-        & $Action $Connection
-    }
-    finally {
-        if ($Connection) {
-            try { $Connection.Close() } catch { }
-            try { $Connection.Dispose() } catch { }
-        }
-    }
-}
-
-<#
-.SYNOPSIS
     Schließt und disposed eine Datenbankverbindung sicher.
 
 .DESCRIPTION
     Kann für beliebige Connection-Objekte verwendet werden.
     Fängt alle Exceptions ab um Folgefehler zu vermeiden.
+    Empfohlenes Muster für Verbindungen:
+
+        $Conn = New-Object FirebirdSql.Data.FirebirdClient.FbConnection($ConnectionString)
+        try {
+            $Conn.Open()
+            # ... Abfragen ...
+        }
+        finally {
+            Close-DatabaseConnection -Connection $Conn
+        }
 
 .PARAMETER Connection
     Das zu schließende Connection-Objekt.
@@ -712,6 +713,46 @@ function Write-SyncStatus {
 
 #endregion
 
+#region Exit Codes
+
+<#
+.SYNOPSIS
+    Ermittelt den Exit-Code eines Sync-Laufs aus den Tabellenergebnissen.
+
+.DESCRIPTION
+    0  = alle Tabellen erfolgreich (Sanity OK, N/A oder WARNUNG)
+    10 = mindestens eine Tabelle mit Status "Fehler", keine Ergebnisse oder weniger
+         Ergebnisse als ExpectedTableCount
+    11 = keine Tabellenfehler, aber mindestens ein Sanity Check "FEHLER (...)"
+         (nur wenn FailOnSanityError aktiv ist)
+
+.PARAMETER Results
+    Ergebnisobjekte der Tabellenverarbeitung (Eigenschaften Status, SanityCheck).
+
+.PARAMETER FailOnSanityError
+    Ob ein Sanity "FEHLER" (Ziel hat weniger Zeilen als Quelle) zu Exit 11 führt.
+#>
+function Get-SyncExitCode {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Results,
+
+        [bool]$FailOnSanityError = $true,
+
+        [int]$ExpectedTableCount = 0
+    )
+
+    # Fehlende Ergebnisse (z. B. Abbruch eines Parallel-Blocks außerhalb seines try) zählen als Tabellenfehler
+    if ($Results.Count -eq 0 -or $Results.Count -lt $ExpectedTableCount) { return 10 }
+    if ($Results | Where-Object { $_.Status -ne "Erfolg" }) { return 10 }
+    if ($FailOnSanityError -and ($Results | Where-Object { "$($_.SanityCheck)" -like "FEHLER*" })) { return 11 }
+    return 0
+}
+
+#endregion
+
 #region Type Mapping
 
 <#
@@ -733,7 +774,12 @@ function ConvertTo-SqlServerType {
         [Parameter(Mandatory)]
         [string]$DotNetTypeName,
 
-        [int]$Size = 0
+        [int]$Size = 0,
+
+        # NumericPrecision/NumericScale aus GetSchemaTable (können DBNull sein)
+        [object]$Precision = $null,
+
+        [object]$Scale = $null
     )
 
     switch ($DotNetTypeName) {
@@ -750,7 +796,17 @@ function ConvertTo-SqlServerType {
         }
         "DateTime" { return "DATETIME2" }
         "TimeSpan" { return "TIME" }
-        "Decimal" { return "DECIMAL(18,4)" }
+        "Decimal" {
+            # Precision/Scale aus dem Firebird-Schema übernehmen (SQL Server: max. 38).
+            # Ohne Schema-Info bleibt der bisherige Fallback DECIMAL(18,4).
+            $P = if ($null -ne $Precision -and $Precision -isnot [DBNull]) { [int]$Precision } else { 0 }
+            $S = if ($null -ne $Scale -and $Scale -isnot [DBNull]) { [int]$Scale } else { -1 }
+            if ($P -le 0 -and $S -lt 0) { return "DECIMAL(18,4)" }
+            if ($P -le 0) { $P = 38 }
+            $P = [Math]::Min($P, 38)
+            $S = [Math]::Min([Math]::Max($S, 0), $P)
+            return "DECIMAL($P,$S)"
+        }
         "Double" { return "FLOAT" }
         "Single" { return "REAL" }
         "Byte[]" { return "VARBINARY(MAX)" }
@@ -882,6 +938,50 @@ function Get-TableColumnConfig {
 
 <#
 .SYNOPSIS
+    Prüft einen Tabellen-/Spaltennamen (oder Namensteil) gegen die Whitelist ^[A-Za-z0-9_$]+$.
+
+.DESCRIPTION
+    Namen aus der Konfiguration bzw. aus Firebird-Metadaten werden in SQL-Text eingesetzt
+    (Firebird "..." / SQL Server [...]). Die Whitelist schließt Quote-, Klammer-, Semikolon-
+    und Leerzeichen aus, die maximale Länge folgt dem Firebird-Limit (63 Zeichen).
+    Bei Verstoß wird geworfen (Fail-Fast) – die Meldung nennt das Konfigurationsfeld.
+
+.PARAMETER Name
+    Zu prüfender Name.
+
+.PARAMETER Field
+    Konfigurationsfeld für die Fehlermeldung (z. B. "Tables", "MSSQL.Prefix").
+
+.PARAMETER AllowEmpty
+    Leerstring zulassen (für Prefix/Suffix).
+#>
+function Assert-SqlIdentifier {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [AllowNull()]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [string]$Field,
+
+        [switch]$AllowEmpty
+    )
+
+    if ([string]::IsNullOrEmpty($Name)) {
+        if ($AllowEmpty) { return }
+        throw "Ungültiger Name in '$Field': leer."
+    }
+    if ($Name.Length -gt 63) {
+        throw "Ungültiger Name in '$Field': '$Name' ist länger als 63 Zeichen."
+    }
+    if ($Name -cnotmatch '^[A-Za-z0-9_$]+$') {
+        throw "Ungültiger Name in '$Field': '$Name' (erlaubt sind nur A-Z, a-z, 0-9, _ und `$)."
+    }
+}
+
+<#
+.SYNOPSIS
     Escaped Strings für die Verwendung in Firebird SQL-Statements.
 .DESCRIPTION
     Verdoppelt einfache Anführungszeichen, um SQL-Injection und Syntaxfehler zu verhindern.
@@ -911,6 +1011,7 @@ Export-ModuleMember -Function @(
     'Get-SQLSyncConfig'
     'Get-ConfigValue'
     'Get-TableColumnConfig'
+    'Resolve-SQLSyncConfigPath'
     
     # Connection Strings
     'New-FirebirdConnectionString'
@@ -920,13 +1021,15 @@ Export-ModuleMember -Function @(
     'Initialize-FirebirdDriver'
     
     # Safe Operations
-    # HINWEIS: Invoke-WithFirebirdConnection und Invoke-WithMSSQLConnection wurden entfernt,
-    # da $using: in normalen ScriptBlocks nicht funktioniert. Stattdessen direkt 
-    # try/finally mit Close-DatabaseConnection verwenden.
+    # HINWEIS: Invoke-WithFirebirdConnection und Invoke-WithMSSQLConnection wurden entfernt
+    # (auch aus dem Code), da $using: in normalen ScriptBlocks nicht funktioniert.
+    # Stattdessen direkt try/finally mit Close-DatabaseConnection verwenden (Beispiel dort).
     'Close-DatabaseConnection'
     
     # Helpers
     'Write-SyncStatus'
+    'Get-SyncExitCode'
     'ConvertTo-SqlServerType'
     'Protect-SqlString'
+    'Assert-SqlIdentifier'
 )

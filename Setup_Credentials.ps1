@@ -6,6 +6,18 @@
     Einmalig ausführen, um Firebird- und SQL Server-Passwörter sicher zu hinterlegen.
     Die Credentials sind an den Windows-Benutzer UND den Computer gebunden.
     
+.PARAMETER FirebirdTarget
+    Name des Credential-Manager-Eintrags für Firebird (Standard: SQLSync_Firebird).
+    Abweichende Namen in der Konfig unter Firebird.CredentialTarget eintragen.
+
+.PARAMETER MSSQLTarget
+    Name des Credential-Manager-Eintrags für SQL Server (Standard: SQLSync_MSSQL).
+    Abweichende Namen in der Konfig unter MSSQL.CredentialTarget eintragen,
+    z. B. ein eigener Eintrag pro SQL Server: SQLSync_MSSQL_sqltest.
+
+.EXAMPLE
+    .\Setup_Credentials.ps1 -MSSQLTarget "SQLSync_MSSQL_sqltest"
+
 .NOTES
     Nach Ausführung können die Passwörter aus config.json entfernt werden.
 
@@ -13,11 +25,19 @@
     https://github.com/gitnol/PSFirebirdToMSSQL
 #>
 
+param(
+    [ValidateNotNullOrEmpty()]
+    [string]$FirebirdTarget = "SQLSync_Firebird",
+
+    [ValidateNotNullOrEmpty()]
+    [string]$MSSQLTarget = "SQLSync_MSSQL"
+)
+
 # -----------------------------------------------------------------------------
 # CREDENTIAL TARGETS (Namen unter denen die Secrets gespeichert werden)
 # -----------------------------------------------------------------------------
-$TargetFirebird = "SQLSync_Firebird"
-$TargetMSSQL = "SQLSync_MSSQL"
+$TargetFirebird = $FirebirdTarget
+$TargetMSSQL = $MSSQLTarget
 
 # -----------------------------------------------------------------------------
 # FUNKTIONEN
@@ -171,7 +191,7 @@ Write-Host "Gespeicherte Credentials anzeigen:" -ForegroundColor Gray
 Write-Host "  cmdkey /list:SQLSync*" -ForegroundColor White
 Write-Host ""
 Write-Host "Credential löschen:" -ForegroundColor Gray
-Write-Host "  cmdkey /delete:SQLSync_Firebird" -ForegroundColor White
-Write-Host "  cmdkey /delete:SQLSync_MSSQL" -ForegroundColor White
+Write-Host "  cmdkey /delete:$TargetFirebird" -ForegroundColor White
+Write-Host "  cmdkey /delete:$TargetMSSQL" -ForegroundColor White
 Write-Host ""
 Write-Host "WICHTIG: Entferne jetzt die Passwörter aus config.json!" -ForegroundColor Yellow
