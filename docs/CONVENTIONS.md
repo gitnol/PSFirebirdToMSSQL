@@ -326,11 +326,13 @@ des Firebird-Treibers (siehe `docs/architecture/DEPENDENCIES.md`).
 Für PowerShell greifen zwei der vier Gates der Definition of Done:
 
 ```powershell
-Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning   # Gate 1 — Linter (PSScriptAnalyzer)
+pwsh -NoProfile -File .\tests\scriptanalyzer.ps1           # Gate 1 — Linter (PSScriptAnalyzer 1.25.0, Exit 1 bei Severity Error)
 pwsh -NoProfile -File .\tests\pester.config.ps1           # Gate 4 — Unit-Tests (Pester 5.7.1) + Coverage
 ```
 
-**Stand 2026-10-08:** Keine PSScriptAnalyzer-Settings und keine CI; Gate 1 wird manuell ausgeführt.
+**Stand 2026-10-09 (I10b):** Beide Gates laufen zusätzlich in der CI (`.github/workflows/ci.yml`, bei Push auf
+`main` und bei PRs). Gate 1 blockiert nur Befunde der Severity `Error`; begründete Ausnahmen stehen als
+`SuppressMessageAttribute` an der Fundstelle, Warnungen als Liste in `BACKLOG.md`.
 Gate 4 ist seit I3 vorhanden: `tests/pester.config.ps1` lädt das in `tests/RequiredModules.psd1`
 gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (176, Stand 2026-10-09) und endet mit Exit-Code 1 bei einem
 roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 95,63 % am 2026-10-09). Schneller Lauf

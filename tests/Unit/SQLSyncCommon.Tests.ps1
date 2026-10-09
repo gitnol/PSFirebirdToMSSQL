@@ -1,5 +1,7 @@
 #Requires -Version 7.0
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0.0' }
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'Testdaten: SecureString-Parameter mit bekanntem Wert')]
+param()
 
 # Aufruf (Repo-Root): Invoke-Pester ./tests
 

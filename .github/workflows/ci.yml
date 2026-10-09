@@ -1,0 +1,45 @@
+# Unit-Tests (Pester, Coverage-Gate) und statische Analyse (PSScriptAnalyzer, nur Severity Error blockiert).
+# Versionen der Test-Module: tests/RequiredModules.psd1. Actions per Commit-SHA gepinnt (Tag im Kommentar).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pester + PSScriptAnalyzer
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test-Module installieren (gepinnt)
+        shell: pwsh
+        run: |
+          $Required = Import-PowerShellDataFile ./tests/RequiredModules.psd1
+          foreach ($Name in $Required.Keys) {
+            Install-Module -Name $Name -RequiredVersion $Required[$Name].RequiredVersion -Repository PSGallery -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: ./tests/scriptanalyzer.ps1
+
+      - name: Pester
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./tests/pester.config.ps1

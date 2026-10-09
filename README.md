@@ -1,6 +1,7 @@
 # PSFirebirdToMSSQL: Firebird to MSSQL High-Performance Synchronizer
 
 [![de](https://img.shields.io/badge/lang-de-green.svg)](README.de.md)
+[![CI](https://github.com/gitnol/PSFirebirdToMSSQL/actions/workflows/ci.yml/badge.svg)](https://github.com/gitnol/PSFirebirdToMSSQL/actions/workflows/ci.yml)
 
 High-performance, parallelized ETL solution for incremental synchronization of Firebird databases (e.g., AvERP) to Microsoft SQL Server.
 
