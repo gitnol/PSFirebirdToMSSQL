@@ -22,33 +22,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ---
 
-## Aktuell (Hohe Priorität)
-
-### I11: Rollout-Check (`Test-SQLSyncConnections.ps1 -PreDeploy`)
-
-Konsolidiert (KICKOFF 2a): vier `STATE.md`-Risiken zum Deployment, die manuelle Checkliste in
-`operations/DEPLOYMENT.md`, die Altbestands-Prozedur in `operations/RUNBOOK.md` und den I10-Punkt
-„doppelte Ausgabe" — alle betreffen dasselbe Diagnoseskript.
-
-**Aufgaben:**
-
-- [ ] Neuer Schalter `-PreDeploy` in `Test-SQLSyncConnections.ps1` (nur lesend), Prüfungen als testbare Modulfunktionen:
-  - alle `config*.json` im Skriptordner gegen Schema und Namensregeln (`Get-SQLSyncConfig -SchemaPath`)
-  - Treiber-DLL gegen die erlaubten SHA-256 (ohne sie zu laden, wenn schon ein anderer Treiber aktiv ist)
-  - Altbestand: Zielspalten `decimal(18,4)`, deren Firebird-Quelle mehr Nachkommastellen hat (je Tabelle/Spalte auflisten)
-  - Firebird-Serverversion < 5.0.4 (CVE-2026-34232/-40342) und Anmeldung als `SYSDBA` → Warnung
-- [ ] Doppelte Ausgabe der Test-Query-Zeile entfernen (aus I10 übernommen)
-- [ ] Ergebnis als Tabelle OK/WARNUNG/FEHLER; Exit 0 nur ohne FEHLER; `operations/DEPLOYMENT.md` verweist auf den Befehl statt auf Einzelschritte
-
-**Definition of Done:**
-
-- [ ] Unit-Tests für die neuen Modulfunktionen (Altbestandsvergleich, Versionsprüfung) mit behavioralem Rot
-- [ ] Lauf gegen die Testumgebung findet die bekannten Altbestandsspalten bzw. meldet „keine" und die Serverversion
-- [ ] Rein lesend belegt (keine DDL/DML im Lauf)
-- [ ] Gemeinsame DoD erfüllt
-
----
-
 ## Mittlere Priorität
 
 ### I8: Inkrementelles Wasserzeichen mit Überlappungsfenster
@@ -86,6 +59,7 @@ Konsolidiert (KICKOFF 2a) mit den Backlog-Punkten „Doku-Duplikate", „drei ID
 
 ## Abgeschlossen
 
+- I11 Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (rein lesend) prüft Konfigs gegen Schema/Namensregeln, Treiber-Hash, Firebird-Version gegen CVEs, SYSDBA-Anmeldung und `decimal`-Altbestand; Exit 6 bei FEHLER — [ABGESCHLOSSEN 2026-10-09] (Commit siehe `STATE.md`)
 - I7 Treiber-Integrität: SHA-256-Prüfung für jede DLL vor dem Laden (Download, vorhanden, `DllPath`), Original-Hashes net8.0 + netstandard2.1, Ausnahme nur über `Firebird.DllSha256`; Admin-Check mockbar, `SecurityProtocol` wird wiederhergestellt — [ABGESCHLOSSEN 2026-10-09] (Commit e173ac2)
 - I6 Konfig gegen `config.schema.json` geprüft (Fail-Fast, Exit 2; Schema-Muster an die Namens-Whitelist angeglichen), gemeinsame Pfadauflösung `Resolve-SQLSyncConfigPath`, `-ConfigFile` für `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` — [ABGESCHLOSSEN 2026-10-09] (Commit c5f94f0)
 - I5 Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale des Firebird-Schemas, Hauptskript nutzt `ConvertTo-SqlServerType` und `Get-TableColumnConfig` (Modul im Parallel-Block); Integrationslauf mit Werten bis zur 6. Nachkommastelle identisch — [ABGESCHLOSSEN 2026-10-08] (Commit 2d1a7ef)

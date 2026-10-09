@@ -1,12 +1,12 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
 > **Stand 2026-10-09: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 138 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (125) – jede exportierte
+> 157 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (144) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
 > die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-09:
-> 86,52 % von 371 Kommandos, Stand I6). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
+> 95,29 %, Stand nach Rollout-Check `-PreDeploy`). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
 > (Modul 13 von 13, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
 > Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
 > (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
@@ -37,7 +37,7 @@ Import-Module Pester -RequiredVersion $req.Pester.RequiredVersion -Force
   ├── pester.config.ps1                # vorhanden: Lauf mit Coverage, Exit 1 bei Rot/Coverage < Ziel
   ├── coverage.xml                     # erzeugt von pester.config.ps1, gitignored
   ├── Unit/
-  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 117 Tests, alle exportierten Modulfunktionen
+  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 144 Tests, alle exportierten Modulfunktionen
   │   └── Setup-ScheduledTasks.Tests.ps1  # vorhanden: 13 Tests, nur -WhatIf
   ├── Integration/                     # noch nicht vorhanden, siehe INTEGRATION_TESTS.md
   └── helpers/
@@ -309,7 +309,7 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-09 (138 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 125, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-09 (157 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 144, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
@@ -326,7 +326,10 @@ Ist-Stand 2026-10-09 (138 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Get-StoredCredential` | Ja, nur lesend (Tag `Windows`) | nicht existierender Eintrag → `$null`; echte Einträge werden nie gelesen |
 | `Close-DatabaseConnection` | Ja | `$null` wird ignoriert; Close und Dispose je einmal; Dispose auch, wenn Close wirft |
 | `Write-SyncStatus` | Ja, mit `Mock Write-Host` | Format `[Tabelle] Text` und Farbe je Level |
-| `Initialize-FirebirdDriver` | Ja, mit Mocks inkl. `Test-SQLSyncIsAdministrator` (siehe 4.2) | SHA-256-Prüfung für vorhandene/konfigurierte DLL (beide Original-Hashes, falscher Hash → throw ohne `Add-Type`), `-ExpectedSha256` ersetzt die Original-Hashes, ohne Admin und ohne Treiber → throw ohne Download, Download mit passendem/falschem Hash (Ordner verworfen) |
+| `Initialize-FirebirdDriver` | Ja, mit Mocks inkl. `Test-SQLSyncIsAdministrator` (siehe 4.2) | SHA-256-Prüfung für vorhandene/konfigurierte DLL (beide Original-Hashes, falscher Hash → throw ohne `Add-Type`), `-ExpectedSha256` ersetzt die Original-Hashes, ohne Admin und ohne Treiber → throw ohne Download, Download mit passendem/falschem Hash (Ordner verworfen); Konstanten aus `$script:FirebirdDriver`, Kandidatensuche über die private `Get-FirebirdDriverCandidatePath` (gemeinsam mit `Test-FirebirdDriverIntegrity`) |
+| `Test-FirebirdDriverIntegrity` | Ja, mit Mocks (`Get-FileHash`, `Test-Path`, `Add-Type` darf nicht aufgerufen werden) | Original-DLL → `OK` ohne Laden, falscher Hash → `FEHLER`, keine DLL → `FEHLT`, `-ExpectedSha256` ersetzt die Original-Hashes |
+| `Get-FirebirdServerAdvisory` | Ja | betroffene Versionen (je Hauptversion vor dem Fix, < 3) → beide CVEs; behobene Versionen (3.0.14, 4.0.7, 5.0.4 und neuer, > 5) → nichts; unlesbare Version → Hinweis `VERSION-UNBEKANNT` statt Fehler |
+| `Find-SQLSyncDecimalTruncation` | Ja | Zielspalte mit kleinerer Scale bzw. kleinerer Precision → Treffer mit Ziel- und Quelltyp; gleiche oder größere Zieltypen und fehlende Zieltabellen → nichts; Prefix/Suffix, Namensvergleich ohne Groß-/Kleinschreibung |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
 | Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`) und die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) |
 

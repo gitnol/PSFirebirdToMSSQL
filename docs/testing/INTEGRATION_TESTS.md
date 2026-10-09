@@ -3,10 +3,11 @@
 Stack: PowerShell 7+ gegen **echte** Firebird- und SQL-Server-Testinstanzen
 (Firebird 2.5+/3.x, Port 3050; SQL Server 2017+).
 
-> **Stand 2026-10-08:** Es gibt **keine automatisierten Integrationstests** und keine CI.
+> **Stand 2026-10-09:** Es gibt **keine automatisierten Integrationstests** und keine CI.
 > Einziger vorhandener Integrations-/Smoke-Test ist das Diagnoseskript
-> `Test-SQLSyncConnections.ps1`. Der Pester-5-Harness für Unit-Tests ist seit I3 vorhanden
-> (`tests/Unit/SQLSyncCommon.Tests.ps1`, 117 Tests, Pester 5.7.1 gepinnt in
+> `Test-SQLSyncConnections.ps1`, mit `-PreDeploy` als umfassender, rein lesender Lauf
+> (Abschnitt 2.1). Der Pester-5-Harness für Unit-Tests ist seit I3 vorhanden
+> (`tests/Unit/`, 157 Tests, Pester 5.7.1 gepinnt in
 > `tests/RequiredModules.psd1`, siehe `UNIT_TESTS.md`), deckt aber nur `SQLSyncCommon.psm1`
 > ohne echte Instanzen ab. Die Struktur unten ist der Zielzustand; Integrations-Tests bauen auf
 > diesem Harness auf.
@@ -67,13 +68,15 @@ konfigurierte Tabelle; SQL-Server-Verbindung + Version, Tabellen, Vorhandensein 
 | 2 | Konfiguration nicht parsebar / ungültig (inkl. Verstoß gegen `config.schema.json`) |
 | 3 | Credentials nicht auflösbar |
 | 4 | Treiber nicht ladbar |
+| 6 | nur mit `-PreDeploy`: mindestens ein `FEHLER` (Abschnitt 2.1) |
 
 Manuell belegt am 2026-10-08/09 (Schema-Prüfung, v2.15): schemawidrige Konfig (Typfehler +
 Tippfehler-Schlüssel) → Sync Exit 2 vor jeder DB-Verbindung; gültige Konfig Exit 0;
 `Test-SQLSyncConnections.ps1` mit relativem `-ConfigFile` Exit 0; `Get_Firebird_Schema.ps1 -ConfigFile`
 Exit 0 bzw. Exit 2 bei Schemaverstoß; `Manage_Config_Tables.ps1` mit schemawidriger Konfig Exit 2 ohne Backup.
 
-Bekannte Einschränkung (S12): die Test-Query-Zeile wird doppelt ausgegeben (Korrektur in I11).
+Bekannte Einschränkung: Die Ausgabe ist für Menschen gedacht (Tabelle, Farben); maschinell
+auswertbar ist nur der Exit-Code.
 Im Ziel-Harness wird das Skript per Pester aufgerufen und nur der Exit-Code geprüft:
 
 ```powershell
@@ -81,7 +84,36 @@ It 'Verbindungstest ist grün' {
     & pwsh -NoProfile -File (Join-Path $RepoRoot 'Test-SQLSyncConnections.ps1') -ConfigFile $TestConfig
     $LASTEXITCODE | Should -Be 0
 }
+It 'Vor-Deployment-Prüfung ohne FEHLER' {
+    & pwsh -NoProfile -File (Join-Path $RepoRoot 'Test-SQLSyncConnections.ps1') -ConfigFile $TestConfig -PreDeploy
+    $LASTEXITCODE | Should -Be 0   # 6 = mindestens ein FEHLER
+}
 ```
+
+### 2.1 Nicht-destruktiver Integrationslauf: `-PreDeploy`
+
+`Test-SQLSyncConnections.ps1 -PreDeploy` ist der umfassendste Integrationslauf ohne Opt-in: nur
+`SELECT`s (Firebird: `RDB$RELATION_FIELDS`/`RDB$FIELDS`, SQL Server: `INFORMATION_SCHEMA.COLUMNS`),
+keine DDL/DML, die Treiber-DLL wird für die Hash-Prüfung nicht geladen. Zusätzlich zum Smoke-Test
+prüft er alle `config*.json` im Skriptordner gegen Schema und Namensregeln, die Treiber-DLL, die
+Firebird-Serverversion gegen bekannte Server-Advisories, die Anmeldung als `SYSDBA` und Zielspalten,
+die Dezimalwerte der Quelle kürzen (Altbestand). Ausgabe als Tabelle Status / Prüfung / Detail;
+Exit 0 = kein `FEHLER`, 1 = Verbindungstest fehlgeschlagen, 6 = mindestens ein `FEHLER`.
+
+Manuell belegt am 2026-10-09 gegen die Testumgebung (Firebird-Testserver → SQL-Testserver):
+
+| Szenario | Ergebnis |
+|---|---|
+| Schemawidrige Testkonfig im Skriptordner | `FEHLER` für diese Konfig, Exit 6 |
+| Original-Treiber-DLL | `OK` |
+| Abgleich der Firebird-Serverversion mit den Advisories | Ausgabe wie erwartet (`OK` bzw. je betroffener CVE eine `WARNUNG` mit erster behobener Version); Ergebnis je Host nur in `docs/local/` |
+| Anmeldung als `SYSDBA` | `WARNUNG` mit Empfehlung Lesekonto |
+| Altbestand ohne Kürzung | `OK`, 42 Dezimalspalten geprüft |
+| Testspalte künstlich auf `DECIMAL(18,4)` gesetzt | `WARNUNG` mit Ziel- und Quelltyp, Exit 0 |
+| Korrektur per `operations/RUNBOOK.md` (`ALTER COLUMN` auf `DECIMAL(15,6)` + `ForceFullSync`) | Werte bis zur 6. Nachkommastelle wiederhergestellt; danach `-PreDeploy` wieder `OK` |
+
+Die DDL in den letzten beiden Zeilen (Spalte verkleinern bzw. korrigieren) wurde manuell in der
+Test-Ziel-DB ausgeführt, nicht von `-PreDeploy`.
 
 ---
 

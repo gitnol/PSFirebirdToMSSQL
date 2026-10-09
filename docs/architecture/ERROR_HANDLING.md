@@ -94,11 +94,19 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 
 | Ursache | Exit-Code |
 |---|---|
-| Alle Tests erfolgreich | `0` |
+| Alle Tests erfolgreich; mit `-PreDeploy`: kein `FEHLER` (`WARNUNG`en zulässig) | `0` |
 | Modul oder Konfigdatei fehlt, oder ein Verbindungstest fehlgeschlagen | `1` |
 | Konfiguration nicht parsebar / ungültig (inkl. Schema-Verstoß, Namensprüfung) | `2` |
 | Keine Credentials | `3` |
 | Treiber nicht ladbar (inkl. SHA-256-Abweichung) | `4` |
+| Nur `-PreDeploy`: mindestens ein `FEHLER` (weitere `config*.json` im Ordner verletzt Schema/Namensregeln, Treiber-DLL mit nicht erlaubtem SHA-256) | `6` |
+
+`-PreDeploy` sammelt Befunde als `OK` / `WARNUNG` / `FEHLER` und gibt sie am Ende als Tabelle
+Status / Prüfung / Detail aus. Eine nicht erlaubte Treiber-DLL (`Test-FirebirdDriverIntegrity`, lädt
+nicht) beendet die Prüfung sofort mit Ausgabe und Exit `6`, bevor `Initialize-FirebirdDriver` sie
+ablehnen würde (dort Exit `4`). `WARNUNG`en (fehlende Schema-Datei oder DLL, Server-Advisory,
+`SYSDBA`, Altbestand `DECIMAL`) ändern den Exit-Code nicht. Schlägt ein Verbindungstest fehl, gilt
+Exit `1` vor `6`.
 
 ### `Get_Firebird_Schema.ps1`
 

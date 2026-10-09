@@ -99,6 +99,20 @@ Hinweis zu `Select-String`: Standard ist case-insensitiv – `'Fehler'` findet
 auch `FEHLER`. Die Zeile `[<Tabelle>] Abschluss: <Status> (<Sanity>)` steht
 pro Tabelle genau einmal und ist das robusteste Grep-Ziel.
 
+### Regelmäßige Vor-Deployment-Prüfung (optional)
+
+`.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` ist rein lesend
+und eignet sich auch außerhalb von Deployments als Zustandsprüfung, z. B.
+nach einem Firebird- oder SQL-Server-Update, nach Änderungen an Konfigs oder
+Rechten und in festen Abständen (etwa monatlich). Sie meldet unter anderem
+bekannte Server-Advisories für die laufende Firebird-Version (Liste im Code,
+`security/DEPENDENCY_AUDIT.md`), eine veränderte
+Treiber-DLL, die Anmeldung als `SYSDBA` und Zieltabellen, die Dezimalwerte
+kürzen. Exit 0 = kein `FEHLER` (`WARNUNG`en möglich), 1 = Verbindungstest
+fehlgeschlagen, 6 = mindestens ein `FEHLER`; Details und Bewertung:
+`operations/DEPLOYMENT.md`, „Vor-Deployment-Prüfung“. Nicht als Scheduled Task
+eingerichtet; die Ausgabe ist für die Konsole gedacht.
+
 ---
 
 ## Bekannte Warnsignale

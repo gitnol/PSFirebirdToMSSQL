@@ -1,6 +1,6 @@
 # Threat Model & Mitigationen – PSFirebirdToMSSQL
 
-Stand: 2026-10-09 (I7; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
+Stand: 2026-10-09 (I7, Rollout-Check `-PreDeploy`; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,
 `sql_server_setup.sql`, `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`,
 `Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I11 entsprechen
@@ -165,6 +165,10 @@ mitigiert, siehe unten.
 - Unit-Tests: Download-, Admin- und Hash-Pfad per Mock (8 Treiber-Fälle). Echter Lauf am
   2026-10-09: Original-DLL über `DllPath` → „geladen (SHA-256 geprüft)“, Exit 0; manipulierte Kopie
   (1 Byte angehängt) → Exit 7 vor jeder DB-Verbindung.
+- Erkennung vor dem Deployment (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` prüft die
+  DLL mit `Test-FirebirdDriverIntegrity` gegen dieselben Kandidatenpfade und Hashes, ohne sie zu
+  laden; eine nicht erlaubte DLL ergibt `FEHLER` und Exit 6. Konstanten zentral in
+  `$script:FirebirdDriver` (eine Stelle für Version, URL und Hashes).
 - `*.dll` und `*.nupkg` sind gitignored.
 
 **Offene Maßnahme / Grenze:** Ist die Assembly `FirebirdSql.Data.FirebirdClient` in der Sitzung
@@ -219,9 +223,14 @@ jemand bemerkt:
   Nachkommastelle identisch mit Firebird. Der Sync ändert keine bestehenden Tabellen –
   Zieltabellen aus v2.13 oder älter runden weiter, bis sie migriert sind
   (`operations/RUNBOOK.md`, „Nachkommastellen im Ziel gerundet“).
+- Erkennung des S5-Altbestands (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht
+  rein lesend die Dezimalspalten der konfigurierten Tabellen (Firebird-Metadaten) mit den
+  Zieltabellen (`Find-SQLSyncDecimalTruncation`) und meldet jede Zielspalte mit kleinerer Precision
+  oder Scale als `WARNUNG`. In der Testumgebung erprobt: künstlich verkleinerte Spalte erkannt,
+  Korrektur per RUNBOOK stellte die Werte wieder her.
 
 **Offene Maßnahme:** (I2 abgenommen 2026-10-08: echter Lauf Exit 10, Aufgabenplanung `0xA`.) Migration von Zieltabellen aus v2.13 oder
-älter je Installation (S5-Altbestand); **I8** (Überlappungsfenster für das Wasserzeichen). Backlog: strukturiertes
+älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe); **I8** (Überlappungsfenster für das Wasserzeichen). Backlog: strukturiertes
 Run-Ergebnis (JSON/CSV) und Alarmierung auf `LastTaskResult`.
 
 **Restrisiko:** Mittel – Tabellen- und Sanity-Fehler sind über den Exit-Code erkennbar (Abnahme
@@ -260,6 +269,9 @@ gerundete Nachkommastellen bei gleicher Zeilenzahl).
   Ordner gestartet.
 - `MultipleInstances IgnoreNew` verhindert parallele Läufe desselben Tasks.
 - Integrated Security für MSSQL wird unterstützt (kein gespeichertes SQL-Passwort nötig).
+- Erkennung (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` meldet eine Firebird-Anmeldung
+  als `SYSDBA` als `WARNUNG` mit Empfehlung eines Lesekontos. Weitere Rechte (`dbcreator`,
+  `CREATE FUNCTION` eines anderen Kontos, Task-Konto) prüft es nicht.
 
 **Offene Maßnahme:** Betrieb (ohne Code-Änderung umsetzbar): Tasks auf Dienstkonto oder gMSA
 umstellen (Default bleibt der aufrufende Benutzer); Datenbank vorab anlegen und `dbcreator` entziehen; dediziertes
@@ -303,10 +315,15 @@ hat es `CREATE FUNCTION`, wird ein Credential-Leak zur Codeausführung auf dem E
   Lesekonto ist ohne Code-Änderung möglich (`Firebird.CredentialTarget` bzw. `Firebird.User`).
 - Ob der Firebird-Port nur im internen Netz erreichbar ist, ist nicht aus dem Code ableitbar
   (nicht verifiziert).
+- Erkennung (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` liest die Serverversion und
+  gleicht sie mit `Get-FirebirdServerAdvisory` gegen die im Code gepflegte Liste
+  (`$script:FirebirdServerAdvisories`) ab; jede betroffene CVE erscheint als `WARNUNG` mit der ersten
+  behobenen Version, eine nicht auswertbare Version als Hinweis zur manuellen Prüfung. Die Liste ist
+  nur so aktuell wie der letzte Sweep (`docs/security/DEPENDENCY_AUDIT.md`).
 
 **Offene Maßnahme (Betrieb):** Firebird-Server auf ≥ 5.0.4 (bzw. ≥ 4.0.7 / ≥ 3.0.14) aktualisieren –
 behebt beide CVEs –, zuerst Firebird-Testserver, dann produktiven ERP-Server; produktive Version mit
-`Test-SQLSyncConnections.ps1` erfassen. Für den Sync ein reines Firebird-Lesekonto statt `SYSDBA`
+`Test-SQLSyncConnections.ps1 -PreDeploy` erfassen und bewerten. Für den Sync ein reines Firebird-Lesekonto statt `SYSDBA`
 einrichten (nur `SELECT` auf die konfigurierten Tabellen, keine DDL, kein `CREATE FUNCTION`;
 Bedrohung 5, `docs/operations/SETUP.md`). Bis zum Update Firebird-Port per Firewall auf die
 benötigten Clients beschränken. Nachverfolgung in `docs/security/DEPENDENCY_AUDIT.md`.
@@ -331,7 +348,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S2 | SQL-Identifier ungeprüft in SQL interpoliert | — | I4 (erledigt 2026-10-08) |
 | S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
 | S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 (erledigt 2026-10-09) |
-| S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand siehe RUNBOOK) |
+| S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand: Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy`, Korrektur siehe RUNBOOK) |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
 | S7 | Löschungen nicht repliziert; Orphan-Cleanup nur numerische IDs | K4, K5 | by design / `BACKLOG.md` |
 | S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5/I6 (erledigt: Typmapping/Strategie I5 2026-10-08, Configpfad `Resolve-SQLSyncConfigPath` I6 2026-10-09) |

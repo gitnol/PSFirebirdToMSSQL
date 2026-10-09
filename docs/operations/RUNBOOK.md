@@ -20,6 +20,10 @@ Ablauf im Detail: `features/firebird-mssql-sync.md`.
 # Verbindungen, Treiber, Credentials und sp_Merge_Generic prüfen
 .\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json
 
+# Vor-Deployment-Prüfung, rein lesend: alle Konfigs, Treiber-Hash, Server-CVEs, SYSDBA, Altbestand DECIMAL
+# (Exit 0 = kein FEHLER, 1 = Verbindung fehlgeschlagen, 6 = mindestens ein FEHLER)
+.\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json -PreDeploy
+
 # Spaltentypen einer Firebird-Tabelle anzeigen (Default config.json, sonst -ConfigFile)
 .\Get_Firebird_Schema.ps1 -TableName BKUNDE
 .\Get_Firebird_Schema.ps1 -TableName BKUNDE -ConfigFile .\config_weekly_full.json
@@ -137,6 +141,8 @@ damit ab, **bevor** eine Datenbankverbindung aufgebaut wird; es wurde nichts ges
      (`Firebird.Server`, `MSSQL.Database`, `Tables`): Grenzen in `architecture/CONFIGURATION.md`.
 3. Erneut prüfen, ohne Datenbankzugriff:
    `Test-Json -Json (Get-Content <Konfig> -Raw) -Schema (Get-Content .\config.schema.json -Raw)` → `True`.
+   Alle Konfigs des Ordners auf einmal (Schema und Namensregeln, zusätzlich Verbindungen):
+   `.\Test-SQLSyncConnections.ps1 -ConfigFile <Konfig> -PreDeploy` → keine `FEHLER`-Zeile „Konfig …“.
 4. Lauf manuell wiederholen, Exit 0 prüfen.
 
 Meldung `Schema-Datei nicht gefunden, Konfiguration wird nicht gegen das Schema geprüft: …` (nur Warnung,
@@ -191,7 +197,8 @@ Get-ChildItem "$env:ProgramData\SQLSync\Drivers" -Recurse -Filter FirebirdSql.Da
 Log: `SHA-256 der Treiber-DLL (vorhanden) stimmt nicht: <Pfad> (erhalten <Hash>, erlaubt <Hash> / <Hash>). Treiber wurde NICHT geladen.`
 bzw. `(Download)`. Der Lauf bricht **vor** jeder Datenbankverbindung ab; es wurden keine Daten
 verändert. (`Test-SQLSyncConnections.ps1` Exit 4, `Get_Firebird_Schema.ps1` und
-`Manage_Config_Tables.ps1` Exit 3.)
+`Manage_Config_Tables.ps1` Exit 3.) Vorab erkennt `Test-SQLSyncConnections.ps1 -PreDeploy`
+denselben Zustand ohne die DLL zu laden (`FEHLER` „Treiber-DLL“, Exit 6).
 
 Ursache: Die DLL ist nicht die Original-DLL aus dem NuGet-Paket 10.3.4.
 - `(vorhanden)`: Die Datei in `%ProgramData%\SQLSync\Drivers\…` oder hinter `Firebird.DllPath` wurde
@@ -304,19 +311,23 @@ v2.13 oder älter behalten `DECIMAL(18,4)` und runden weiter, auch wenn
 `STG_<Tabelle>` neu und korrekt angelegt wird, weil der MERGE in die alten Zieltypen
 schreibt.
 
-1. Betroffene Spalten im Ziel finden (SSMS, Zieldatenbank):
-
-   ```sql
-   SELECT TABLE_NAME, COLUMN_NAME
-   FROM INFORMATION_SCHEMA.COLUMNS
-   WHERE DATA_TYPE = 'decimal' AND NUMERIC_PRECISION = 18 AND NUMERIC_SCALE = 4;
-   ```
-
-2. Mit dem Firebird-Schema abgleichen – nur Spalten mit Scale > 4 oder Precision > 18
-   sind betroffen (Spalten `Precision`/`Scale`, `Vorschlag SQL`):
+1. Betroffene Spalten finden – rein lesend, im Sync-Ordner:
 
    ```powershell
-   .\Get_Firebird_Schema.ps1 -TableName BKUNDE   # Default config.json, sonst -ConfigFile <Konfig>
+   .\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy
+   ```
+
+   Jede Zielspalte mit kleinerer Precision oder Scale als die Firebird-Quelle erscheint
+   als `WARNUNG` „Altbestand DECIMAL“ mit Ziel- und Quelltyp, z. B.
+   `<Ziel>.<Spalte>: Ziel DECIMAL(18,4) < Quelle NUMERIC(15,6)`. Geprüft werden nur die
+   in `Tables` konfigurierten Tabellen; ohne Befund steht dort `OK` mit der Anzahl
+   geprüfter Dezimalspalten.
+
+2. Optional den vorgeschlagenen Zieltyp gegenprüfen (Spalten `Precision`/`Scale`,
+   `Vorschlag SQL`):
+
+   ```powershell
+   .\Get_Firebird_Schema.ps1 -TableName <Tabelle>   # Default config.json, sonst -ConfigFile <Konfig>
    ```
 
 3. Korrigieren – eine der beiden Varianten:
@@ -333,8 +344,14 @@ schreibt.
      `RecreateStagingTable: true` + `ForceFullSync: true` laufen lassen: Staging wird mit
      den neuen Typen angelegt, das Ziel per `SELECT * INTO` daraus neu erzeugt und voll
      geladen. Nur, wenn niemand auf der Tabelle Abhängigkeiten (Views, Rechte) hat.
-4. Prüfen: Abfrage aus Schritt 1 liefert die Spalte nicht mehr; Stichprobe
+4. Prüfen: `-PreDeploy` meldet die Spalte nicht mehr (`Altbestand DECIMAL` = `OK`); Stichprobe
    `SUM(<Spalte>)` in Firebird und im Ziel bis zur letzten Nachkommastelle vergleichen.
+
+Die Prozedur (Variante `ALTER COLUMN` + `ForceFullSync`) wurde am 2026-10-09 in der
+Testumgebung durchgespielt: eine künstlich auf `DECIMAL(18,4)` gesetzte Spalte wurde von
+`-PreDeploy` als `WARNUNG` erkannt, nach `ALTER COLUMN` auf `DECIMAL(15,6)` und einem
+`ForceFullSync`-Lauf stimmten die Werte bis zur 6. Nachkommastelle wieder, und
+`-PreDeploy` meldete `OK`.
 
 ### Löschungen in Firebird fehlen im Ziel
 
@@ -416,8 +433,8 @@ Ausführlich: `operations/SETUP.md` und `operations/DEPLOYMENT.md`.
 - [ ] PowerShell 7 auf dem Host
 - [ ] Treiber einmalig als Administrator geladen
 - [ ] Konfigdateien je Job-Profil angelegt, keine Passwörter darin
-- [ ] `config.schema.json` liegt im Skriptordner; jede Konfig besteht `Test-Json … -Schema …`
+- [ ] `config.schema.json` liegt im Skriptordner
 - [ ] `Setup_Credentials.ps1` unter dem Task-Konto ausgeführt
-- [ ] `Test-SQLSyncConnections.ps1` endet mit Exit 0
+- [ ] `Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` endet mit Exit 0 (alle Konfigs `OK`, kein `FEHLER`); `WARNUNG`en bewertet
 - [ ] Manueller Lauf: alle Tabellen `Erfolg` / Sanity `OK`
 - [ ] Scheduled Tasks angelegt, erster geplanter Lauf im Log geprüft

@@ -217,7 +217,7 @@ Hilfsskripte:
 
 | Skript | Exit-Codes |
 |---|---|
-| `Test-SQLSyncConnections.ps1` | 0 OK, 1 Modul/Config fehlt oder ein Test fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber |
+| `Test-SQLSyncConnections.ps1` | 0 OK (mit `-PreDeploy`: kein `FEHLER`, `WARNUNG`en zulässig), 1 Modul/Config fehlt oder ein Verbindungstest fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber, 6 `-PreDeploy` mit mindestens einem `FEHLER` |
 | `Get_Firebird_Schema.ps1` | 0 OK, 1 Modul/Konfigdatei fehlt, 2 Config ungültig (Parse, Schema, Namen), 3 Treiber, 4 Analysefehler, 5 Credentials |
 | `Manage_Config_Tables.ps1` | 0 sonst, 1 Modul/Config fehlt, 2 Config ungültig (Schema, Namen; vor GridView und Backup) oder FB-Metadaten nicht lesbar, 3 Treiber, 4 letzte Tabelle würde entfernt oder Backup fehlgeschlagen, 5 Credentials |
 
@@ -255,7 +255,7 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 |---------------|---------|--------|
 | Exit-Code 0 trotz Tabellenfehlern/Sanity FEHLER; SP-Batch-Fehler nur Warnung | früher kein Exit-Code-Mapping am Skriptende (S1) | behoben in I2 (Exit 10/11/9), abgenommen 2026-10-08 |
 | ~~Tabellen-/Spaltennamen, Prefix/Suffix ungeprüft in SQL interpoliert, teils ohne `[]`~~ | früher fehlende Identifier-Validierung (S2) | behoben in I4 / v2.12 (Allow-List + Klammerung + Parameter), Integrationsläufe 2026-10-08 bestanden |
-| ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Migration per `operations/RUNBOOK.md` |
+| ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy` (`WARNUNG` „Altbestand DECIMAL“), Migration per `operations/RUNBOOK.md` |
 | ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
 | ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (S9) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
 | ~~Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung~~ | früher Prüfung nur beim Download (S4) | behoben in I7 (2026-10-09): jede DLL wird vor dem Laden geprüft, Abweichung → Exit 7; echter Lauf mit manipulierter Kopie bestanden. Grenze: eine in der Sitzung bereits geladene Assembly wird ohne Prüfung weiterverwendet |
@@ -292,13 +292,13 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 ## Teststrategie
 
 Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
-mit 117 Pester-5-Tests (insgesamt 130 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
+mit 144 Pester-5-Tests (insgesamt 157 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
-`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 86,52 %, Stand I6)
+`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 95,29 % am 2026-10-09)
 oder schnell `Invoke-Pester ./tests`. Die Diskriminierung der Tests ist per
 Mutationsprüfung belegt (13 von 13 Mutationen erkannt). Die Einstiegsskripte werden
-weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` und die
-Zusammenfassungstabelle eines Laufs; eine CI gibt es nicht.
+weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` (vor Deployments mit
+`-PreDeploy`, rein lesend) und die Zusammenfassungstabelle eines Laufs; eine CI gibt es nicht.
 
 - Details zu Konventionen, Testumfang und Konfiguration: `testing/UNIT_TESTS.md`.
 - Integration gegen echte Firebird-/SQL-Server-Instanzen:

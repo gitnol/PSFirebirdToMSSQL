@@ -40,6 +40,10 @@ und — geplant — `PSScriptAnalyzer` für Gate 1. Installation mit `-Scope Cur
   `docs/operations/SETUP.md`).
 - Grenze: Ist die Assembly in der Session bereits geladen (z. B. durch ein anderes Modul), wird sie ohne Hash- und
   Versionsprüfung wiederverwendet.
+- Konstanten (Paketname, Version, Download-URL, erlaubte Hashes, zentraler Installationsordner) liegen zentral in
+  `$script:FirebirdDriver`. `Test-FirebirdDriverIntegrity` prüft dieselben Kandidatenpfade und Hashes wie
+  `Initialize-FirebirdDriver`, lädt die DLL aber nicht (Status `OK` / `FEHLER` / `FEHLT`; genutzt von
+  `Test-SQLSyncConnections.ps1 -PreDeploy`).
 
 **Erstinstallation (einmalig, als Administrator):**
 
@@ -96,7 +100,7 @@ es gelten Treiber-/Server-Defaults) — offen, siehe `docs/security/THREAT_MODEL
 |---|---|---|
 | Windows | keine Mindestversion im Code festgelegt; Credential Manager + Task Scheduler erforderlich | advapi32-Credential-API, Scheduled Tasks |
 | PowerShell | ≥ 7.0 (`#Requires -Version 7.0`) | `ForEach-Object -Parallel`, ternärer Operator, `Test-Json`; Treiber `net8.0` setzt eine PS-7-Version auf .NET 8 voraus (PS 7.4+) |
-| Firebird-Server | nicht festgelegt (vom Code nicht geprüft; Mindestversion ergibt sich aus der Treiber-Kompatibilität von FirebirdClient 10.x — offen) | Quelle |
+| Firebird-Server | nicht festgelegt (Mindestversion ergibt sich aus der Treiber-Kompatibilität von FirebirdClient 10.x — offen). `Test-SQLSyncConnections.ps1 -PreDeploy` gleicht die Serverversion mit bekannten Server-Advisories ab (`$script:FirebirdServerAdvisories`, `security/DEPENDENCY_AUDIT.md`) und warnt, blockiert aber nicht | Quelle |
 | MS SQL Server | 2017+ (`STRING_AGG`, `CREATE OR ALTER` in `sp_Merge_Generic`) | Ziel |
 | Dateisystem | `%ProgramData%\SQLSync\Drivers\` | Treiberablage (Schreiben nur beim Erst-Download, Admin) |
 | Dateisystem | `<Skriptordner>\Logs\` | Transcript-Logs (Schreibrecht für das Task-Konto) |
@@ -105,8 +109,10 @@ es gelten Treiber-/Server-Defaults) — offen, siehe `docs/security/THREAT_MODEL
 
 ## Upgrade-Hinweise
 
-- **FirebirdClient:** `$PackageVersion`, `$DownloadUrl` und beide Hashes in `$KnownSha256` (`lib\net8.0` und
-  `lib\netstandard2.1`, aus dem offiziellen Paket selbst berechnet) in `Initialize-FirebirdDriver` **gemeinsam** ändern;
+- **FirebirdClient:** `Version`, `DownloadUrl` und beide Hashes in `KnownSha256` (`lib\net8.0` und
+  `lib\netstandard2.1`, aus dem offiziellen Paket selbst berechnet) in `$script:FirebirdDriver` (`SQLSyncCommon.psm1`)
+  **gemeinsam** ändern – nur dort: `Initialize-FirebirdDriver`, `Test-FirebirdDriverIntegrity` und die private
+  Kandidatensuche `Get-FirebirdDriverCandidatePath` lesen alle aus dieser Tabelle;
   neuer Zielordner entsteht automatisch (versionierter Pfad). Typzuordnung (`GetSchemaTable().DataType`) nach Upgrade mit
   `Get_Firebird_Schema.ps1` gegenprüfen; bei Major-Versionen kann sich das minimale .NET-Target ändern.
 - **System.Data.SqlClient → Microsoft.Data.SqlClient:** Namespace und Default `Encrypt=True` (ab 4.0) ändern sich —

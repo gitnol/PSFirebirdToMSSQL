@@ -44,7 +44,7 @@ PSFirebirdToMSSQL/
 ├── sql_server_setup.sql                 # CREATE OR ALTER PROCEDURE dbo.sp_Merge_Generic
 ├── Setup_Credentials.ps1                # Credential-Manager-Einträge anlegen (interaktiv)
 ├── Setup-ScheduledTasks.ps1             # Task-Scheduler-Jobs registrieren (Admin; Parameter, -WhatIf, gMSA)
-├── Test-SQLSyncConnections.ps1          # Verbindungs-/Setup-Diagnose
+├── Test-SQLSyncConnections.ps1          # Verbindungs-/Setup-Diagnose, -PreDeploy = Rollout-Check
 ├── Get_Firebird_Schema.ps1              # Schema einer Firebird-Tabelle anzeigen
 ├── Manage_Config_Tables.ps1             # Tabellenliste einer Konfig pflegen (Out-GridView, -ConfigFile)
 ├── Example_Sync_Start.ps1               # Beispiel: zwei Läufe hintereinander
