@@ -67,5 +67,8 @@ Wir verwenden **Staging + generische `MERGE`-Prozedur**:
     Allow-List (`Assert-SqlIdentifier`) geprüft.
   * Orphan-Cleanup setzt numerische IDs voraus (Temp-Tabelle mit `BIGINT`).
 
+Nachtrag 2026-10-09 (I8): Das Wasserzeichen-Risiko ist weitgehend mitigiert — der Incremental-Extrakt liest
+ab `MAX(ts)` minus `General.IncrementalOverlapMinutes` (Default 10) inklusive; Rest siehe `KNOWN_ISSUES.md` (K3).
+Die Entscheidung selbst bleibt unverändert.
 Verweise: `sql_server_setup.sql`, `Sync_Firebird_MSSQL_AutoSchema.ps1` (Abschnitt 8, Schritte B–G),
 `docs/architecture/OVERVIEW.md`, `docs/features/firebird-mssql-sync.md`.

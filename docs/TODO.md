@@ -38,7 +38,7 @@ Neu zugeschnitten (KICKOFF 2a): Code-Teil der bisherigen Konsolidierung, gebünd
 
 - [ ] `MSSQL.Port` (K9): im Connection-String verwenden oder aus Sample/Schema entfernen
 - [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer); über `Write-SyncStatus`/`Close-DatabaseConnection` (von keinem Skript genutzt) entscheiden
-- [ ] `Test-SQLSyncConnections.ps1 -PreDeploy`: WARNUNG bei Klartext-Passwort in einer Konfig und bei vorhandenen `config*.bak`
+- [ ] `Test-SQLSyncConnections.ps1 -PreDeploy`: WARNUNG bei Klartext-Passwort in einer Konfig und bei vorhandenen `config*.bak`; WARNUNG für Zieltabellen, denen die Zeitstempelspalte der Quelle fehlt (enden seit v2.18 mit Exit 10 statt stillem Vollabzug; gebündelt in der Reflexion nach I8 — dieselbe Datei)
 - [ ] `Manage_Config_Tables.ps1`: Backups rotieren statt unbegrenzt anzulegen
 - **DoD:** Unit-Tests mit behavioralem Rot für Port und Klartext-Erkennung; CI grün; gemeinsame DoD erfüllt
 

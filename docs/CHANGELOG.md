@@ -12,6 +12,43 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Reflexion nach I8 (I7, I11, I8)
+
+### Advocatus Diaboli
+- **Positiv:** Nachweise per Gegenprobe statt Behauptung — I8 alt-gegen-neu bei gleicher Datenlage (Ceteris
+  paribus), I11 mit künstlichem Altbestand, I7 mit manipulierter DLL; Mutationsprüfung bei jeder neuen Logik;
+  der alte `catch` wurde vor dem Entfernen gelesen (Erstlauf-Fall erkannt statt wegrefaktoriert).
+- **Negativ:** Default `IncrementalOverlapMinutes = 10` ist eine Annahme, keine Messung. Die CVE-Liste in
+  `$script:FirebirdServerAdvisories` veraltet ohne Pflege — der Security-Sweep muss sie mitprüfen (in
+  `security/DEPENDENCY_AUDIT.md` vermerkt). Drei eigene Werkzeugfehler in einem Inkrement (Here-String ohne
+  Zeilenumbruch, Mutationsskript mit Schaden an der Pester-Installation, `datetime`-Parameter) — alle vor dem
+  Commit gefunden, aber das Muster „Hilfsskript ohne eigene Kontrolle" ist das eigentliche Risiko (L8).
+- **Über Bedarf gebaut?** `Get-SQLSyncExtractQuery` ist sehr klein; gerechtfertigt nur durch Testbarkeit des
+  `>=` — beibehalten.
+
+### Changed
+- Struktur-Checks V1–V4, Interna-Scan, Cross-Refs: ohne Befund; Exit-Codes Doku ↔ Code stichprobenartig gleich
+- `KICKOFF.md`: veraltete Passagen (Identifier-Regel „bis I4", I1 „diese Session"), Status der erledigten
+  Inkremente im Inkrementplan, `-PreDeploy` im Quickstart
+- `STATE.md`: Inkrementtabelle chronologisch nach git (I9 vor I6, I11 vor I8); Reflexions-Marker → nach I10c
+- `KNOWN_ISSUES.md`: Kopf-Stand aktualisiert; ADR-001: Nachtrag zu K3 statt Änderung des Entscheidungstexts
+- Roadmap (2b): I10a um `-PreDeploy`-Warnung für fehlende Zeitstempelspalten im Ziel ergänzt (neues
+  Exit-10-Risiko aus I8, gleiche Datei wie die Klartext-Warnung); Reihenfolge I10b → I10a → I10c bleibt
+
+### Template-Backport-Vorschläge (Freigabe ausstehend, nichts ins Template committet)
+- **wichtig** L3 Mutationsprüfung (in I3, I11, I8 bewährt) + L8 Mutationsläufe sicher (Dateikopie,
+  Kindprozess, Kontrolllauf) → `base/` TDD-Startregel bzw. `stacks/powershell-automation/` Testing
+- **wichtig** L1 gitignore-Muster verankern → `base/` (Public-Repo-Abschnitt aus L5 v26)
+- **sinnvoll** L5-Ergänzung: Denylist erkennt Namen, keine Aussagen → `base/` Public-Repo-Regel
+- **sinnvoll** L6 Fail-Fast-Validierung vorher gegen den Bestand prüfen → `base/principles/FAIL_FAST.md`
+- **sinnvoll** L9 `AddWithValue(DateTime)` = `datetime` → `stacks/powershell-automation/CONVENTIONS.md`;
+  Analogon in `csharp-*`-Stacks (gleiche SqlClient-API) idiomatisch prüfen
+- **sinnvoll** Template-Fund: `base/principles/EXTERNAL_SOURCE_ADOPTION.md` verweist auf ein fremdes Projekt
+  („eingeführt in Inkrement I11") — in jedem initialisierten Projekt irreführend; neutralisieren
+- Zu jung, nicht vorgeschlagen: keine (alle Kandidaten haben mindestens einen belegten Vorfall)
+
+---
+
 ## 2026-10-09 Interner Datenbankname aus Beispielen entfernt
 
 ### Security
