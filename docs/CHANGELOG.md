@@ -12,6 +12,15 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Interner Datenbankname aus Beispielen entfernt
+
+### Security
+- Beispielpfad der Firebird-Datenbank in `README.md`, `README.de.md` und `config.schema.json` (`examples`)
+  neutralisiert; der bisherige Wert war ein interner Datenbankname (seit dem Initial-Commit öffentlich,
+  bleibt in der Git-Historie). Die lokale Interna-Denylist erfasst das Namensmuster jetzt.
+
+---
+
 ## 2026-10-09 I8 – Wasserzeichen mit Überlappungsfenster
 
 ### Added
