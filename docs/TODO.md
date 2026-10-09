@@ -24,14 +24,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Mittlere Priorität
 
-### I10b: CI auf GitHub
-
-Vorgezogen (KICKOFF 2a): Integration läuft ohne Pull Requests (lokaler Merge, Push auf `main`) — die CI ist damit das einzige automatische Prüftor und sichert den Modulumbau in I10a ab.
-
-- [ ] GitHub Actions auf `windows-latest`: `pwsh -NoProfile -File ./tests/pester.config.ps1` und PSScriptAnalyzer bei Push auf `main` und bei PRs
-- [ ] PSScriptAnalyzer: nur Severity `Error` lässt den Lauf scheitern; Warnungen als Liste in `BACKLOG.md` (kein Aufräumen im selben Inkrement)
-- **DoD:** Push auf `main` zeigt beide Prüfungen; ein absichtlich roter Test lässt den Check fehlschlagen; gemeinsame DoD erfüllt
-
 ### I10a: Konfig- und Modul-Hygiene
 
 Neu zugeschnitten (KICKOFF 2a): Code-Teil der bisherigen Konsolidierung, gebündelt mit dem Klartext-Passwort-Risiko (`STATE.md`) und dem Backlog-Punkt „`.bak`-Bereinigung".
@@ -60,6 +52,7 @@ Doku-Teil der bisherigen I10a; Umfang ergänzt um die Befundliste der Reflexion 
 
 ## Abgeschlossen
 
+- I10b CI auf GitHub: `.github/workflows/ci.yml` (windows-latest; Push auf `main`, PRs, manuell) mit `tests/scriptanalyzer.ps1` (PSScriptAnalyzer 1.25.0, nur Severity `Error` blockiert) und `tests/pester.config.ps1`; Action per SHA gepinnt, `contents: read` — [ABGESCHLOSSEN 2026-10-09] (Commit f7423b3)
 - I8 Wasserzeichen mit Überlappungsfenster: `General.IncrementalOverlapMinutes` (Default 10), Extrakt ab `MAX(ts) − Überlappung` inklusive, Wasserzeichen/Untergrenze/Abfrage als Modulfunktionen; kein stiller Vollabzug mehr (fehlende/leere Zieltabelle mit Hinweis, MAX-Fehler → Retry/Fehler) — [ABGESCHLOSSEN 2026-10-09] (Commit ab1de66)
 - I11 Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (rein lesend) prüft Konfigs gegen Schema/Namensregeln, Treiber-Hash, Firebird-Version gegen CVEs, SYSDBA-Anmeldung und `decimal`-Altbestand; Exit 6 bei FEHLER — [ABGESCHLOSSEN 2026-10-09] (Commit 89e4565)
 - I7 Treiber-Integrität: SHA-256-Prüfung für jede DLL vor dem Laden (Download, vorhanden, `DllPath`), Original-Hashes net8.0 + netstandard2.1, Ausnahme nur über `Firebird.DllSha256`; Admin-Check mockbar, `SecurityProtocol` wird wiederhergestellt — [ABGESCHLOSSEN 2026-10-09] (Commit e173ac2)

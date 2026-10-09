@@ -2,8 +2,8 @@
 
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I8 – Wasserzeichen mit Überlappungsfenster (2026-10-09)
-**Nächster Schritt:** I10b – CI auf GitHub
+**Letztes abgeschlossenes Inkrement:** I10b – CI auf GitHub (2026-10-09)
+**Nächster Schritt:** I10a – Konfig- und Modul-Hygiene
 **Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
@@ -11,9 +11,9 @@ Zuletzt aktualisiert: 2026-10-09
 
 ## Nächster Schritt
 
-**I10b – CI auf GitHub.** GitHub Actions auf `windows-latest`: Pester (`tests/pester.config.ps1`) und
-PSScriptAnalyzer (nur Severity `Error` blockiert) bei Push auf `main` und bei PRs. Danach I10a
-(Konfig-/Modul-Hygiene inkl. `-PreDeploy`-Warnung für fehlende Zeitstempelspalten) → I10c (Doku-Konsolidierung).
+**I10a – Konfig- und Modul-Hygiene.** `MSSQL.Port` (K9), `Protect-SqlString` entfernen, `-PreDeploy`-Warnungen
+(Klartext-Passwort, `config*.bak`, fehlende Zeitstempelspalte im Ziel), Backup-Rotation in
+`Manage_Config_Tables.ps1`. Danach I10c (Doku-Konsolidierung). Seit I10b prüft die CI jeden Push auf `main`.
 Offene Template-Backport-Vorschläge (Freigabe ausstehend): siehe `CHANGELOG.md` „Reflexion nach I8".
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
@@ -25,7 +25,7 @@ gebraucht: Datenbank `STAGING_I2TEST` auf SQL-Testserver und Test-Task `SQLSync_
 Code-Stand: Sync-Skript v2.18 (Incremental mit Überlappungsfenster; Treiber-DLL per SHA-256 geprüft; Schema-Prüfung Fail-Fast; Typmapping mit Precision/Scale), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
 gequotet/parametrisiert), optionale Konfigschlüssel `General.FailOnSanityError`, `General.IncrementalOverlapMinutes`,
 `MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (176,
-Coverage-Gate 80 %); keine CI.
+Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b).
 
 ---
 
@@ -43,6 +43,7 @@ Coverage-Gate 80 %); keine CI.
 | I7 | Treiber-Integrität: SHA-256-Prüfung jeder DLL vor dem Laden, Ausnahme nur über `Firebird.DllSha256` | 2026-10-09 | e173ac2 |
 | I11 | Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (Konfigs, Treiber-Hash, Firebird-CVEs/SYSDBA, `decimal`-Altbestand), rein lesend | 2026-10-09 | 89e4565 |
 | I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
+| I10b | CI auf GitHub Actions: Pester + PSScriptAnalyzer (nur `Error` blockiert) bei Push auf `main`/PR, Action per SHA gepinnt | 2026-10-09 | f7423b3 |
 
 ---
 
@@ -50,7 +51,6 @@ Coverage-Gate 80 %); keine CI.
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I10b | CI auf GitHub (Pester + PSScriptAnalyzer) bei Push auf `main` und PRs | Mittel |
 | I10a | Konfig- und Modul-Hygiene (`MSSQL.Port`, `Protect-SqlString`, Klartext-Passwort-/`.bak`-Warnung, Backup-Rotation) | Mittel |
 | I10c | Doku-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`) | Niedrig |
 
