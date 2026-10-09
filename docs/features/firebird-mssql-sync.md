@@ -262,7 +262,7 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung) | striktes `> MAX(ts)` (S6) | geplant in I8; Workaround Weekly Full |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
-| `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10 |
+| `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10a |
 | Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) liegen im Modul (unit-getestet) |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
 

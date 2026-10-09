@@ -3,7 +3,7 @@
 Stand: 2026-10-09 (I7; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,
 `sql_server_setup.sql`, `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`,
-`Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I10 entsprechen
+`Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I11 entsprechen
 `KNOWN_ISSUES.md` bzw. `TODO.md`.
 
 **Systemkontext in einem Satz:** Ein Windows-Host führt per Task Scheduler PowerShell 7 aus, liest
@@ -338,7 +338,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S9 | `config.schema.json` wird nie geprüft | K7 | I6 (erledigt 2026-10-09; Fail-Fast in allen vier Skripten) |
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
 | S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
-| S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7 | I10 |
+| S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7, K9 | I10a |
 | S13 | Tasks als interaktiver Benutzer mit gespeichertem Passwort, breite DB-Rechte | — | I9 (Option Dienstkonto/gMSA vorhanden 2026-10-08; Umstellung und DB-Rechte sind Betrieb) |
 
 Hinweis: `S1`–`S3` in `docs/REFLECTION.md` bezeichnen dagegen die

@@ -143,6 +143,14 @@ git ls-files | xargs grep -HinF -f /tmp/terms.txt
 Alle I-Nummern in `docs/` zeigen auf existierende Inkremente in `STATE.md`
 (kein Renumbering-Loch).
 
+### 2b. Roadmap-Konsolidierung
+
+Offene Inkremente (`TODO.md`), `BACKLOG.md`, aktive `KNOWN_ISSUES.md` und `STATE.md`-Risiken gemeinsam
+auf Überschneidungen (gleiche Datei/Funktion, gleiche Ursache, gleiches Risiko) und Konsolidierungen
+prüfen — inklusive Backlog-Punkten, die durch erledigte Inkremente inzwischen billig oder obsolet sind.
+Ergebnis: priorisierte Liste der nächsten drei Inkremente mit Begründung je Bündelung/Umordnung;
+Übernahme in `TODO.md` als eigener `docs:`-Commit. Ablauf wie KICKOFF Phase 1 Punkt 2a.
+
 ### 3. Template-Backport
 
 **Queue-Abbau:** Alle Einträge in `docs/LESSONS_LEARNED.md` mit
