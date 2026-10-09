@@ -92,6 +92,20 @@ zwei Regelwerken auf (Schema nur Großbuchstaben vs. Whitelist auch Kleinbuchsta
 
 ---
 
+## L7: Vor der Inkrementwahl nach Überschneidungen und Konsolidierungen suchen
+- Inkrement: Planung nach I7 (2026-10-09)
+- Scope: generisch-base
+- Backport-Ziel: `base/KICKOFF.md` Phase 1 Punkt 2a, `base/REFLECTION.md` Schritt 2b
+- Status: backported v26 (unreleased; vom Prompter vorab angeregt)
+
+Der Plan stand verteilt in `TODO.md`, `BACKLOG.md`, `KNOWN_ISSUES.md` und den `STATE.md`-Risiken; die
+Template-Regeln kannten nur das *Splitten* zu großer Inkremente (Eskalationsregel), nicht das *Bündeln*.
+Erst die ausdrückliche Bitte, „nach Überschneidungen und Konsolidierungen zu suchen", zeigte z. B., dass
+mehrere Deployment-Risiken, eine manuelle Checkliste und ein I10-Punkt dasselbe Skript betreffen. Regel:
+alle vier Quellen gemeinsam lesen, je Treffer bewusst bündeln / umordnen / getrennt lassen, Größengrenze
+beachten, Roadmap-Änderung als eigener `docs:`-Commit.
+
+---
 ## Pflege
 
 - Neuer „Lessons Learned"-Block im `CHANGELOG.md` → Eintrag `## L<N>:` hier anlegen.

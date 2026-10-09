@@ -12,6 +12,18 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Prozess: Überschneidungen und Konsolidierungen bei der Planung
+
+### Added
+- `KICKOFF.md` Phase 1 Punkt 2a: vor der Wahl des nächsten Inkrements `TODO.md`, `BACKLOG.md`, aktive
+  `KNOWN_ISSUES.md` und `STATE.md`-Risiken gemeinsam auf Überschneidungen/Konsolidierungen prüfen
+- `REFLECTION.md` Schritt 2b „Roadmap-Konsolidierung"
+- `LESSONS_LEARNED.md` L7; Backport ins Template (v26, unreleased)
+
+### Changed
+- PR #1 nach `main` gemergt (Merge-Commit, Commit-Hashes in `STATE.md`/`TODO.md` bleiben gültig)
+
+---
 ## 2026-10-09 Übernahme aus lokalem Branch `fix/folgepunkte-doku-83-sha`
 
 ### Removed
