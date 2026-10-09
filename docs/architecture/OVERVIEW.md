@@ -102,7 +102,9 @@ SQLSyncCommon.psm1                 → Gemeinsame Infrastruktur: Konfig laden/va
 sql_server_setup.sql               → Generische MERGE-Prozedur dbo.sp_Merge_Generic (Upsert Staging → Ziel, kein DELETE)
 Setup_Credentials.ps1              → Legt die Credential-Manager-Einträge SQLSync_Firebird / SQLSync_MSSQL interaktiv an
 Setup-ScheduledTasks.ps1           → Registriert die Task-Scheduler-Jobs Daily Diff / Weekly Full
-Test-SQLSyncConnections.ps1        → Diagnose: Verbindungen, Versionen, Test-Abfrage, Existenz der Prozedur
+Test-SQLSyncConnections.ps1        → Diagnose: Verbindungen, Versionen, Test-Abfrage, Existenz der Prozedur;
+                                     mit -PreDeploy rein lesender Rollout-Check (Konfigs, Treiber-Hash,
+                                     Server-Advisories, SYSDBA, Altbestand DECIMAL; Exit 6 bei FEHLER)
 Get_Firebird_Schema.ps1            → Zeigt Spalten einer Firebird-Tabelle mit .NET- und SQL-Server-Typvorschlag
 Manage_Config_Tables.ps1           → Pflegt die Tabellenliste in config.json per Out-GridView (mit Backup)
 Example_Sync_Start.ps1             → Beispiel für zwei aufeinanderfolgende Läufe mit unterschiedlichen Konfigdateien

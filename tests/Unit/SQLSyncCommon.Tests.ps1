@@ -613,3 +613,85 @@ Describe 'Get-SQLSyncConfig: Firebird.DllSha256' {
         { Get-SQLSyncConfig -ConfigPath $p -SchemaPath (Join-Path $PSScriptRoot '..\..\config.schema.json') } | Should -Throw '*DllSha256*'
     }
 }
+
+Describe 'Get-FirebirdServerAdvisory (I11)' {
+    It 'meldet beide CVEs für <Version>' -TestCases @(
+        @{ Version = '5.0.3' }, @{ Version = '5.0.0' }, @{ Version = '4.0.6' }, @{ Version = '3.0.13' }, @{ Version = '2.5.9' }
+    ) {
+        param($Version)
+        $r = @(Get-FirebirdServerAdvisory -EngineVersion $Version)
+        $r.Id | Should -Contain 'CVE-2026-34232'
+        $r.Id | Should -Contain 'CVE-2026-40342'
+    }
+    It 'meldet nichts für die behobene Version <Version>' -TestCases @(
+        @{ Version = '5.0.4' }, @{ Version = '5.1.0' }, @{ Version = '4.0.7' }, @{ Version = '3.0.14' }, @{ Version = '6.0.0' }
+    ) {
+        param($Version)
+        @(Get-FirebirdServerAdvisory -EngineVersion $Version).Count | Should -Be 0
+    }
+    It 'gibt bei unlesbarer Version einen Hinweis statt eines Fehlers' {
+        $r = @(Get-FirebirdServerAdvisory -EngineVersion 'unbekannt')
+        $r.Count | Should -Be 1
+        $r[0].Id | Should -Be 'VERSION-UNBEKANNT'
+    }
+}
+
+Describe 'Find-SQLSyncDecimalTruncation (I11)' {
+    BeforeAll {
+        function Col($T, $C, $P, $S) { [PSCustomObject]@{ Table = $T; Column = $C; Precision = $P; Scale = $S } }
+    }
+    It 'findet eine Zielspalte mit weniger Nachkommastellen als die Quelle' {
+        $src = @(Col 'BANF' 'GEWICHT' 15 6), (Col 'BANF' 'PREIS' 15 2)
+        $tgt = @(Col 'ERP_BANF' 'GEWICHT' 18 4), (Col 'ERP_BANF' 'PREIS' 18 4)
+        $r = @(Find-SQLSyncDecimalTruncation -SourceColumns $src -TargetColumns $tgt -Prefix 'ERP_' -Suffix '')
+        $r.Count | Should -Be 1
+        $r[0].Table  | Should -Be 'BANF'
+        $r[0].Target | Should -Be 'ERP_BANF'
+        $r[0].Column | Should -Be 'GEWICHT'
+        $r[0].Source | Should -Be 'NUMERIC(15,6)'
+        $r[0].TargetType | Should -Be 'DECIMAL(18,4)'
+    }
+    It 'findet auch eine zu kleine Precision' {
+        $r = @(Find-SQLSyncDecimalTruncation -SourceColumns @(Col 'T' 'X' 18 2) -TargetColumns @(Col 'T' 'X' 15 2) -Prefix '' -Suffix '')
+        $r.Count | Should -Be 1
+    }
+    It 'meldet nichts bei passenden oder größeren Zieltypen und ignoriert fehlende Zieltabellen' {
+        $src = @(Col 'T' 'A' 15 2), (Col 'T' 'B' 15 6), (Col 'NEU' 'C' 15 6)
+        $tgt = @(Col 'T_V1' 'A' 15 2), (Col 'T_V1' 'B' 18 6)
+        @(Find-SQLSyncDecimalTruncation -SourceColumns $src -TargetColumns $tgt -Prefix '' -Suffix '_V1').Count | Should -Be 0
+    }
+    It 'vergleicht Tabellen- und Spaltennamen ohne Groß-/Kleinschreibung' {
+        $r = @(Find-SQLSyncDecimalTruncation -SourceColumns @(Col 'banf' 'gewicht' 15 6) -TargetColumns @(Col 'BANF' 'GEWICHT' 18 4) -Prefix '' -Suffix '')
+        $r.Count | Should -Be 1
+    }
+}
+
+Describe 'Test-FirebirdDriverIntegrity (I11)' {
+    BeforeAll {
+        $script:Dll = 'C:\nicht\real\FirebirdSql.Data.FirebirdClient.dll'
+        $script:HashNet8 = '7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05'
+    }
+    BeforeEach { Mock -ModuleName SQLSyncCommon Add-Type { throw 'darf nicht geladen werden' } }
+    It 'meldet OK für eine Original-DLL und lädt sie nicht' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $script:HashNet8 } }
+        $r = Test-FirebirdDriverIntegrity -DllPath $script:Dll
+        $r.Status | Should -Be 'OK'
+        $r.Path   | Should -Be $script:Dll
+        Should -Invoke Add-Type -ModuleName SQLSyncCommon -Times 0 -Exactly
+    }
+    It 'meldet FEHLER bei falschem Hash' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = ('0' * 64) } }
+        (Test-FirebirdDriverIntegrity -DllPath $script:Dll).Status | Should -Be 'FEHLER'
+    }
+    It 'meldet FEHLT, wenn keine DLL vorhanden ist' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $false }
+        (Test-FirebirdDriverIntegrity -DllPath '').Status | Should -Be 'FEHLT'
+    }
+    It 'beachtet -ExpectedSha256' {
+        Mock -ModuleName SQLSyncCommon Test-Path { $true }
+        Mock -ModuleName SQLSyncCommon Get-FileHash { [PSCustomObject]@{ Hash = $script:HashNet8 } }
+        (Test-FirebirdDriverIntegrity -DllPath $script:Dll -ExpectedSha256 ('AB' * 32)).Status | Should -Be 'FEHLER'
+    }
+}

@@ -496,6 +496,37 @@ function New-MSSQLConnectionString {
 
 #region Firebird Driver
 
+# Gemeinsame Treiberdaten für Initialize-FirebirdDriver und Test-FirebirdDriverIntegrity.
+# Bei einem Versionswechsel Version, Download-URL und Hashes gemeinsam anpassen.
+$script:FirebirdDriver = @{
+    PackageName = "FirebirdSql.Data.FirebirdClient"
+    Version     = "10.3.4"
+    DownloadUrl = "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg"
+    # SHA-256 der Original-DLLs aus dem NuGet-Paket 10.3.4 (lib\net8.0 bzw. lib\netstandard2.1)
+    KnownSha256 = @(
+        "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
+        "8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A"
+    )
+}
+$script:FirebirdDriver.CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$($script:FirebirdDriver.PackageName).$($script:FirebirdDriver.Version)"
+
+<#
+.SYNOPSIS
+    Liefert den ersten vorhandenen Treiberpfad (DllPath, DllPath relativ zum Skriptordner, zentral net8.0, zentral netstandard2.1) oder $null.
+#>
+function Get-FirebirdDriverCandidatePath([string]$DllPath, [string]$ScriptDir) {
+    $Name = "$($script:FirebirdDriver.PackageName).dll"
+    $Candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($DllPath)) {
+        $Candidates += $DllPath
+        if ($ScriptDir) { $Candidates += Join-Path $ScriptDir $DllPath }
+    }
+    $Candidates += Join-Path $script:FirebirdDriver.CentralInstallDir "lib\net8.0\$Name"
+    $Candidates += Join-Path $script:FirebirdDriver.CentralInstallDir "lib\netstandard2.1\$Name"
+    foreach ($Path in $Candidates) { if (Test-Path $Path) { return $Path } }
+    return $null
+}
+
 <#
 .SYNOPSIS
     Prüft, ob die aktuelle Sitzung Administratorrechte hat (eigene Funktion, damit in Tests mockbar).
@@ -536,17 +567,12 @@ function Initialize-FirebirdDriver {
         [string]$ExpectedSha256
     )
 
-    # Konstanten – bei einem Versionswechsel PackageVersion, Download-URL und Hashes gemeinsam anpassen
-    $PackageVersion = "10.3.4"
-    $PackageName = "FirebirdSql.Data.FirebirdClient"
-    $DownloadUrl = "https://globalcdn.nuget.org/packages/firebirdsql.data.firebirdclient.10.3.4.nupkg"
-    # SHA-256 der Original-DLLs aus dem NuGet-Paket 10.3.4 (lib\net8.0 bzw. lib\netstandard2.1)
-    $KnownSha256 = @(
-        "7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05"
-        "8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A"
-    )
-    $AllowedSha256 = if ($ExpectedSha256) { @($ExpectedSha256.ToUpperInvariant()) } else { $KnownSha256 }
-    $CentralInstallDir = "$env:ProgramData\SQLSync\Drivers\$PackageName.$PackageVersion"
+    # Konstanten auf Modulebene ($script:FirebirdDriver)
+    $PackageVersion = $script:FirebirdDriver.Version
+    $PackageName = $script:FirebirdDriver.PackageName
+    $DownloadUrl = $script:FirebirdDriver.DownloadUrl
+    $AllowedSha256 = if ($ExpectedSha256) { @($ExpectedSha256.ToUpperInvariant()) } else { $script:FirebirdDriver.KnownSha256 }
+    $CentralInstallDir = $script:FirebirdDriver.CentralInstallDir
 
     function Assert-DriverHash([string]$Path, [string]$Origin) {
         $Actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash
@@ -567,22 +593,7 @@ function Initialize-FirebirdDriver {
     }
 
     # --- SCHRITT B: Pfad suchen (wenn noch nicht geladen) ---
-    $CandidatePaths = @()
-    if (-not [string]::IsNullOrWhiteSpace($DllPath)) {
-        $CandidatePaths += $DllPath
-        if ($ScriptDir) { $CandidatePaths += Join-Path $ScriptDir $DllPath }
-    }
-    # Priorisiere .NET 8.0 für moderne Systeme
-    $CandidatePaths += Join-Path $CentralInstallDir "lib\net8.0\$PackageName.dll"
-    $CandidatePaths += Join-Path $CentralInstallDir "lib\netstandard2.1\$PackageName.dll"
-
-    $ResolvedPath = $null
-    foreach ($Path in $CandidatePaths) {
-        if (Test-Path $Path) {
-            $ResolvedPath = $Path
-            break
-        }
-    }
+    $ResolvedPath = Get-FirebirdDriverCandidatePath -DllPath $DllPath -ScriptDir $ScriptDir
 
     # --- SCHRITT C: Installieren (wenn Datei fehlt) ---
     if (-not $ResolvedPath) {
@@ -1000,6 +1011,111 @@ function Protect-SqlString {
 
 #endregion
 
+#region Rollout-Check (I11)
+
+# Firebird-Server-Advisories mit den jeweils ersten behobenen Versionen je Hauptversion
+# (Quelle: NVD, abgerufen 2026-10-08/09). Versionen unter 3 gelten als betroffen, über 5 als nicht betroffen.
+$script:FirebirdServerAdvisories = @(
+    @{ Id = "CVE-2026-34232"; Cvss = "7.5"; Summary = "unauthentifizierter Server-Absturz (op_response)"; Fixed = @{ 3 = "3.0.14"; 4 = "4.0.7"; 5 = "5.0.4" } }
+    @{ Id = "CVE-2026-40342"; Cvss = "9.9"; Summary = "Codeausführung über CREATE FUNCTION (ENGINE-Pfad)"; Fixed = @{ 3 = "3.0.14"; 4 = "4.0.7"; 5 = "5.0.4" } }
+)
+
+<#
+.SYNOPSIS
+    Liefert die bekannten Server-Advisories, von denen eine Firebird-Version betroffen ist.
+
+.PARAMETER EngineVersion
+    Wert von rdb$get_context('SYSTEM','ENGINE_VERSION'), z. B. "5.0.3".
+
+.OUTPUTS
+    PSCustomObject je betroffener CVE (Id, Cvss, Summary, FixedIn); bei unlesbarer Version ein Eintrag VERSION-UNBEKANNT.
+#>
+function Get-FirebirdServerAdvisory {
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$EngineVersion)
+
+    $Match = [regex]::Match("$EngineVersion", '(\d+)\.(\d+)\.(\d+)')
+    if (-not $Match.Success) {
+        return [PSCustomObject]@{ Id = "VERSION-UNBEKANNT"; Cvss = ""; Summary = "Serverversion '$EngineVersion' nicht auswertbar – manuell prüfen"; FixedIn = "" }
+    }
+    $Version = [version]$Match.Value
+    foreach ($Advisory in $script:FirebirdServerAdvisories) {
+        $Fixed = $Advisory.Fixed[$Version.Major]
+        $Affected = if ($Fixed) { $Version -lt [version]$Fixed } else { $Version.Major -lt 3 }
+        if ($Affected) {
+            [PSCustomObject]@{ Id = $Advisory.Id; Cvss = $Advisory.Cvss; Summary = $Advisory.Summary; FixedIn = ($Advisory.Fixed.Values | Sort-Object) -join " / " }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Findet Zielspalten, deren DECIMAL-Typ Werte der Firebird-Quelle kürzen würde (Altbestand vor v2.14).
+
+.PARAMETER SourceColumns
+    Objekte mit Table, Column, Precision, Scale (Firebird, Tabellenname ohne Prefix/Suffix).
+.PARAMETER TargetColumns
+    Objekte mit Table, Column, Precision, Scale (SQL Server, Zieltabellenname).
+
+.OUTPUTS
+    PSCustomObject je betroffener Spalte (Table, Target, Column, Source, TargetType).
+#>
+function Find-SQLSyncDecimalTruncation {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$SourceColumns = @(),
+        [AllowEmptyCollection()][object[]]$TargetColumns = @(),
+        [AllowEmptyString()][string]$Prefix = "",
+        [AllowEmptyString()][string]$Suffix = ""
+    )
+
+    $TargetIndex = @{}
+    foreach ($c in $TargetColumns) { $TargetIndex["$($c.Table)|$($c.Column)".ToUpperInvariant()] = $c }
+
+    foreach ($s in $SourceColumns) {
+        $TargetName = "$Prefix$($s.Table)$Suffix"
+        $t = $TargetIndex["$TargetName|$($s.Column)".ToUpperInvariant()]
+        if (-not $t) { continue }   # Zieltabelle/-spalte existiert (noch) nicht -> wird korrekt neu angelegt
+        if ([int]$t.Scale -lt [int]$s.Scale -or [int]$t.Precision -lt [int]$s.Precision) {
+            [PSCustomObject]@{
+                Table      = $s.Table
+                Target     = $t.Table
+                Column     = $s.Column
+                Source     = "NUMERIC($($s.Precision),$($s.Scale))"
+                TargetType = "DECIMAL($($t.Precision),$($t.Scale))"
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Prüft die Treiber-DLL wie Initialize-FirebirdDriver, lädt sie aber nicht.
+
+.OUTPUTS
+    PSCustomObject mit Status (OK | FEHLER | FEHLT), Path, Sha256, Message.
+#>
+function Test-FirebirdDriverIntegrity {
+    [CmdletBinding()]
+    param(
+        [string]$DllPath,
+        [string]$ScriptDir,
+        [string]$ExpectedSha256
+    )
+
+    $Allowed = if ($ExpectedSha256) { @($ExpectedSha256.ToUpperInvariant()) } else { $script:FirebirdDriver.KnownSha256 }
+    $Path = Get-FirebirdDriverCandidatePath -DllPath $DllPath -ScriptDir $ScriptDir
+    if (-not $Path) {
+        return [PSCustomObject]@{ Status = "FEHLT"; Path = $null; Sha256 = $null; Message = "Keine Treiber-DLL gefunden (wird beim ersten Lauf als Administrator heruntergeladen)" }
+    }
+    $Hash = (Get-FileHash -Path $Path -Algorithm SHA256).Hash
+    if ($Hash -in $Allowed) {
+        return [PSCustomObject]@{ Status = "OK"; Path = $Path; Sha256 = $Hash; Message = "SHA-256 entspricht der erlaubten Liste" }
+    }
+    return [PSCustomObject]@{ Status = "FEHLER"; Path = $Path; Sha256 = $Hash; Message = "SHA-256 nicht erlaubt (erlaubt: $($Allowed -join ' / '))" }
+}
+
+#endregion
 # Exportiere alle Public Functions
 Export-ModuleMember -Function @(
     # Credentials
@@ -1032,4 +1148,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-SqlServerType'
     'Protect-SqlString'
     'Assert-SqlIdentifier'
+    'Get-FirebirdServerAdvisory'
+    'Find-SQLSyncDecimalTruncation'
+    'Test-FirebirdDriverIntegrity'
 )

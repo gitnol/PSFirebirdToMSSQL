@@ -12,6 +12,40 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 I11 – Rollout-Check
+
+### Added
+- `Test-SQLSyncConnections.ps1 -PreDeploy` (v2.1, rein lesend): Konfigs gegen Schema/Namensregeln, Treiber-DLL
+  gegen erlaubte SHA-256 (ohne Laden), Firebird-Serverversion gegen bekannte CVEs, SYSDBA-Anmeldung,
+  `decimal`-Altbestand (Zielspalte mit kleinerer Precision/Scale als die Firebird-Quelle); Tabelle
+  OK/WARNUNG/FEHLER, Exit 6 bei FEHLER
+- Modulfunktionen `Get-FirebirdServerAdvisory`, `Find-SQLSyncDecimalTruncation`, `Test-FirebirdDriverIntegrity`
+- 13 Pester-Tests (157 gesamt, Coverage 95,29 %)
+
+### Changed
+- Treiberkonstanten (Version, URL, erlaubte Hashes) und Kandidatensuche zentral im Modul
+  (`$script:FirebirdDriver`, `Get-FirebirdDriverCandidatePath`), von `Initialize-FirebirdDriver` und der neuen
+  Prüfung gemeinsam genutzt; CVE-Liste zentral in `$script:FirebirdServerAdvisories`
+
+### Fixed
+- Doppelte Ausgabe der Test-Query-Zeile in `Test-SQLSyncConnections.ps1` (aus I10)
+
+### Iterations-Log
+- Tests zuerst: strukturell rot (Funktionen fehlten), mit Stubs behavioral rot („Expected 1, but got 0" u. a.),
+  dann grün. Das Treiber-Refactoring ist durch die bestehenden Treibertests abgesichert (unverändert grün).
+- Zwei eigene Werkzeugfehler unterwegs (Ersetzungsmuster traf echte `Assert-SqlIdentifier`-Aufrufe; verschachtelter
+  Here-String im Hilfsskript) — jeweils vor dem Commit bemerkt, Modul per `git checkout` zurückgesetzt.
+
+### Confidence / Ungeprüft
+- Integration gegen die Testumgebung: schemawidrige Testkonfig → FEHLER/Exit 6; Original-DLL OK; Versions- und Konto-
+  Prüfung lieferten die erwarteten Befunde (Ergebnis je Host nur in `docs/local/`); 42 Dezimalspalten ohne Kürzung. Künstlich auf `decimal(18,4)` gesetzte Testspalte (nur
+  Testdatenbank) → WARNUNG, Exit 0; Korrektur nach RUNBOOK (`ALTER COLUMN` + ForceFull) stellte die Werte bis zur
+  6. Nachkommastelle wieder her, danach OK.
+- Rein lesend: neue Codezeilen enthalten nur `SELECT`s (geprüft per Diff).
+- Nicht gegen die produktive Umgebung gelaufen — das ist der Zweck vor dem Deployment.
+
+---
+
 ## 2026-10-09 Roadmap nach Konsolidierung (KICKOFF 2a)
 
 ### Changed

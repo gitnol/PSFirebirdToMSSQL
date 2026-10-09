@@ -254,7 +254,22 @@ cmdkey /list:SQLSync*      # Kontrolle (zeigt keine Passwörter)
 Geprüft werden: Firebird-Version, Anzahl Tabellen, Test-`COUNT` auf die erste
 konfigurierte Tabelle; SQL-Server-Version, vorhandene Tabellen, ob
 `sp_Merge_Generic` existiert. Exit-Codes: 0 OK, 1 Modul/Config fehlt oder ein
-Test fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber.
+Test fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber,
+6 Vor-Deployment-Prüfung mit mindestens einem `FEHLER`.
+
+Vor der Inbetriebnahme zusätzlich die rein lesende Vor-Deployment-Prüfung ausführen:
+
+```powershell
+.\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json -PreDeploy
+```
+
+Sie prüft alle `config*.json` im Ordner gegen Schema und Namensregeln, die
+Treiber-DLL gegen die erlaubten SHA-256, die Firebird-Serverversion gegen
+bekannte Server-Advisories, ob der Sync als `SYSDBA` angemeldet ist (Empfehlung:
+„Firebird-Lesekonto anlegen“) und ob
+bestehende Zieltabellen Dezimalwerte kürzen würden. Ausgabe als Tabelle
+Status / Prüfung / Detail; Exit 6 bei mindestens einem `FEHLER`, `WARNUNG`en
+lassen Exit 0 zu. Details: `operations/DEPLOYMENT.md`, „Vor-Deployment-Prüfung“.
 
 Hinweis: Fehlt `sp_Merge_Generic`, ist das beim Erst-Setup normal – der erste
 Sync-Lauf installiert sie automatisch aus `sql_server_setup.sql`.
@@ -327,6 +342,9 @@ gMSA-Grenzen: `operations/TASK_SCHEDULER.md`.
 
 # Diagnose
 .\Test-SQLSyncConnections.ps1 -ConfigFile config.json
+
+# Vor-Deployment-Prüfung (rein lesend; Exit 6 = mindestens ein FEHLER)
+.\Test-SQLSyncConnections.ps1 -ConfigFile config.json -PreDeploy
 
 # Beispiel für zwei Läufe hintereinander
 .\Example_Sync_Start.ps1

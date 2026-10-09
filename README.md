@@ -200,6 +200,45 @@ Different entry names (e.g. one per SQL Server): see [Credential Management](#cr
 .\Test-SQLSyncConnections.ps1
 ```
 
+Before the first productive run and before every update, run the read-only pre-deployment check (only `SELECT` statements, no DDL/DML; the driver DLL is hashed, not loaded):
+
+```powershell
+.\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json -PreDeploy
+```
+
+In addition to the connection test it checks:
+
+- every `config*.json` in the script folder (except `config.schema.json` / `config.sample.json`) against the schema and naming rules → `OK` / `FEHLER` (missing schema file → `WARNUNG`)
+- the driver DLL against the allowed SHA-256 values → `OK` / `FEHLER` (no DLL yet → `WARNUNG`); on `FEHLER` the check stops immediately with exit code 6
+- the Firebird server version against known server advisories (CVE-2026-34232, CVE-2026-40342) → `WARNUNG`
+- login as `SYSDBA` → `WARNUNG` (use a read-only account)
+- legacy target tables: decimal columns of the configured tables whose target precision or scale is smaller than in Firebird → `WARNUNG` with target and source type (fix: `docs/operations/RUNBOOK.md`)
+
+Example output (fictional names and version; messages are in German):
+
+```text
+...
+========================================
+  Vor-Deployment-Prüfung (-PreDeploy, nur lesend)
+========================================
+  OK       Konfig config.json         Schema und Namensregeln erfüllt
+  OK       Konfig config_weekly_full.json Schema und Namensregeln erfüllt
+  OK       Treiber-DLL                SHA-256 entspricht der erlaubten Liste: C:\ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\FirebirdSql.Data.FirebirdClient.dll
+  WARNUNG  Firebird-Version           Firebird 4.0.5: CVE-2026-34232 (CVSS 7.5, unauthentifizierter Server-Absturz (op_response)) – behoben ab 3.0.14 / 4.0.7 / 5.0.4
+  WARNUNG  Firebird-Version           Firebird 4.0.5: CVE-2026-40342 (CVSS 9.9, Codeausführung über CREATE FUNCTION (ENGINE-Pfad)) – behoben ab 3.0.14 / 4.0.7 / 5.0.4
+  WARNUNG  Firebird-Konto             Sync meldet sich als SYSDBA an – reines Lesekonto empfohlen (docs/operations/SETUP.md)
+  WARNUNG  Altbestand DECIMAL         DWH_ARTICLES.WEIGHT: Ziel DECIMAL(18,4) < Quelle NUMERIC(15,6) – Korrektur siehe docs/operations/RUNBOOK.md
+```
+
+| Exit code | Meaning |
+|---|---|
+| 0 | All tests passed; with `-PreDeploy`: no `FEHLER` (`WARNUNG` allowed) |
+| 1 | Module/config missing or a connection test failed |
+| 2 | Configuration invalid (parse error, schema, naming rules) |
+| 3 | Credentials not found |
+| 4 | Driver could not be loaded (incl. SHA-256 mismatch) |
+| 6 | `-PreDeploy` found at least one `FEHLER` – do not deploy |
+
 ### Step 6: Select Tables
 
 Start the GUI manager to select tables:
@@ -442,7 +481,8 @@ The module centrally provides the following functions:
 - **Credential Management:** `Get-StoredCredential`, `Resolve-FirebirdCredentials`
 - **Configuration:** `Get-SQLSyncConfig` (including fail-fast schema validation), `Resolve-SQLSyncConfigPath` (shared `-ConfigFile` resolution)
 - **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
-- **Driver Loading:** `Initialize-FirebirdDriver`
+- **Driver Loading:** `Initialize-FirebirdDriver`, `Test-FirebirdDriverIntegrity` (hash check without loading; constants in `$script:FirebirdDriver`)
+- **Rollout Check:** `Get-FirebirdServerAdvisory` (server version vs. known CVEs in `$script:FirebirdServerAdvisories`), `Find-SQLSyncDecimalTruncation` (target `DECIMAL` columns smaller than the source); used by `Test-SQLSyncConnections.ps1 -PreDeploy`
 - **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types; `Decimal` with precision/scale from the Firebird schema). Since v2.14 the parallel sync block imports the module and uses `ConvertTo-SqlServerType` and `Get-TableColumnConfig` directly
 
 ---
@@ -579,7 +619,14 @@ Start in: C:\Scripts
 
 ## Changelog
 
-Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 — v2.13 changed other files only).
+Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 — v2.13 and v2.17 changed other files only; `Test-SQLSyncConnections.ps1`: 2.1).
+
+### v2.17 (2026-10-09) - Rollout Check (`-PreDeploy`)
+- `Test-SQLSyncConnections.ps1` v2.1: new switch `-PreDeploy`, read-only (only `SELECT` statements). Checks all `config*.json` in the script folder against schema and naming rules, the driver DLL against the allowed SHA-256 values (without loading it), the Firebird server version against known server advisories, a login as `SYSDBA`, and legacy target columns whose `DECIMAL` type truncates source values. Output as a table status/check/detail; exit code 6 if at least one `FEHLER` was found (`WARNUNG` keeps exit code 0)
+- New module functions `Get-FirebirdServerAdvisory`, `Find-SQLSyncDecimalTruncation` and `Test-FirebirdDriverIntegrity` (status `OK` / `FEHLER` / `FEHLT`, does not load the DLL)
+- Driver constants (version, download URL, allowed hashes) are now kept in one place (`$script:FirebirdDriver`); `Initialize-FirebirdDriver` and `Test-FirebirdDriverIntegrity` share the candidate search. Known Firebird server CVEs are kept in `$script:FirebirdServerAdvisories`
+- `Test-SQLSyncConnections.ps1` no longer prints the test query line twice
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` unchanged (2.16); 157 Pester tests
 
 ### v2.16 (2026-10-09) - Driver Integrity Check
 - `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.16: passes `Firebird.DllSha256` to the driver check

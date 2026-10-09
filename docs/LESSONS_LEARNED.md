@@ -74,6 +74,10 @@ Doku **und Commit-Messages** eines öffentlichen GitHub-Repos. Vor dem ersten Pu
 Lösung: Interna nach `docs/local/` (gitignored), öffentlich nur Rollenbezeichnungen,
 Pre-Commit-/Commit-Msg-Hook gegen eine gitignored Denylist, Branch per Squash bereinigt.
 `docs/` komplett zu ignorieren wurde verworfen (Doku ist versioniertes Projektgedächtnis).
+**Grenze des Hooks (I11):** Die Denylist erkennt Namen, keine Aussagen. Ein Satz wie „zwei CVE-Warnungen
+und SYSDBA-Warnung in der Testumgebung" enthält keinen internen Namen, verrät aber die Betroffenheit
+eines internen Servers — gefunden erst im Review. Testergebnisse mit Host-Bezug immer generisch
+formulieren („erwartete Befunde, Details in `docs/local/`").
 
 ---
 

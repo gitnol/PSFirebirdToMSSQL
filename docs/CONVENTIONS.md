@@ -242,7 +242,8 @@ finally {
 - [ ] Neue SQL-Bezeichner aus der Konfiguration in `"…"` (Firebird) bzw. `[…]`/`QUOTENAME` (SQL Server)
 - [ ] `-ExecutionPolicy Bypass` nur im Task-Scheduler-Aufruf (`Setup-ScheduledTasks.ps1`) — nie im Quellcode
 - [ ] Keine Passwörter / Connection Strings in `Write-Host`, `Write-Error` oder Exception-Messages (Transcript landet in `Logs\`)
-- [ ] Treiber-Versionswechsel: `$PackageVersion`, `$DownloadUrl` **und beide** Hashes in `$KnownSha256` (`lib\net8.0`, `lib\netstandard2.1`; selbst aus dem offiziellen NuGet-Paket berechnet) in `Initialize-FirebirdDriver` gemeinsam ändern; Unit-Tests mit den Hashes anpassen; nie einen Hash aus einer Fehlermeldung übernehmen
+- [ ] Treiber-Versionswechsel: `Version`, `DownloadUrl` **und beide** Hashes in `KnownSha256` (`lib\net8.0`, `lib\netstandard2.1`; selbst aus dem offiziellen NuGet-Paket berechnet) **nur** in `$script:FirebirdDriver` (`SQLSyncCommon.psm1`) gemeinsam ändern – `Initialize-FirebirdDriver` und `Test-FirebirdDriverIntegrity` lesen von dort, keine Kopien der Werte in Funktionen oder Skripten; Unit-Tests mit den Hashes anpassen; nie einen Hash aus einer Fehlermeldung übernehmen
+- [ ] Neue Firebird-Server-CVE: nur in `$script:FirebirdServerAdvisories` ergänzen (CVE-ID, CVSS, Kurztext, erste behobene Version je Hauptversion) plus Unit-Test für eine betroffene und eine behobene Version; nicht im Testskript oder an weiteren Stellen im Code hart codieren (Doku: `docs/security/DEPENDENCY_AUDIT.md`, „Server-Advisories im Code“)
 - [ ] Neue DLL-Ladewege (`Add-Type -Path`) nur nach SHA-256-Prüfung
 - [ ] Prozessweite State-Mutationen haben Save/Restore (Sektion 4)
 - [ ] `Export-ModuleMember` bleibt eine **explizite Liste**
@@ -331,11 +332,11 @@ pwsh -NoProfile -File .\tests\pester.config.ps1           # Gate 4 — Unit-Test
 
 **Stand 2026-10-08:** Keine PSScriptAnalyzer-Settings und keine CI; Gate 1 wird manuell ausgeführt.
 Gate 4 ist seit I3 vorhanden: `tests/pester.config.ps1` lädt das in `tests/RequiredModules.psd1`
-gepinnte Pester 5.7.1, führt die 98 Tests unter `tests/Unit/` aus und endet mit Exit-Code 1 bei einem
-roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 84,42 %, Stand I5). Schneller Lauf
+gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (157, Stand 2026-10-09) und endet mit Exit-Code 1 bei einem
+roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 95,29 % am 2026-10-09). Schneller Lauf
 ohne Coverage: `Invoke-Pester ./tests`. Details in `docs/testing/UNIT_TESTS.md`. Die Einstiegsskripte
-sind nicht unit-getestet; für sie bleibt als Minimal-Gate: `Test-SQLSyncConnections.ps1` gegen eine
-Testumgebung liefert Exit-Code 0.
+sind nicht unit-getestet; für sie bleibt als Minimal-Gate: `Test-SQLSyncConnections.ps1 -PreDeploy` gegen eine
+Testumgebung liefert Exit-Code 0 (kein `FEHLER`; rein lesend).
 
 Gate 2 (Formatter) und Gate 3 (statische Typanalyse) haben in PowerShell kein eigenständiges Standard-Werkzeug;
 PSScriptAnalyzer-Regeln decken Stilfragen mit ab.

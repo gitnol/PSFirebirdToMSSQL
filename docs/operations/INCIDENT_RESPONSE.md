@@ -24,7 +24,7 @@ Spalten `Status`, `Sanity`).
 | **P0 – Kritisch** | Datenleck, Credential-Kompromittierung, Datenverlust im Ziel | Passwort aus `config.json`/`*.bak`/Log im öffentlichen Repo oder auf einem Share gefunden; nachweislich manipulierte Treiber-DLL in `%ProgramData%\SQLSync\Drivers\...` oder `DllPath`; Codeausführung auf dem Firebird-Server über das Sync-Konto (CVE-2026-40342); Zieltabellen geleert/gedroppt (z. B. durch manipulierte Konfig, Identifier-Injection S2); Zieldaten mit personenbezogenen Daten für Unbefugte lesbar | sofort |
 | **P1 – Hoch** | Sync fällt für alle oder kritische Tabellen aus, oder Zieldaten nachweislich falsch | `SHA-256 der Treiber-DLL … stimmt nicht` (Exit 7) – möglicher Manipulationsversuch, bis zur Klärung als Sicherheitsvorfall behandeln (bestätigt → P0); Abbruch mit Exit-Code 2/5/7/9; Exit 10 für alle bzw. kritische Tabellen; Credential-Eintrag fehlt nach Kontowechsel (Exit 5); Task läuft nicht mehr (Windows-Passwort abgelaufen); Sanity `FEHLER` (Ziel hat weniger Zeilen als Quelle, Exit 11); Nachkommastellen gerundet (S5, Zieltabellen aus v2.13 oder älter; `operations/RUNBOOK.md`) | < 2 Stunden |
 | **P2 – Mittel** | Einzelne Tabellen fehlerhaft oder verspätet, kein Sicherheitsrisiko | Einzelne Tabelle mit Status `Fehler` nach allen Retries (Exit 10); Sanity `WARNUNG` (+n, z. B. nicht replizierte Löschungen); Schema-Drift (neue Spalte in Firebird, S11); Laufzeit überschreitet 30-Minuten-Takt | < 24 Stunden |
-| **P3 – Niedrig** | Kosmetisch / nicht blockierend | Doppelte Ausgabezeile in `Test-SQLSyncConnections.ps1`; veraltete Doku (S12) | Backlog |
+| **P3 – Niedrig** | Kosmetisch / nicht blockierend | Veraltete Doku (S12); Schönheitsfehler in Konsolenausgaben | Backlog |
 
 ---
 

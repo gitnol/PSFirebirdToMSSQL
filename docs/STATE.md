@@ -2,21 +2,20 @@
 
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I7 – Treiber-Integrität (2026-10-09)
-**Nächster Schritt:** I11 – Rollout-Check (`Test-SQLSyncConnections.ps1 -PreDeploy`)
-**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I7 zählt; geplant danach I11, I8 – Reflexion nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Letztes abgeschlossenes Inkrement:** I11 – Rollout-Check (2026-10-09)
+**Nächster Schritt:** I8 – Wasserzeichen mit Überlappungsfenster + Extrakt als Modulfunktion
+**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I7 und I11 zählen; Reflexion nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**I11 – Rollout-Check.** Der Stand ist seit PR #1 auf `main`, aber nicht produktiv deployt. Vier der
-Risiken unten betreffen das Deployment; `Test-SQLSyncConnections.ps1 -PreDeploy` prüft sie rein lesend in
-einem Lauf (Konfigs gegen Schema, Treiber-Hash, `decimal(18,4)`-Altbestand, Firebird-Version/SYSDBA).
-Danach I8 (Überlappungsfenster + erster Schnitt der Hauptskript-Zerlegung), dann I10a/I10b.
-Reihenfolge nach Konsolidierung (KICKOFF 2a) am 2026-10-09 festgelegt, siehe `CHANGELOG.md`.
+**I8 – Wasserzeichen mit Überlappungsfenster.** Der Incremental-Extrakt liest strikt `> MAX(ts)` (K3);
+neuer Konfigschlüssel `General.IncrementalOverlapMinutes`, Untergrenze und Extrakt-Abfrage als testbare
+Modulfunktion (erster Schnitt der Hauptskript-Zerlegung). Danach ist die Reflexion fällig, dann I10a/I10b.
 
+Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
 `SQLSync_MSSQL_sqltest`, Konfigs `config_i2test_ok.json`, `config_i2test_fehler.json`,
@@ -25,7 +24,7 @@ gebraucht: Datenbank `STAGING_I2TEST` auf SQL-Testserver und Test-Task `SQLSync_
 
 Code-Stand: Sync-Skript v2.16 (Treiber-DLL per SHA-256 geprüft; Schema-Prüfung Fail-Fast; Typmapping mit Precision/Scale), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
 gequotet/parametrisiert), optionale Konfigschlüssel `General.FailOnSanityError`,
-`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (138,
+`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (157,
 Coverage-Gate 80 %); keine CI.
 
 ---
@@ -41,6 +40,7 @@ Coverage-Gate 80 %); keine CI.
 | I5 | Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale; Hauptskript nutzt Modulfunktionen (Typmapping, Strategie) | 2026-10-08 | 2d1a7ef |
 | I6 | Konfig gegen `config.schema.json` geprüft (Fail-Fast), gemeinsame Pfadauflösung, `-ConfigFile` für Hilfsskripte | 2026-10-09 | c5f94f0 |
 | I7 | Treiber-Integrität: SHA-256-Prüfung jeder DLL vor dem Laden, Ausnahme nur über `Firebird.DllSha256` | 2026-10-09 | e173ac2 |
+| I11 | Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (Konfigs, Treiber-Hash, Firebird-CVEs/SYSDBA, `decimal`-Altbestand), rein lesend | 2026-10-09 | 89e4565 |
 | I9 | Scheduled-Task-Setup parametrisiert (neutrale Defaults, `-WhatIf`, Dienstkonto/gMSA); keine internen Begriffe mehr im Repo | 2026-10-08 | 438dd57 |
 
 ---
@@ -49,7 +49,6 @@ Coverage-Gate 80 %); keine CI.
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I11 | Rollout-Check (`-PreDeploy`): Konfigs, Treiber-Hash, Altbestand, Firebird-Version/SYSDBA | Hoch |
 | I8 | Wasserzeichen mit Überlappungsfenster + Extrakt als Modulfunktion | Mittel |
 | I10a | Doku- und Repo-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `MSSQL.Port`, `Protect-SqlString`) | Niedrig |
 | I10b | CI auf GitHub (Pester + PSScriptAnalyzer) | Niedrig |
