@@ -12,6 +12,22 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Doku-Abgleich vor dem ersten Push
+
+### Fixed
+- Versionsangaben: `Sync_Firebird_MSSQL_AutoSchema.ps1` auf 2.16 gehoben (I7 hat das Skript geändert —
+  `-ExpectedSha256` wird durchgereicht); README-Changelogs erklären, dass Versionsnummern den Repo-Stand
+  bezeichnen und jedes Skript die Nummer seiner letzten Änderung trägt
+- `STATE.md`-Risiko „v2.12 noch nicht deployt" auf den aktuellen Branch-Stand gebracht;
+  `architecture/PROJECT_LAYOUT.md` Testzahl 117 → 125 (138 gesamt)
+
+### Confidence / Ungeprüft
+- Vor dem Push geprüft: alle Commits seit `origin/main` ohne interne Begriffe in hinzugefügten Zeilen,
+  Commit-Messages und Dateinamen; keine privaten Dateien versioniert. Bereits vor I1 öffentliche Altlasten
+  in der `main`-History (Beispiel-Hostnamen, interne Konfignamen/Pfade, Sample-Zugangsdaten) bleiben dort.
+
+---
+
 ## 2026-10-09 I7 – Treiber-Integrität
 
 ### Changed

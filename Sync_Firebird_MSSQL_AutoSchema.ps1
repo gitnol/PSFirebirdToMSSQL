@@ -22,7 +22,7 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.15 (Konfig wird gegen config.schema.json geprüft)
+    Version: 2.16 (Treiber-DLL wird per SHA-256 geprüft; DllSha256 wird durchgereicht)
 
     Exit-Codes:
     0  = alle Tabellen erfolgreich

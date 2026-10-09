@@ -73,7 +73,7 @@ Tests (Pester-5-Harness seit I3, Details in `docs/testing/UNIT_TESTS.md`):
 |---|---|
 | `tests/RequiredModules.psd1` | gepinnte Testabhängigkeit: Pester 5.7.1 |
 | `tests/pester.config.ps1` | Testlauf mit gepinntem Pester und Coverage auf `SQLSyncCommon.psm1` (Ziel 80 %); Exit 1 bei rotem Test oder Coverage unter Ziel |
-| `tests/Unit/SQLSyncCommon.Tests.ps1` | 117 Unit-Tests, jede exportierte Funktion von `SQLSyncCommon.psm1` |
+| `tests/Unit/SQLSyncCommon.Tests.ps1` | 125 Unit-Tests (138 inkl. `Setup-ScheduledTasks.Tests.ps1`), jede exportierte Funktion von `SQLSyncCommon.psm1` |
 | `tests/Unit/Setup-ScheduledTasks.Tests.ps1` | 13 Unit-Tests für `Setup-ScheduledTasks.ps1`, nur mit `-WhatIf` (Registrierung und Passwortabfrage gemockt) |
 | `tests/coverage.xml` | Coverage-Report, vom Testlauf erzeugt, gitignored |
 

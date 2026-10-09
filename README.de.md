@@ -580,8 +580,10 @@ Starten in: C:\Scripts
 
 ## Changelog
 
+Die Versionsnummern bezeichnen den Stand des Repositorys. Jedes Skript trägt die Nummer der letzten Version, die es geändert hat (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.16 – v2.13 betraf nur andere Dateien).
+
 ### v2.16 (2026-10-09) - Integritätsprüfung des Treibers
-- Modul-/Repo-Stand; `Sync_Firebird_MSSQL_AutoSchema.ps1` selbst bleibt v2.15
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.16: reicht `Firebird.DllSha256` an die Treiberprüfung durch
 - `Initialize-FirebirdDriver` prüft **jede** DLL vor `Add-Type` per SHA-256: frischer Download, bereits in `%ProgramData%\SQLSync\Drivers\...` vorhandene DLL und per `Firebird.DllPath` konfigurierte DLL (vorher nur der Download). Zulässig: Original-Hashes von `lib\net8.0` und `lib\netstandard2.1` aus dem NuGet-Paket 10.3.4. Abweichung → `SHA-256 der Treiber-DLL (vorhanden|Download) stimmt nicht ... Treiber wurde NICHT geladen`, Sync-Exit-Code 7 (`Test-SQLSyncConnections.ps1` 4, `Get_Firebird_Schema.ps1` und `Manage_Config_Tables.ps1` 3); ein abweichender Download-Ordner wird verworfen
 - Neuer optionaler Konfigschlüssel `Firebird.DllSha256` (Schema `^[A-Fa-f0-9]{64}$`) bzw. Parameter `-ExpectedSha256` für eine abweichende Treiber-DLL; dann gilt nur dieser Hash. Alle vier Skripte reichen ihn durch
 - `ServicePointManager.SecurityProtocol` wird nur für den Download gesetzt und danach wiederhergestellt
