@@ -59,6 +59,7 @@ Log prüfen. Exit-Codes der Hilfsskripte: `features/firebird-mssql-sync.md`.
 | Keine Tabellenfehler | keine Zeile mit `] ERROR (Versuch` als letztem Versuch, keine `Fehler` in Spalte Status | `Select-String` |
 | Datenkonsistenz | Sanity `OK` für alle Tabellen; `FEHLER (-n)` = fehlende Zeilen | `Select-String` |
 | SP-Installation sauber | keine Zeile `PRE-FLIGHT CHECK (PROCEDURE) FAILED` (sonst Exit `9`) | `Select-String` |
+| Geladene Zeilen (Spalte Sync = `RowsLoaded`) | Incremental seit v2.18 auch ohne Quelländerung oft > 0: die Zeilen im Überlappungsfenster (`General.IncrementalOverlapMinutes`, Default 10 Min unter dem Wasserzeichen) werden bei jedem Lauf erneut gelesen und idempotent gemergt. `Sync > 0` ist daher kein Beleg für Quelländerungen, `Sync = 0` bei aktiver Quelle aber weiterhin auffällig | Zusammenfassungstabelle |
 
 ---
 
@@ -120,9 +121,12 @@ eingerichtet; die Ausgabe ist für die Konsole gedacht.
 | Signal | Mögliche Ursache | Maßnahme (`operations/RUNBOOK.md`) |
 |---|---|---|
 | `Abschluss: Fehler` | Tabelle nach allen Retries fehlgeschlagen | Störungsfall „Tabelle mit Status Fehler" |
-| Sanity `FEHLER (-n)` | Zeilen fehlen im Ziel (Wasserzeichen S6, Fehler) | ForceFullSync für Tabelle |
+| Sanity `FEHLER (-n)` | Zeilen fehlen im Ziel (Commit-Verzögerung länger als das Überlappungsfenster, Rest von S6/K3; Fehler) | ForceFullSync für Tabelle |
 | Sanity `WARNUNG (+n)` | Löschungen nicht repliziert (S7) | CleanupOrphans / ForceFullSync |
 | `Warnung: Versuch n von m` | Transiente Fehler, Retry lief | beobachten; dauerhaft → Ursache klären |
+| `(Erstlauf (Zieltabelle fehlt) - Vollabzug)` in Info | Incremental-Tabelle ohne Zieltabelle (Erstlauf oder Zieltabelle gelöscht): Vollabzug, Zieltabelle wird angelegt | erwartet beim ersten Lauf; sonst klären, wer die Zieltabelle gelöscht hat |
+| `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)` in Info | Incremental-Tabelle mit leerer Zieltabelle oder nur NULL in der Zeitstempelspalte (z. B. nachgerüstete Spalte): Vollabzug ab 1900-01-01 | erwartet nach manuellem Leeren; sonst Ursache klären |
+| `Abschluss: Fehler` mit `Invalid column name '<TS-Spalte>'` | Zeitstempelspalte fehlt in der vorhandenen Zieltabelle; seit v2.18 Fehler statt stillem Vollabzug | Störungsfall „Tabelle mit Status Fehler“ |
 | `Cleanup-Fehler:` in Info | Orphan-Cleanup gescheitert (z. B. nicht-numerische ID) | Störungsfall „Löschungen" |
 | `PK Err:` in Info | PK auf Zieltabelle nicht anlegbar (Duplikate/NULL in ID) | Daten/ID-Spalte prüfen, `TableOverrides` |
 | `PRE-FLIGHT CHECK (PROCEDURE) FAILED: Fehler beim Ausführen eines SQL-Batch` (Exit `9`) | SP-Installation fehlgeschlagen, Lauf abgebrochen | Störungsfall „Stored Procedure" |

@@ -1,7 +1,7 @@
 # Feature: Firebird → MS SQL Sync (Sync_Firebird_MSSQL_AutoSchema.ps1)
 
 Hauptfeature des Projekts. Erstellt auf Basis von `features/FEATURE-template.md`.
-Stand: Skriptversion 2.14 (2026-10-08), Modul `SQLSyncCommon.psm1` 1.0.0; Erstfassung auf Commit 721d5e0.
+Stand: Skriptversion 2.18 (2026-10-09), Modul `SQLSyncCommon.psm1` 1.0.0; Erstfassung auf Commit 721d5e0.
 
 ---
 
@@ -57,6 +57,7 @@ Vollständige Referenz: `architecture/CONFIGURATION.md`.
 | `General.FailOnSanityError` | `true` | Sanity `FEHLER` → Exit-Code `11`; `false` = nur im Log |
 | `General.CleanupOrphans` | `false` | Im Ziel Zeilen löschen, deren ID in Firebird nicht mehr existiert |
 | `General.OrphanCleanupBatchSize` | `50000` | BatchSize beim Laden der IDs (≥ 1000) |
+| `General.IncrementalOverlapMinutes` | `10` | Überlappungsfenster des Incremental-Extrakts in Minuten (0–1440): gelesen wird ab Wasserzeichen minus Fenster |
 | `General.DeleteLogOlderThanDays` | `30` | Log-Rotation, `0` = aus |
 | `General.IdColumn` | `"ID"` | Standard-ID-Spalte |
 | `General.TimestampColumns` | `["GESPEICHERT"]` | Kandidaten für die Timestamp-Spalte, erste vorhandene gewinnt |
@@ -115,8 +116,15 @@ jeder Versuch öffnet eigene Verbindungen und schließt sie im `finally`):
   `RecreateStagingTable` gesetzt ist (Typmapping per `ConvertTo-SqlServerType`, siehe
   „Typmapping“, ID-Spalte `NOT NULL`).
 - **C – Extrakt:** Incremental: Wasserzeichen = `MAX(<ts>)` der Zieltabelle
-  (Fehler oder leer → `1900-01-01`), Firebird-Abfrage
-  `WHERE <ts> > @LastDate` (parametrisiert). Sonst `SELECT *`.
+  (`Get-SQLSyncIncrementalWatermark`; Zieltabelle fehlt → Info
+  `(Erstlauf (Zieltabelle fehlt) - Vollabzug)`, Zieltabelle leer → Info
+  `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)`, jeweils ab `1900-01-01`; scheitert die
+  `MAX`-Abfrage auf eine vorhandene Zieltabelle → Exception, Retry, ggf. Status
+  `Fehler`). Untergrenze `@LastDate` = Wasserzeichen minus
+  `General.IncrementalOverlapMinutes` (`Get-SQLSyncIncrementalLowerBound`),
+  Firebird-Abfrage `WHERE <ts> >= @LastDate` (inklusive, parametrisiert; bis v2.16
+  strikt `> MAX(ts)`). Sonst `SELECT *`. Beide Abfragen liefert
+  `Get-SQLSyncExtractQuery`.
 - **D – Load:** Staging `TRUNCATE` (entfällt bei frisch angelegter Staging),
   `SqlBulkCopy` mit Spaltenzuordnung nach Namen.
 - **E – Merge/Struktur:** Zieltabelle per `SELECT * INTO ... WHERE 1=0` aus
@@ -145,7 +153,7 @@ bzw. `ERGEBNIS: FEHLER (Exit-Code N) - betroffene Tabellen: …`,
 
 | Strategie | Bedingung | Extrakt | Schreiben ins Ziel | Löschungen |
 |---|---|---|---|---|
-| `Incremental` | ID- **und** Timestamp-Spalte vorhanden | nur `ts > MAX(ts)` im Ziel | MERGE (Upsert) | nein (nur mit CleanupOrphans) |
+| `Incremental` | ID- **und** Timestamp-Spalte vorhanden | nur `ts >= MAX(ts) − IncrementalOverlapMinutes` im Ziel | MERGE (Upsert) | nein (nur mit CleanupOrphans) |
 | `FullMerge` | ID vorhanden, keine Timestamp-Spalte | alle Zeilen | MERGE (Upsert, jede Zeile wird aktualisiert) | nein (nur mit CleanupOrphans) |
 | `FullMerge (Forced)` | wäre Incremental, aber `ForceFullSync = true` | alle Zeilen | `TRUNCATE` Ziel + MERGE | implizit ja (Ziel wird neu befüllt) |
 | `Snapshot` | keine ID-Spalte | alle Zeilen | `TRUNCATE` Ziel + `INSERT SELECT *` | implizit ja |
@@ -259,11 +267,12 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
 | ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (S9) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
 | ~~Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung~~ | früher Prüfung nur beim Download (S4) | behoben in I7 (2026-10-09): jede DLL wird vor dem Laden geprüft, Abweichung → Exit 7; echter Lauf mit manipulierter Kopie bestanden. Grenze: eine in der Sitzung bereits geladene Assembly wird ohne Prüfung weiterverwendet |
-| Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung) | striktes `> MAX(ts)` (S6) | geplant in I8; Workaround Weekly Full |
+| ~~Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung)~~ | früher striktes `> MAX(ts)` (S6) | weitgehend behoben in I8 / v2.18: Extrakt ab Wasserzeichen minus `General.IncrementalOverlapMinutes` (Default 10), inklusive; Integrationslauf 2026-10-09 bestanden. Rest: Commit-Verzögerungen länger als das Fenster holt erst der Weekly Full (`ForceFullSync`) |
+| `RowsLoaded` ist bei Incremental auch ohne Quelländerung oft > 0 | Überlappungsfenster liest Zeilen erneut (I8) | by design; MERGE idempotent, keine Duplikate |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
 | `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10a |
-| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) liegen im Modul (unit-getestet) |
+| Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) und der Incremental-Extrakt (seit I8) liegen im Modul (unit-getestet) |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
 
 ---
@@ -292,11 +301,13 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 ## Teststrategie
 
 Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
-mit 144 Pester-5-Tests (insgesamt 157 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
+mit 163 Pester-5-Tests (insgesamt 176 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
-`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 95,29 % am 2026-10-09)
+`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 95,63 % am 2026-10-09)
 oder schnell `Invoke-Pester ./tests`. Die Diskriminierung der Tests ist per
-Mutationsprüfung belegt (13 von 13 Mutationen erkannt). Die Einstiegsskripte werden
+Mutationsprüfung belegt (13 von 13 Mutationen erkannt; für den Incremental-Extrakt aus I8
+weitere 7 von 7). Seit I8 ist der Extrakt (Wasserzeichen, Untergrenze, Abfrage) im Modul
+und damit unit-getestet. Die Einstiegsskripte werden
 weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` (vor Deployments mit
 `-PreDeploy`, rein lesend) und die Zusammenfassungstabelle eines Laufs; eine CI gibt es nicht.
 
@@ -321,8 +332,12 @@ weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` (vor Deploymen
       Strategie, Status, Zeilenzahlen und Sanity.
 - [ ] Nach einem fehlerfreien Lauf mit `ForceFullSync` haben alle Tabellen
       Sanity `OK`.
-- [ ] Ein zweiter Incremental-Lauf ohne Änderungen in Firebird lädt 0 Zeilen und
-      verändert das Ziel nicht.
+- [ ] Ein zweiter Incremental-Lauf ohne Änderungen in Firebird lädt nur die Zeilen
+      im Überlappungsfenster erneut (seit I8; mit `IncrementalOverlapMinutes = 0` nur
+      die Zeilen mit Zeitstempel = Wasserzeichen) und verändert das Ziel inhaltlich nicht.
+- [ ] Ein Datensatz, der im Ziel fehlt und dessen Zeitstempel innerhalb des
+      Überlappungsfensters unter dem Wasserzeichen liegt, erscheint nach dem nächsten
+      Incremental-Lauf wieder im Ziel (K3, Integrationslauf 2026-10-09 bestanden).
 - [ ] In Firebird geänderte Zeilen mit neuerem Zeitstempel erscheinen nach dem
       nächsten Incremental-Lauf aktualisiert im Ziel.
 - [ ] Ein Fehler in einer Tabelle bricht die anderen Tabellen nicht ab; Retries

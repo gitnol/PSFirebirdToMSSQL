@@ -198,9 +198,10 @@ jemand bemerkt:
   ab – Werte mit mehr als 4 Nachkommastellen wurden gerundet, Werte mit Precision > 18 liefen über
   (Fehler oder Verlust). Seit v2.14 (I5) für neu angelegte Tabellen mitigiert, siehe unten;
   bestehende Zieltabellen behalten ihren Typ.
-- **S6:** Das Wasserzeichen ist strikt `> MAX(ts)` der Zieltabelle; Sätze mit identischem
-  Zeitstempel oder aus länger laufenden Firebird-Transaktionen werden bis zum nächsten Full-Lauf
-  übersprungen. Fällt die `MAX`-Abfrage aus, wird `1900-01-01` verwendet (Voll-Extrakt).
+- **S6:** Bis Version 2.16 war das Wasserzeichen strikt `> MAX(ts)` der Zieltabelle; Sätze mit
+  identischem Zeitstempel oder aus länger laufenden Firebird-Transaktionen wurden bis zum nächsten
+  Full-Lauf übersprungen. Fiel die `MAX`-Abfrage aus, wurde still `1900-01-01` verwendet
+  (Voll-Extrakt). Seit v2.18 (I8) weitgehend mitigiert, siehe unten.
 - Löschungen werden standardmäßig nicht repliziert (S7, by design; `CleanupOrphans` optional).
 
 **Aktuelle Mitigation (im Code vorhanden):**
@@ -228,13 +229,21 @@ jemand bemerkt:
   Zieltabellen (`Find-SQLSyncDecimalTruncation`) und meldet jede Zielspalte mit kleinerer Precision
   oder Scale als `WARNUNG`. In der Testumgebung erprobt: künstlich verkleinerte Spalte erkannt,
   Korrektur per RUNBOOK stellte die Werte wieder her.
+- Seit v2.18 (I8): Der Incremental-Extrakt liest ab Wasserzeichen minus Überlappungsfenster
+  (`General.IncrementalOverlapMinutes`, Default 10 Min, 0–1440), inklusive (`>= @LastDate`). Spät
+  committete Sätze mit Zeitstempel ≤ Wasserzeichen werden nachgeholt, solange die Verzögerung
+  kleiner als das Fenster ist. Scheitert die `MAX`-Abfrage auf eine vorhandene Zieltabelle, endet
+  die Tabelle nach den Retries mit `Fehler` (Exit 10) statt still voll zu laden. Unit-Tests
+  vorhanden; Integrationslauf am 2026-10-09: ein im Ziel gelöschter Satz knapp unter dem
+  Wasserzeichen wurde mit v2.18 wiederhergestellt (Sanity `OK`), mit v2.16 nicht (Sanity `FEHLER`).
 
 **Offene Maßnahme:** (I2 abgenommen 2026-10-08: echter Lauf Exit 10, Aufgabenplanung `0xA`.) Migration von Zieltabellen aus v2.13 oder
-älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe); **I8** (Überlappungsfenster für das Wasserzeichen). Backlog: strukturiertes
+älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe). Backlog: strukturiertes
 Run-Ergebnis (JSON/CSV) und Alarmierung auf `LastTaskResult`.
 
 **Restrisiko:** Mittel – Tabellen- und Sanity-Fehler sind über den Exit-Code erkennbar (Abnahme
-offen), es gibt aber keine aktive Alarmierung; S6 bleibt offen, ebenso S5 für nicht migrierte
+offen), es gibt aber keine aktive Alarmierung; von S6 bleiben nur Commit-Verzögerungen länger als das
+Überlappungsfenster offen (bis zum Weekly Full), ebenso S5 für nicht migrierte
 Zieltabellen aus v2.13 oder älter – beides erzeugt nicht immer einen Sanity-`FEHLER` (z. B.
 gerundete Nachkommastellen bei gleicher Zeilenzahl).
 
@@ -349,7 +358,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
 | S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 (erledigt 2026-10-09) |
 | S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand: Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy`, Korrektur siehe RUNBOOK) |
-| S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 |
+| S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 (erledigt 2026-10-09: Überlappungsfenster; Rest: Verzögerungen länger als das Fenster → Weekly Full) |
 | S7 | Löschungen nicht repliziert; Orphan-Cleanup nur numerische IDs | K4, K5 | by design / `BACKLOG.md` |
 | S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5/I6 (erledigt: Typmapping/Strategie I5 2026-10-08, Configpfad `Resolve-SQLSyncConfigPath` I6 2026-10-09) |
 | S9 | `config.schema.json` wird nie geprüft | K7 | I6 (erledigt 2026-10-09; Fail-Fast in allen vier Skripten) |

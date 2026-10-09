@@ -12,7 +12,7 @@ mit eigenen Konfigdateien (Job-Profile „Daily Diff" und „Weekly Full").
 | Schicht | Technologie |
 |---------|-------------|
 | Einstiegspunkte | PowerShell-7-Skripte im Repo-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1` u. a.) |
-| Gemeinsame Logik | PowerShell-Modul `SQLSyncCommon.psm1` (Konfig, Credentials, Connection Strings, Treiber, Typmapping) |
+| Gemeinsame Logik | PowerShell-Modul `SQLSyncCommon.psm1` (Konfig, Credentials, Connection Strings, Treiber, Typmapping, Incremental-Extrakt) |
 | Quelle | Firebird-Server (Port 3050) über `FirebirdSql.Data.FirebirdClient` 10.3.4 (.NET 8) |
 | Ziel | MS SQL Server 2017+ über `System.Data.SqlClient`; T-SQL-Prozedur `dbo.sp_Merge_Generic` (`sql_server_setup.sql`) |
 | Parallelität | `ForEach-Object -Parallel -ThrottleLimit NumberOfThreads` (eine Tabelle pro Runspace) |
@@ -58,8 +58,8 @@ flowchart TD
     PAR[ForEach-Object -Parallel<br/>je Tabelle: Import-Module SQLSyncCommon<br/>Retry-Schleife] --> SCH
     FB[(Firebird<br/>Quelltabelle)] --> SCH
     SCH[Schema lesen · Get-TableColumnConfig<br/>Incremental / FullMerge / Snapshot<br/>Typen per ConvertTo-SqlServerType] --> EXT
-    WM[(Wasserzeichen<br/>MAX Timestamp der Zieltabelle)] --> EXT
-    EXT[Extrakt aus Firebird<br/>WHERE ts > @LastDate] --> BULK
+    WM[(Wasserzeichen<br/>MAX Timestamp der Zieltabelle<br/>minus IncrementalOverlapMinutes)] --> EXT
+    EXT[Extrakt aus Firebird<br/>WHERE ts >= @LastDate] --> BULK
     BULK[SqlBulkCopy] --> STG[(STG_Tabelle<br/>Staging)]
     STG --> MERGE{Strategie}
     MERGE -->|Incremental / FullMerge| SP[EXEC sp_Merge_Generic]
@@ -85,7 +85,7 @@ Ablauf eines Laufs im Detail (Nummern = Abschnitte im Sync-Skript):
    importiert zuerst das Modul (`Import-Module $using:ModulePath`):
    Schema lesen → ID-/Timestamp-Spalte und Strategie per `Get-TableColumnConfig` (`TableOverrides` > globale
    Werte) → Staging anlegen (Typen per `ConvertTo-SqlServerType` inkl. Precision/Scale)/leeren →
-   Extrakt + `SqlBulkCopy` → Zieltabelle bei Bedarf anlegen, PK nachrüsten → `MERGE` bzw. Snapshot →
+   Extrakt (Incremental: ab Wasserzeichen minus Überlappungsfenster) + `SqlBulkCopy` → Zieltabelle bei Bedarf anlegen, PK nachrüsten → `MERGE` bzw. Snapshot →
    optional Orphan-Cleanup → Sanity Check → Ergebnisobjekt.
 4. Zusammenfassung (9), Log-Rotation (10), Exit-Code per `Get-SyncExitCode` (11, Zeile `ERGEBNIS: …`),
    `Stop-Transcript`, `exit $ExitCode`.
@@ -98,7 +98,9 @@ Details zur Fachlogik: `docs/features/firebird-mssql-sync.md`.
 
 ```
 Sync_Firebird_MSSQL_AutoSchema.ps1 → Orchestriert einen Lauf: Pre-Flight, parallele Tabellen-Synchronisation, Zusammenfassung, Log-Rotation
-SQLSyncCommon.psm1                 → Gemeinsame Infrastruktur: Konfig laden/validieren, Credentials, Connection Strings, Treiber, Typmapping
+SQLSyncCommon.psm1                 → Gemeinsame Infrastruktur: Konfig laden/validieren, Credentials, Connection Strings, Treiber, Typmapping;
+                                     seit I8 auch der Incremental-Extrakt (Get-SQLSyncIncrementalWatermark,
+                                     Get-SQLSyncIncrementalLowerBound, Get-SQLSyncExtractQuery)
 sql_server_setup.sql               → Generische MERGE-Prozedur dbo.sp_Merge_Generic (Upsert Staging → Ziel, kein DELETE)
 Setup_Credentials.ps1              → Legt die Credential-Manager-Einträge SQLSync_Firebird / SQLSync_MSSQL interaktiv an
 Setup-ScheduledTasks.ps1           → Registriert die Task-Scheduler-Jobs Daily Diff / Weekly Full
@@ -166,7 +168,7 @@ Fehler in einem Schritt führen zum nächsten Versuch der Retry-Schleife; nach d
 | Constraint | Auswirkung |
 |-----------|-----------|
 | PowerShell 7.0+ | `ForEach-Object -Parallel`; jede Tabelle in eigenem Runspace, Modulfunktionen dort nicht automatisch verfügbar → jeder Runspace importiert `SQLSyncCommon.psm1` (`Import-Module $using:ModulePath`) und nutzt dessen Funktionen |
-| Wasserzeichen = `MAX(ts)` der Zieltabelle, Vergleich `>` | kein separater Zustandsspeicher nötig; Datensätze mit gleichem/älterem Zeitstempel können übersprungen werden (Inkrement I8) |
+| Wasserzeichen = `MAX(ts)` der Zieltabelle; gelesen wird ab Wasserzeichen minus `IncrementalOverlapMinutes`, Vergleich `>=` (seit I8 / v2.18, vorher strikt `>`) | kein separater Zustandsspeicher nötig; spät committete Datensätze mit gleichem/älterem Zeitstempel werden nachgeholt, solange die Verzögerung kleiner als das Fenster ist (Rest: Weekly Full); Zeilen im Fenster werden bei jedem Lauf erneut gelesen (MERGE idempotent) |
 | Staging + generische `MERGE`-Prozedur | Delta-Läufe ohne Löschungen; Löschungen nur über Orphan-Cleanup oder Weekly Full ([Entscheidung ADR-001](ADR/ADR-001-staging-merge-statt-direktem-upsert.md)) |
 | Zieltabellen werden automatisch per `SELECT * INTO … WHERE 1=0` angelegt | Typen stammen aus dem Staging-Mapping (`ConvertTo-SqlServerType`, `DECIMAL(p,s)` aus dem Firebird-Schema seit v2.14); bestehende Tabellen werden nie geändert — Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` (Migration: `operations/RUNBOOK.md`); keine automatische Spaltenerweiterung |
 | Credentials im Credential Manager, `Persist = LocalMachine`, an das Windows-Konto gebunden | Task muss unter demselben Konto laufen, unter dem `Setup_Credentials.ps1` ausgeführt wurde |

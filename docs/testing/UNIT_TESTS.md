@@ -1,13 +1,14 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
 > **Stand 2026-10-09: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 157 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (144) – jede exportierte
+> 176 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (163) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
 > die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-09:
-> 95,29 %, Stand nach Rollout-Check `-PreDeploy`). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
-> (Modul 13 von 13, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
+> 95,63 %, Stand nach I8 Überlappungsfenster). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
+> (Modul 13 von 13, Incremental-Extrakt aus I8 7 von 7, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt,
+> siehe Abschnitt 8.6).
 > Weiterhin offen: keine CI (Backlog), keine automatisierten Tests für die übrigen Einstiegsskripte
 > (siehe `INTEGRATION_TESTS.md`), keine Testhelfer unter `tests/helpers/`.
 
@@ -309,12 +310,12 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-09 (157 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 144, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-09 (176 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 163, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
 | `Get-SyncExitCode` | Ja | Exit 0/10/11, Vorrang 10 vor 11, Sanity `WARNUNG`, `FailOnSanityError = false`, keine bzw. zu wenige Ergebnisse |
-| `Get-SQLSyncConfig` | Ja | Defaults (u. a. `GlobalTimeout`, `FailOnSanityError`), Validierungen (`GlobalTimeout`, `Tables`, `OrphanCleanupBatchSize`, fehlende Datei, ungültiges JSON), Namensprüfung je Feld (`Tables`, `IdColumn`, `TimestampColumns`, `MSSQL.Database`, Prefix/Suffix, `TableOverrides`-Schlüssel und -Spalten → throw), Grenze Zieltabellenname 128 Zeichen, `TimestampColumns` als Array, TableOverrides, Credential-Targets aus der Konfiguration; mit `-SchemaPath` gegen das echte `config.schema.json`: schemakonforme Konfig läuft durch, falscher Typ wirft mit JSON-Pfad, unbekannter Schlüssel (Tippfehler) wirft, fehlende Schema-Datei nur Warnung, Schema akzeptiert dieselben Namen wie die Whitelist (`b_kunde`, `RDB$X`) |
+| `Get-SQLSyncConfig` | Ja | Defaults (u. a. `GlobalTimeout`, `FailOnSanityError`, `IncrementalOverlapMinutes` = 10), Validierungen (`GlobalTimeout`, `Tables`, `OrphanCleanupBatchSize`, `IncrementalOverlapMinutes` außerhalb 0..1440 bzw. 0 erlaubt, fehlende Datei, ungültiges JSON), Namensprüfung je Feld (`Tables`, `IdColumn`, `TimestampColumns`, `MSSQL.Database`, Prefix/Suffix, `TableOverrides`-Schlüssel und -Spalten → throw), Grenze Zieltabellenname 128 Zeichen, `TimestampColumns` als Array, TableOverrides, Credential-Targets aus der Konfiguration; mit `-SchemaPath` gegen das echte `config.schema.json`: schemakonforme Konfig läuft durch, falscher Typ wirft mit JSON-Pfad, unbekannter Schlüssel (Tippfehler) wirft, fehlende Schema-Datei nur Warnung, Schema akzeptiert dieselben Namen wie die Whitelist (`b_kunde`, `RDB$X`) |
 | `Resolve-SQLSyncConfigPath` | Ja | leer → `config.json` im Skriptordner, existierender absoluter Pfad, relativer Name im Skriptordner, nicht existierender Pfad unverändert |
 | `Assert-SqlIdentifier` | Ja | Gültige Namen (inkl. `_`, `$`, Ziffern, 63 Zeichen) laufen durch; ungültige werfen `Ungültiger Name in '<Feld>'`: `A"B`, `X;DROP`, `A]B`, `A'B`, Leerzeichen, `-`, leer (ohne `-AllowEmpty`), 64 Zeichen; leer mit `-AllowEmpty` erlaubt |
 | `Get-ConfigValue` | Ja | Wert vorhanden, Default bei fehlendem Wert, `false` wird nicht durch den Default ersetzt |
@@ -330,8 +331,11 @@ Ist-Stand 2026-10-09 (157 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Test-FirebirdDriverIntegrity` | Ja, mit Mocks (`Get-FileHash`, `Test-Path`, `Add-Type` darf nicht aufgerufen werden) | Original-DLL → `OK` ohne Laden, falscher Hash → `FEHLER`, keine DLL → `FEHLT`, `-ExpectedSha256` ersetzt die Original-Hashes |
 | `Get-FirebirdServerAdvisory` | Ja | betroffene Versionen (je Hauptversion vor dem Fix, < 3) → beide CVEs; behobene Versionen (3.0.14, 4.0.7, 5.0.4 und neuer, > 5) → nichts; unlesbare Version → Hinweis `VERSION-UNBEKANNT` statt Fehler |
 | `Find-SQLSyncDecimalTruncation` | Ja | Zielspalte mit kleinerer Scale bzw. kleinerer Precision → Treffer mit Ziel- und Quelltyp; gleiche oder größere Zieltypen und fehlende Zieltabellen → nichts; Prefix/Suffix, Namensvergleich ohne Groß-/Kleinschreibung |
+| `Get-SQLSyncIncrementalLowerBound` | Ja (Describe `Get-SQLSyncIncrementalLowerBound (I8)`) | ohne Wasserzeichen → `1900-01-01`; Wasserzeichen minus Fenster; Fenster 0 → Wasserzeichen selbst (Millisekunden bleiben); negatives Fenster → throw |
+| `Get-SQLSyncIncrementalWatermark` | Ja, mit nachgebildeter Connection (Describe `Get-SQLSyncIncrementalWatermark (I8)`) | Zieltabelle fehlt → Grund „Zieltabelle fehlt“ ohne `MAX`-Abfrage; leere Tabelle → Grund „leer“; `MAX(ts)` als Wasserzeichen ohne Grund; scheiternde `MAX`-Abfrage wirft (kein stiller Vollabzug); Tabellenname als Parameter, Namen in `[...]`, Timeout gesetzt; Zielname über 63 bis 128 Zeichen erlaubt; ungültige Namen werfen, bevor SQL läuft |
+| `Get-SQLSyncExtractQuery` | Ja (Describe `Get-SQLSyncExtractQuery (I8)`) | Incremental mit `>= @LastDate` (inklusive), ohne `-Incremental` ganze Tabelle, `-Incremental` ohne Zeitstempelspalte → throw, ungültige Namen → throw |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
-| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`) und die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) |
+| Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`), die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) und seit v2.18 Wasserzeichen, Untergrenze und Extrakt-Abfrage |
 
 Querschnittlich: Edge Cases (leeres Array, `$null`, Sonderzeichen in Tabellennamen und
 Passwörtern, Identifier-Allow-List `^[A-Za-z0-9_$]+$` mit Quote-, Klammer- und Semikolon-Fällen).
@@ -579,6 +583,10 @@ Strategiewahl, Passwort-Maskierung (Firebird und SQL Server), `Get-ConfigValue` 
 `Close-DatabaseConnection` ohne Dispose, Default `GlobalTimeout`, ignorierte Integrated Security,
 Farbe in `Write-SyncStatus`, Escaping in `Protect-SqlString`, entfernter Admin-Check, entfernte
 `Tables`-Validierung, ignoriertes `CredentialTarget`.
+
+Angewendet in I8 auf die Funktionen des Incremental-Extrakts (`Get-SQLSyncIncrementalLowerBound`,
+`Get-SQLSyncIncrementalWatermark`, `Get-SQLSyncExtractQuery`, Validierung `IncrementalOverlapMinutes`)
+mit 7 Mutationen, alle erkannt.
 
 Angewendet in I9 auf `Setup-ScheduledTasks.ps1` mit 8 Mutationen (in einer Kopie, nie im
 Arbeitsstand), alle erkannt. Ein echter Registrierungslauf mit Adminrechten ersetzt das nicht.

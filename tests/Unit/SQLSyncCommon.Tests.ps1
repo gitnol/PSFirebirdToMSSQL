@@ -695,3 +695,120 @@ Describe 'Test-FirebirdDriverIntegrity (I11)' {
         (Test-FirebirdDriverIntegrity -DllPath $script:Dll -ExpectedSha256 ('AB' * 32)).Status | Should -Be 'FEHLER'
     }
 }
+
+Describe 'Get-SQLSyncIncrementalLowerBound (I8)' {
+    It 'liefert 1900-01-01 ohne Wasserzeichen (Erstlauf/leere Tabelle)' {
+        Get-SQLSyncIncrementalLowerBound -Watermark $null -OverlapMinutes 10 | Should -Be ([datetime]'1900-01-01')
+    }
+    It 'zieht das Überlappungsfenster vom Wasserzeichen ab' {
+        Get-SQLSyncIncrementalLowerBound -Watermark ([datetime]'2026-10-09 12:00:00') -OverlapMinutes 10 |
+            Should -Be ([datetime]'2026-10-09 11:50:00')
+    }
+    It 'liefert bei Überlappung 0 das Wasserzeichen selbst' {
+        Get-SQLSyncIncrementalLowerBound -Watermark ([datetime]'2026-10-09 12:00:00.123') -OverlapMinutes 0 |
+            Should -Be ([datetime]'2026-10-09 12:00:00.123')
+    }
+    It 'wirft bei negativer Überlappung' {
+        { Get-SQLSyncIncrementalLowerBound -Watermark ([datetime]'2026-10-09') -OverlapMinutes -1 } | Should -Throw
+    }
+}
+
+Describe 'Get-SQLSyncIncrementalWatermark (I8)' {
+    BeforeAll {
+        # Nachbildung von SqlConnection/SqlCommand: protokolliert Abfragen, Antworten je Abfragetyp
+        function New-FakeSqlConnection {
+            param([int]$TableCount = 1, [object]$MaxValue = [DBNull]::Value, [switch]$MaxThrows)
+            $Conn = [PSCustomObject]@{ Log = [System.Collections.Generic.List[object]]::new(); TableCount = $TableCount; MaxValue = $MaxValue; MaxThrows = [bool]$MaxThrows }
+            $Conn | Add-Member ScriptMethod CreateCommand {
+                $Owner = $this
+                $Params = [PSCustomObject]@{ Items = @{} }
+                $Params | Add-Member ScriptMethod AddWithValue { param($n, $v) $this.Items[$n] = $v }
+                $Cmd = [PSCustomObject]@{ CommandText = ''; CommandTimeout = 0; Parameters = $Params; Owner = $Owner }
+                $Cmd | Add-Member ScriptMethod ExecuteScalar {
+                    $this.Owner.Log.Add([PSCustomObject]@{ Sql = $this.CommandText; Params = $this.Parameters.Items; Timeout = $this.CommandTimeout })
+                    if ($this.CommandText -like '*INFORMATION_SCHEMA.TABLES*') { return $this.Owner.TableCount }
+                    if ($this.Owner.MaxThrows) { throw "Invalid column name 'GESPEICHERT'." }
+                    return $this.Owner.MaxValue
+                }
+                return $Cmd
+            }
+            return $Conn
+        }
+    }
+
+    It 'meldet Erstlauf und fragt MAX nicht ab, wenn die Zieltabelle fehlt' {
+        $Conn = New-FakeSqlConnection -TableCount 0
+        $r = Get-SQLSyncIncrementalWatermark -Connection $Conn -TargetTableName 'DWH_T1' -TimestampColumn 'GESPEICHERT' -Timeout 30
+        $r.Watermark | Should -BeNullOrEmpty
+        $r.Reason    | Should -BeLike '*Zieltabelle fehlt*'
+        @($Conn.Log | Where-Object Sql -like '*MAX(*').Count | Should -Be 0
+    }
+    It 'meldet eine leere Zieltabelle ohne Wasserzeichen' {
+        $r = Get-SQLSyncIncrementalWatermark -Connection (New-FakeSqlConnection -MaxValue ([DBNull]::Value)) -TargetTableName 'DWH_T1' -TimestampColumn 'GESPEICHERT' -Timeout 30
+        $r.Watermark | Should -BeNullOrEmpty
+        $r.Reason    | Should -BeLike '*leer*'
+    }
+    It 'liefert MAX(ts) als Wasserzeichen ohne Hinweis' {
+        $r = Get-SQLSyncIncrementalWatermark -Connection (New-FakeSqlConnection -MaxValue ([datetime]'2026-10-09 12:00')) -TargetTableName 'DWH_T1' -TimestampColumn 'GESPEICHERT' -Timeout 30
+        $r.Watermark | Should -Be ([datetime]'2026-10-09 12:00')
+        $r.Reason    | Should -BeNullOrEmpty
+    }
+    It 'wirft, wenn die MAX-Abfrage auf eine vorhandene Tabelle scheitert (kein stiller Vollabzug)' {
+        { Get-SQLSyncIncrementalWatermark -Connection (New-FakeSqlConnection -MaxThrows) -TargetTableName 'DWH_T1' -TimestampColumn 'GESPEICHERT' -Timeout 30 } |
+            Should -Throw '*GESPEICHERT*'
+    }
+    It 'übergibt den Tabellennamen als Parameter, quotet die Namen in MAX und setzt das Timeout' {
+        $Conn = New-FakeSqlConnection -MaxValue ([datetime]'2026-10-09')
+        $null = Get-SQLSyncIncrementalWatermark -Connection $Conn -TargetTableName 'DWH_T1' -TimestampColumn 'GESPEICHERT' -Timeout 77
+        $Conn.Log[0].Params['@TableName'] | Should -Be 'DWH_T1'
+        $Conn.Log[1].Sql | Should -Be 'SELECT MAX([GESPEICHERT]) FROM [DWH_T1]'
+        $Conn.Log.Timeout | Should -Be @(77, 77)
+    }
+    It 'akzeptiert Zielnamen über 63 Zeichen (Prefix + Tabelle + Suffix, bis 128)' {
+        $Long = 'P' * 70
+        $r = Get-SQLSyncIncrementalWatermark -Connection (New-FakeSqlConnection -MaxValue ([datetime]'2026-10-09')) -TargetTableName $Long -TimestampColumn 'GESPEICHERT' -Timeout 30
+        $r.Watermark | Should -Be ([datetime]'2026-10-09')
+    }
+    It 'lehnt ungültige Namen ab, bevor SQL ausgeführt wird' {
+        $Conn = New-FakeSqlConnection
+        { Get-SQLSyncIncrementalWatermark -Connection $Conn -TargetTableName 'T];DROP' -TimestampColumn 'GESPEICHERT' -Timeout 30 } | Should -Throw
+        $Conn.Log.Count | Should -Be 0
+    }
+}
+
+Describe 'Get-SQLSyncExtractQuery (I8)' {
+    It 'liest inkrementell inklusive Untergrenze (>=)' {
+        Get-SQLSyncExtractQuery -TableName 'BKUNDE' -TimestampColumn 'GESPEICHERT' -Incremental |
+            Should -BeExactly 'SELECT * FROM "BKUNDE" WHERE "GESPEICHERT" >= @LastDate'
+    }
+    It 'liest ohne -Incremental die ganze Tabelle' {
+        Get-SQLSyncExtractQuery -TableName 'BKUNDE' | Should -BeExactly 'SELECT * FROM "BKUNDE"'
+    }
+    It 'verlangt bei -Incremental eine Zeitstempelspalte' {
+        { Get-SQLSyncExtractQuery -TableName 'BKUNDE' -Incremental } | Should -Throw
+    }
+    It 'lehnt ungültige Namen ab' {
+        { Get-SQLSyncExtractQuery -TableName 'B"KUNDE' } | Should -Throw
+    }
+}
+
+Describe 'Get-SQLSyncConfig: IncrementalOverlapMinutes (I8)' {
+    BeforeAll {
+        $script:OverlapPath = Join-Path $TestDrive 'config.overlap.json'
+        function Write-OverlapConfig([hashtable]$General) {
+            @{ General = $General; Tables = @('T1') } | ConvertTo-Json -Depth 5 | Set-Content -Path $script:OverlapPath
+        }
+    }
+    It 'ist standardmäßig 10 Minuten' {
+        Write-OverlapConfig @{}
+        (Get-SQLSyncConfig -ConfigPath $script:OverlapPath).IncrementalOverlapMinutes | Should -Be 10
+    }
+    It 'übernimmt 0 aus der Konfiguration' {
+        Write-OverlapConfig @{ IncrementalOverlapMinutes = 0 }
+        (Get-SQLSyncConfig -ConfigPath $script:OverlapPath).IncrementalOverlapMinutes | Should -Be 0
+    }
+    It 'wirft bei Werten außerhalb 0..1440' -TestCases @(@{ V = -1 }, @{ V = 1441 }) {
+        Write-OverlapConfig @{ IncrementalOverlapMinutes = $V }
+        { Get-SQLSyncConfig -ConfigPath $script:OverlapPath } | Should -Throw '*IncrementalOverlapMinutes*'
+    }
+}

@@ -106,7 +106,33 @@ Vorgehen:
      (`Manage_Config_Tables.ps1`).
    - `Could not find stored procedure 'sp_Merge_Generic'` / Parameterfehler →
      Stored Procedure veraltet.
+   - `Invalid column name '<TS-Spalte>'` bei einer Incremental-Tabelle mit
+     vorhandener Zieltabelle → Abschnitt „Zeitstempelspalte fehlt in der Zieltabelle“.
 3. Einzeln nachfahren mit Einmal-Konfig, `Tables` nur mit der betroffenen Tabelle.
+
+### Zeitstempelspalte fehlt in der Zieltabelle (seit v2.18)
+
+Symptom: Incremental-Tabelle mit `Status = Fehler` nach allen Versuchen, Meldung
+`Invalid column name '<TS-Spalte>'`; Exit `10`. Ursache: Die Zieltabelle existiert,
+hat aber die Zeitstempelspalte nicht (z. B. vor Aufnahme der Spalte in
+`TimestampColumns`/`TableOverrides` angelegt). Die Wasserzeichen-Abfrage
+`SELECT MAX([<TS-Spalte>]) FROM [<Zieltabelle>]` scheitert in jedem Versuch. Bis v2.16
+führte das still zu einem Vollabzug ab 1900-01-01; seit v2.18 ist es ein Tabellenfehler.
+
+Abhilfe – eine der beiden Varianten (wie bei „Schema-Drift“ unten):
+- Spalte per `ALTER TABLE <Prefix><Tabelle><Suffix> ADD <TS-Spalte> <Typ>` ergänzen
+  (Typ wie in `STG_<Tabelle>`). Der nächste Lauf findet nur `NULL` als Maximum, meldet
+  deshalb `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)`, lädt einmal voll und füllt die Spalte per
+  MERGE (Ziel-Zeitstempel `NULL` → Update); danach läuft die Tabelle wieder inkrementell.
+- Zieltabelle löschen (`DROP TABLE`); der nächste Lauf meldet
+  `(Erstlauf (Zieltabelle fehlt) - Vollabzug)` und legt sie aus Staging neu an. Nur, wenn
+  niemand auf der Tabelle Abhängigkeiten (Views, Rechte) hat.
+
+Prüfen, ob die Spalte fehlt:
+
+```sql
+SELECT name FROM sys.columns WHERE object_id = OBJECT_ID(N'<Prefix><Tabelle><Suffix>') AND name = N'<TS-Spalte>';
+```
 
 ### Sanity „FEHLER (-n)" oder „WARNUNG (+n)"
 
@@ -115,7 +141,7 @@ Der Sanity Check vergleicht `COUNT(*)` in Firebird mit `COUNT(*)` der Zieltabell
 | Anzeige | Bedeutung | Maßnahme |
 |---|---|---|
 | `OK` | Gleiche Zeilenzahl | – |
-| `FEHLER (-n)` | Ziel hat **n Zeilen weniger** als Quelle: Datensätze fehlen (z. B. übersprungen durch striktes Wasserzeichen `> MAX(ts)`, S6; oder Lauf mit Fehler). Ohne Tabellenfehler endet der Lauf mit Exit `11` (`0xB`), sofern `General.FailOnSanityError` nicht `false` ist | Einmal-Konfig mit `ForceFullSync: true` für die Tabelle, oder Weekly Full abwarten |
+| `FEHLER (-n)` | Ziel hat **n Zeilen weniger** als Quelle: Datensätze fehlen (z. B. Commit-Verzögerung länger als das Überlappungsfenster `General.IncrementalOverlapMinutes`, Rest von S6/K3; oder Lauf mit Fehler). Ohne Tabellenfehler endet der Lauf mit Exit `11` (`0xB`), sofern `General.FailOnSanityError` nicht `false` ist | Einmal-Konfig mit `ForceFullSync: true` für die Tabelle, oder Weekly Full abwarten |
 | `WARNUNG (+n)` | Ziel hat **n Zeilen mehr**: in Firebird gelöschte Datensätze sind im Ziel noch vorhanden (Löschungen werden standardmäßig nicht repliziert, S7) | siehe „Löschungen in Firebird" |
 | `N/A` | `RunSanityCheck` aus oder Tabelle fehlgeschlagen | – |
 
@@ -367,10 +393,14 @@ Standardmäßig werden Löschungen nicht repliziert (Sanity `WARNUNG (+n)`).
 
 ### Inkrementelle Änderungen fehlen, Sanity aber OK
 
-Geänderte (nicht neue) Datensätze mit Zeitstempel ≤ letztem Wasserzeichen
-(gleicher Zeitstempel, späterer Commit, Uhrenabweichung) werden übersprungen
-(S6, I8). Abhilfe: Einmal-Konfig mit `ForceFullSync: true` für die Tabelle;
-regulär repariert der Weekly-Full-Lauf.
+Seit v2.18 liest der Incremental-Extrakt ab Wasserzeichen minus
+`General.IncrementalOverlapMinutes` (Default 10 Min). Datensätze mit Zeitstempel
+≤ Wasserzeichen (gleicher Zeitstempel, späterer Commit, Uhrenabweichung) werden
+nur noch übersprungen, wenn sie mehr als das Fenster unter dem Wasserzeichen liegen
+(Rest von S6/K3). Abhilfe: Einmal-Konfig mit `ForceFullSync: true` für die Tabelle;
+regulär repariert der Weekly-Full-Lauf. Tritt das wiederholt auf (lange
+Transaktionen, Uhrenabweichung zwischen Servern), `IncrementalOverlapMinutes`
+im Job-Profil erhöhen (bis 1440); dann werden je Lauf mehr Zeilen erneut gelesen.
 
 ### Tabelle ohne passende ID-/Timestamp-Spalte
 

@@ -49,6 +49,13 @@
           "description": "Sanity Check 'FEHLER' (Ziel hat weniger Zeilen als Quelle) beendet den Lauf mit Exit-Code 11",
           "default": true
         },
+        "IncrementalOverlapMinutes": {
+          "type": "integer",
+          "description": "Überlappungsfenster des Incremental-Extrakts in Minuten: gelesen wird ab MAX(Zeitstempel) im Ziel minus diesem Wert (0 = nur ab dem Wasserzeichen inklusive)",
+          "minimum": 0,
+          "maximum": 1440,
+          "default": 10
+        },
         "MaxRetries": {
           "type": "integer",
           "description": "Wiederholungsversuche bei Verbindungsfehlern",

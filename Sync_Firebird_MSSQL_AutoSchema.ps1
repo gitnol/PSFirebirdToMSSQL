@@ -22,7 +22,7 @@
     Standard: "config.json" im Skript-Verzeichnis.
 
 .NOTES
-    Version: 2.16 (Treiber-DLL wird per SHA-256 geprüft; DllSha256 wird durchgereicht)
+    Version: 2.18 (Incremental mit Überlappungsfenster General.IncrementalOverlapMinutes; kein stiller Vollabzug mehr)
 
     Exit-Codes:
     0  = alle Tabellen erfolgreich
@@ -103,6 +103,7 @@ $RecreateStoredProcedure = $Config.RecreateStoredProcedure
 $NumberOfThreads = $Config.NumberOfThreads
 $CleanupOrphans = $Config.CleanupOrphans
 $OrphanCleanupBatchSize = $Config.OrphanCleanupBatchSize
+$IncrementalOverlapMinutes = $Config.IncrementalOverlapMinutes
 $MSSQLPrefix = $Config.MSSQLPrefix
 $MSSQLSuffix = $Config.MSSQLSuffix
 $Tabellen = $Config.Tables
@@ -329,6 +330,7 @@ $Results = $Tabellen | ForEach-Object -Parallel {
     $Suffix = $using:MSSQLSuffix
     $DoCleanupOrphans = $using:CleanupOrphans
     $CleanupBatchSize = $using:OrphanCleanupBatchSize
+    $OverlapMinutes = $using:IncrementalOverlapMinutes
     
     # Column Configuration (NEU in v2.10)
     $DefaultIdColumn = $using:IdColumn
@@ -440,16 +442,15 @@ $Results = $Tabellen | ForEach-Object -Parallel {
             # C: EXTRAKT (Quelle = $Tabelle)
             $FbCmdData = $FbConn.CreateCommand()
             if ($SyncStrategy -eq "Incremental") {
-                $CmdMax = $SqlConn.CreateCommand()
-                $CmdMax.CommandTimeout = $Timeout
-                $CmdMax.CommandText = "SELECT ISNULL(MAX([$TimestampColumnName]), '1900-01-01') FROM [$TargetTableName]"
-                try { $LastSyncDate = [DateTime]$CmdMax.ExecuteScalar() } catch { $LastSyncDate = [DateTime]"1900-01-01" }
-                
-                $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"" WHERE ""$TimestampColumnName"" > @LastDate"
+                # Wasserzeichen minus Überlappungsfenster (K3); Fehler auf vorhandener Zieltabelle -> Retry/Fehler statt stillem Vollabzug
+                $Watermark = Get-SQLSyncIncrementalWatermark -Connection $SqlConn -TargetTableName $TargetTableName -TimestampColumn $TimestampColumnName -Timeout $Timeout
+                if ($Watermark.Reason) { $Message += "($($Watermark.Reason)) " }
+                $LastSyncDate = Get-SQLSyncIncrementalLowerBound -Watermark $Watermark.Watermark -OverlapMinutes $OverlapMinutes
+                $FbCmdData.CommandText = Get-SQLSyncExtractQuery -TableName $Tabelle -TimestampColumn $TimestampColumnName -Incremental
                 $FbCmdData.Parameters.Add("@LastDate", $LastSyncDate) | Out-Null
             }
             else {
-                $FbCmdData.CommandText = "SELECT * FROM ""$Tabelle"""
+                $FbCmdData.CommandText = Get-SQLSyncExtractQuery -TableName $Tabelle
             }
             $ReaderData = $FbCmdData.ExecuteReader()
             

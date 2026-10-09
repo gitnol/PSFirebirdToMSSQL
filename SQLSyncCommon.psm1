@@ -174,6 +174,7 @@ function Get-SQLSyncConfig {
         CleanupOrphans          = Get-ConfigValue $Config.General "CleanupOrphans" $false
         OrphanCleanupBatchSize  = Get-ConfigValue $Config.General "OrphanCleanupBatchSize" 50000
         FailOnSanityError       = [bool](Get-ConfigValue $Config.General "FailOnSanityError" $true)
+        IncrementalOverlapMinutes = Get-ConfigValue $Config.General "IncrementalOverlapMinutes" 10
 
         # Column Configuration (NEU in v2.10)
         IdColumn                = Get-ConfigValue $Config.General "IdColumn" "ID"
@@ -223,6 +224,9 @@ function Get-SQLSyncConfig {
     }
     if ($Result.OrphanCleanupBatchSize -lt 1000) {
         throw "OrphanCleanupBatchSize muss mindestens 1000 sein."
+    }
+    if ($Result.IncrementalOverlapMinutes -lt 0 -or $Result.IncrementalOverlapMinutes -gt 1440) {
+        throw "IncrementalOverlapMinutes muss zwischen 0 und 1440 liegen."
     }
 
     # Identifier-Whitelist (Fail-Fast): alle Namen, die in SQL-Text eingesetzt werden
@@ -1116,6 +1120,101 @@ function Test-FirebirdDriverIntegrity {
 }
 
 #endregion
+
+#region Incremental Extract (I8)
+
+<#
+.SYNOPSIS
+    Berechnet die Untergrenze des Incremental-Extrakts: Wasserzeichen minus Überlappungsfenster.
+
+.DESCRIPTION
+    Ohne Wasserzeichen (Zieltabelle fehlt oder ist leer) wird ab 1900-01-01 gelesen (Vollabzug).
+    Das Überlappungsfenster holt Datensätze nach, die mit einem Zeitstempel <= Wasserzeichen erst nach dem
+    letzten Lauf committet wurden (K3). Doppelt gelesene Zeilen sind unkritisch, der MERGE ist idempotent.
+
+.PARAMETER Watermark
+    MAX(Zeitstempel) der Zieltabelle oder $null.
+.PARAMETER OverlapMinutes
+    General.IncrementalOverlapMinutes (>= 0).
+#>
+function Get-SQLSyncIncrementalLowerBound {
+    [CmdletBinding()]
+    [OutputType([datetime])]
+    param(
+        [Nullable[datetime]]$Watermark,
+        [Parameter(Mandatory)][ValidateRange(0, [int]::MaxValue)][int]$OverlapMinutes
+    )
+
+    if ($null -eq $Watermark) { return [datetime]'1900-01-01' }
+    return $Watermark.AddMinutes(-$OverlapMinutes)
+}
+
+<#
+.SYNOPSIS
+    Liest das Wasserzeichen (MAX der Zeitstempelspalte) der Zieltabelle.
+
+.DESCRIPTION
+    Fehlt die Zieltabelle (Erstlauf) oder ist sie leer, ist Watermark $null und Reason nennt den Grund.
+    Scheitert die Abfrage auf eine vorhandene Tabelle (z. B. Zeitstempelspalte fehlt im Ziel), wird
+    geworfen – bis v2.16 führte das still zu einem Vollabzug.
+
+.PARAMETER Connection
+    Geöffnete SqlConnection (oder ein Objekt mit CreateCommand()).
+
+.OUTPUTS
+    PSCustomObject mit Watermark ([datetime] oder $null) und Reason (leer oder Begründung des Vollabzugs).
+#>
+function Get-SQLSyncIncrementalWatermark {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Connection,
+        [Parameter(Mandatory)][string]$TargetTableName,
+        [Parameter(Mandatory)][string]$TimestampColumn,
+        [int]$Timeout = 30
+    )
+
+    # Zielname = Prefix + Tabelle + Suffix: gleiche Zeichen wie die Whitelist, aber bis 128 Zeichen (SQL Server)
+    if ($TargetTableName -cnotmatch '^[A-Za-z0-9_$]{1,128}$') { throw "Ungültiger Name in 'Zieltabelle': '$TargetTableName'." }
+    Assert-SqlIdentifier -Name $TimestampColumn -Field "Zeitstempelspalte"
+
+    $CheckCmd = $Connection.CreateCommand()
+    $CheckCmd.CommandTimeout = $Timeout
+    $CheckCmd.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @TableName"
+    [void]$CheckCmd.Parameters.AddWithValue("@TableName", $TargetTableName)
+    if (-not ($CheckCmd.ExecuteScalar() -gt 0)) {
+        return [PSCustomObject]@{ Watermark = $null; Reason = "Erstlauf (Zieltabelle fehlt) - Vollabzug" }
+    }
+
+    $MaxCmd = $Connection.CreateCommand()
+    $MaxCmd.CommandTimeout = $Timeout
+    $MaxCmd.CommandText = "SELECT MAX([$TimestampColumn]) FROM [$TargetTableName]"
+    $Value = $MaxCmd.ExecuteScalar()
+    if ($null -eq $Value -or $Value -is [DBNull]) {
+        return [PSCustomObject]@{ Watermark = $null; Reason = "Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug" }
+    }
+    return [PSCustomObject]@{ Watermark = [datetime]$Value; Reason = "" }
+}
+
+<#
+.SYNOPSIS
+    Liefert die Firebird-Extrakt-Abfrage (Vollabzug oder inkrementell ab @LastDate inklusive).
+#>
+function Get-SQLSyncExtractQuery {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$TableName,
+        [string]$TimestampColumn,
+        [switch]$Incremental
+    )
+
+    Assert-SqlIdentifier -Name $TableName -Field "Tabelle"
+    if (-not $Incremental) { return "SELECT * FROM ""$TableName""" }
+    Assert-SqlIdentifier -Name $TimestampColumn -Field "Zeitstempelspalte"
+    return "SELECT * FROM ""$TableName"" WHERE ""$TimestampColumn"" >= @LastDate"
+}
+
+#endregion
 # Exportiere alle Public Functions
 Export-ModuleMember -Function @(
     # Credentials
@@ -1151,4 +1250,7 @@ Export-ModuleMember -Function @(
     'Get-FirebirdServerAdvisory'
     'Find-SQLSyncDecimalTruncation'
     'Test-FirebirdDriverIntegrity'
+    'Get-SQLSyncIncrementalLowerBound'
+    'Get-SQLSyncIncrementalWatermark'
+    'Get-SQLSyncExtractQuery'
 )
