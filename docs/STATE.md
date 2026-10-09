@@ -13,7 +13,9 @@ Zuletzt aktualisiert: 2026-10-09
 
 **I8 – Wasserzeichen mit Überlappungsfenster.** Der Incremental-Extrakt liest strikt `> MAX(ts)` (K3);
 neuer Konfigschlüssel `General.IncrementalOverlapMinutes`, Untergrenze und Extrakt-Abfrage als testbare
-Modulfunktion (erster Schnitt der Hauptskript-Zerlegung). Danach ist die Reflexion fällig, dann I10a/I10b.
+Modulfunktion (erster Schnitt der Hauptskript-Zerlegung); dazu sichtbarer statt stiller Vollabzug bei
+Fehler der `MAX(ts)`-Abfrage. Danach ist die Reflexion fällig, dann I10b (CI) → I10a (Konfig-/Modul-Hygiene)
+→ I10c (Doku-Konsolidierung).
 
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
@@ -50,8 +52,9 @@ Coverage-Gate 80 %); keine CI.
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
 | I8 | Wasserzeichen mit Überlappungsfenster + Extrakt als Modulfunktion | Mittel |
-| I10a | Doku- und Repo-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `MSSQL.Port`, `Protect-SqlString`) | Niedrig |
-| I10b | CI auf GitHub (Pester + PSScriptAnalyzer) | Niedrig |
+| I10b | CI auf GitHub (Pester + PSScriptAnalyzer) bei Push auf `main` und PRs | Mittel |
+| I10a | Konfig- und Modul-Hygiene (`MSSQL.Port`, `Protect-SqlString`, Klartext-Passwort-/`.bak`-Warnung, Backup-Rotation) | Mittel |
+| I10c | Doku-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`) | Niedrig |
 
 ---
 
