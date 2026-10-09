@@ -31,7 +31,7 @@ Lessons Learned). Danach archivieren oder löschen.
 
 | # | Beschreibung | Behoben in | Commit |
 |---|---|---|---|
-| ~~K3~~ | Inkrementelles Wasserzeichen war strikt `> MAX(ts)`: später committete Datensätze mit Zeitstempel ≤ Wasserzeichen fehlten bis zum Full-Lauf. Jetzt Überlappungsfenster `General.IncrementalOverlapMinutes` (Default 10, `>=`). Rest: Commit-Verzögerungen länger als das Fenster holt weiter erst der Full-Lauf | `I8` (2026-10-09) | siehe `STATE.md` |
+| ~~K3~~ | Inkrementelles Wasserzeichen war strikt `> MAX(ts)`: später committete Datensätze mit Zeitstempel ≤ Wasserzeichen fehlten bis zum Full-Lauf. Jetzt Überlappungsfenster `General.IncrementalOverlapMinutes` (Default 10, `>=`). Rest: Commit-Verzögerungen länger als das Fenster holt weiter erst der Full-Lauf | `I8` (2026-10-09) | ab1de66 |
 | ~~K7~~ | `config.schema.json` wurde nie geprüft | `I6` (2026-10-09) | c5f94f0 |
 | ~~K8~~ | `Get_Firebird_Schema.ps1`/`Manage_Config_Tables.ps1` arbeiteten fest mit `config.json` | `I6` (2026-10-09) | c5f94f0 |
 | ~~K2~~ | `NUMERIC`/`DECIMAL` wurde fest als `DECIMAL(18,4)` angelegt (Rundung ab der 5. Nachkommastelle); Inline-Mapping ohne `Guid`. Altbestand: vorher angelegte Zieltabellen behalten den alten Typ (`operations/RUNBOOK.md`) | `I5` (2026-10-08) | 2d1a7ef |
