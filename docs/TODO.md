@@ -22,6 +22,33 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ---
 
+## Aktuell (Hohe Priorität)
+
+### I11: Rollout-Check (`Test-SQLSyncConnections.ps1 -PreDeploy`)
+
+Konsolidiert (KICKOFF 2a): vier `STATE.md`-Risiken zum Deployment, die manuelle Checkliste in
+`operations/DEPLOYMENT.md`, die Altbestands-Prozedur in `operations/RUNBOOK.md` und den I10-Punkt
+„doppelte Ausgabe" — alle betreffen dasselbe Diagnoseskript.
+
+**Aufgaben:**
+
+- [ ] Neuer Schalter `-PreDeploy` in `Test-SQLSyncConnections.ps1` (nur lesend), Prüfungen als testbare Modulfunktionen:
+  - alle `config*.json` im Skriptordner gegen Schema und Namensregeln (`Get-SQLSyncConfig -SchemaPath`)
+  - Treiber-DLL gegen die erlaubten SHA-256 (ohne sie zu laden, wenn schon ein anderer Treiber aktiv ist)
+  - Altbestand: Zielspalten `decimal(18,4)`, deren Firebird-Quelle mehr Nachkommastellen hat (je Tabelle/Spalte auflisten)
+  - Firebird-Serverversion < 5.0.4 (CVE-2026-34232/-40342) und Anmeldung als `SYSDBA` → Warnung
+- [ ] Doppelte Ausgabe der Test-Query-Zeile entfernen (aus I10 übernommen)
+- [ ] Ergebnis als Tabelle OK/WARNUNG/FEHLER; Exit 0 nur ohne FEHLER; `operations/DEPLOYMENT.md` verweist auf den Befehl statt auf Einzelschritte
+
+**Definition of Done:**
+
+- [ ] Unit-Tests für die neuen Modulfunktionen (Altbestandsvergleich, Versionsprüfung) mit behavioralem Rot
+- [ ] Lauf gegen die Testumgebung findet die bekannten Altbestandsspalten bzw. meldet „keine" und die Serverversion
+- [ ] Rein lesend belegt (keine DDL/DML im Lauf)
+- [ ] Gemeinsame DoD erfüllt
+
+---
+
 ## Mittlere Priorität
 
 ### I8: Inkrementelles Wasserzeichen mit Überlappungsfenster
@@ -29,20 +56,31 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 Bezug: `KNOWN_ISSUES.md` K3.
 
 - [ ] Neuer Konfigschlüssel `General.IncrementalOverlapMinutes` (Default z. B. 10); Extrakt mit `ts >= MAX(ts) - Overlap` (MERGE ist idempotent)
+- [ ] Untergrenze und Extrakt-Abfrage als Modulfunktion aus dem Hauptskript ziehen (erster, kleiner Schnitt des Backlog-Punkts „Hauptskript zerlegen"; macht den Extrakt unit-testbar)
 - [ ] Schema, Sample, README und `architecture/CONFIGURATION.md` ergänzen
-- **DoD:** Integrationstest: Datensatz mit identischem Zeitstempel wie das Wasserzeichen wird übernommen; gemeinsame DoD erfüllt
+- **DoD:** Unit-Test für die Untergrenze (behaviorales Rot); Integrationstest: Datensatz mit identischem Zeitstempel wie das Wasserzeichen wird übernommen; gemeinsame DoD erfüllt
+- Bewusst nicht gebündelt: K5 (Orphan-Cleanup) und K6 (Schema-Drift) betreffen andere Schritte des Hauptskripts und würden die Größengrenze sprengen.
 
 ---
 
 ## Niedrige Priorität
 
-### I10: Doku-/Repo-Drift beheben
+### I10a: Doku- und Repo-Konsolidierung
 
-- [ ] `.github/copilot-instructions.md` an den Code angleichen (kein `Install-Package`, `Example_Sync_Start.ps1` ruft bereits das AutoSchema-Skript; Schlussfrage des Agenten entfernen; Verweis auf `docs/`)
-- [ ] `Test-SQLSyncConnections.ps1`: doppelte Ausgabe der Test-Query-Zeile entfernen
-- [ ] `MSSQL.Port`: im Connection-String verwenden oder aus Sample/Schema entfernen
-- [ ] `README_alternativ.md`: zusammenführen oder entfernen
-- **DoD:** Doku und Code widerspruchsfrei (Stichprobe aller Skriptparameter); gemeinsame DoD erfüllt
+Konsolidiert (KICKOFF 2a) mit den Backlog-Punkten „Doku-Duplikate", „drei ID-Systeme" und „ungenutzte Exporte".
+
+- [ ] Exit-Code-Tabelle: einzige Quelle `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen verlinken (READMEs behalten ihre Nutzer-Tabelle)
+- [ ] Schwachstellen-Katalog (S-IDs) in K-/I-IDs überführen und S-Verweise ersetzen
+- [ ] `.github/copilot-instructions.md` an den Code angleichen (kein `Install-Package`, Verweis auf `docs/`, Schlussfrage entfernen)
+- [ ] `README_alternativ.md` zusammenführen oder entfernen
+- [ ] `MSSQL.Port` (K9): im Connection-String verwenden oder aus Sample/Schema entfernen
+- [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer)
+- **DoD:** Doku und Code widerspruchsfrei (Stichprobe aller Skriptparameter); eine Exit-Code-Änderung berührt höchstens 3 Dateien; gemeinsame DoD erfüllt
+
+### I10b: CI auf GitHub
+
+- [ ] GitHub Actions auf `windows-latest`: `pwsh -NoProfile -File ./tests/pester.config.ps1` und PSScriptAnalyzer für PRs nach `main`
+- **DoD:** PR zeigt beide Prüfungen; ein absichtlich roter Test lässt den Check fehlschlagen; gemeinsame DoD erfüllt
 
 ---
 

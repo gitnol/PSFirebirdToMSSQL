@@ -73,7 +73,7 @@ Tippfehler-Schlüssel) → Sync Exit 2 vor jeder DB-Verbindung; gültige Konfig 
 `Test-SQLSyncConnections.ps1` mit relativem `-ConfigFile` Exit 0; `Get_Firebird_Schema.ps1 -ConfigFile`
 Exit 0 bzw. Exit 2 bei Schemaverstoß; `Manage_Config_Tables.ps1` mit schemawidriger Konfig Exit 2 ohne Backup.
 
-Bekannte Einschränkung (S12): die Test-Query-Zeile wird doppelt ausgegeben (Korrektur in I10).
+Bekannte Einschränkung (S12): die Test-Query-Zeile wird doppelt ausgegeben (Korrektur in I11).
 Im Ziel-Harness wird das Skript per Pester aufgerufen und nur der Exit-Code geprüft:
 
 ```powershell

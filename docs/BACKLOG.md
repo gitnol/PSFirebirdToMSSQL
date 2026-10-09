@@ -34,8 +34,8 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 
 ## Technische Schuld
 
-- Doku-Duplikate (Reflexion nach I3) — die Exit-Code-Tabelle steht in `README.md`, `README.de.md`, `features/firebird-mssql-sync.md`, `operations/MONITORING.md` und `architecture/ERROR_HANDLING.md`; jede Änderung zieht 10–15 Doku-Dateien nach sich. Single Source: `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen nur verlinken (READMEs behalten ihre Nutzer-Tabelle). Kandidat für I10.
-- Drei parallele ID-Systeme (S = Schwachstellen-Katalog, K = bekannte Probleme, I = Inkremente) — erhöht Pflegeaufwand; bei I10 prüfen, ob S-IDs in K/I aufgehen können.
+- Doku-Duplikate (Reflexion nach I3) — die Exit-Code-Tabelle steht in `README.md`, `README.de.md`, `features/firebird-mssql-sync.md`, `operations/MONITORING.md` und `architecture/ERROR_HANDLING.md`; jede Änderung zieht 10–15 Doku-Dateien nach sich. Single Source: `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen nur verlinken (READMEs behalten ihre Nutzer-Tabelle). eingeplant in I10a.
+- Drei parallele ID-Systeme (S = Schwachstellen-Katalog, K = bekannte Probleme, I = Inkremente) — erhöht Pflegeaufwand; in I10a prüfen, ob S-IDs in K/I aufgehen können.
 
 - `System.Data.SqlClient` → `Microsoft.Data.SqlClient` — Microsoft hat `System.Data.SqlClient` abgekündigt; wird teurer, sobald eine PowerShell-Version das Paket nicht mehr mitliefert
 - Firebird-Treiber-Version 10.3.4 fest im Code inkl. Hash — Updates erfordern Codeänderung; Ablauf in `security/DEPENDENCY_AUDIT.md`

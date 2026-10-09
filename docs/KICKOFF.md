@@ -218,7 +218,9 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 | I7 | Treiber-Integrität für vorhandene DLL | Mittel | SHA-256 nur beim Download geprüft; vorhandene/konfigurierte DLL wird ungeprüft per `Add-Type` geladen |
 | I8 | Wasserzeichen mit Überlappungsfenster | Mittel | Striktes `> MAX(ts)` kann Datensätze bis zum Full-Lauf überspringen (K3) |
 | I9 | Scheduled-Task-Setup parametrisieren, interne Namen entfernen | Mittel | Hart codierte Pfade/Konfignamen, Task als interaktiver Benutzer, realistisch wirkende Beispielwerte im öffentlichen Repo |
-| I10 | Doku-/Repo-Drift beheben | Niedrig | `copilot-instructions.md` veraltet, doppelte Ausgabe, ungenutztes `MSSQL.Port` |
+| I10a | Doku- und Repo-Konsolidierung | Niedrig | Exit-Code-Tabelle an 5 Stellen, drei ID-Systeme, `copilot-instructions.md` veraltet, ungenutztes `MSSQL.Port`/`Protect-SqlString` |
+| I10b | CI auf GitHub | Niedrig | Öffentliches Repo ohne automatische Prüfung von PRs |
+| I11 | Rollout-Check (`-PreDeploy`) | Hoch | Stand auf `main`, aber nicht deployt; Konfig-, Treiber-, Altbestands- und Firebird-Risiken in einem lesenden Lauf prüfen (vor I8 einzuplanen) |
 
 ---
 

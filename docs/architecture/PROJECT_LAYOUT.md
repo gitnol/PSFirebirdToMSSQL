@@ -53,7 +53,7 @@ PSFirebirdToMSSQL/
 ├── config.json                          # Lokale Konfiguration (gitignored, kann Secrets enthalten)
 ├── config.json.<yyyyMMdd_HHmmss>.bak    # Backups von Manage_Config_Tables (gitignored)
 ├── README.md / README.de.md / README_alternativ.md   # Nutzerdoku EN / DE / alternative DE-Fassung
-├── .github/copilot-instructions.md      # Agent-Hinweise (teilweise veraltet, Inkrement I10)
+├── .github/copilot-instructions.md      # Agent-Hinweise (teilweise veraltet, Inkrement I10a)
 ├── .gitignore
 ├── Logs/                                # Laufzeit: Sync_<ConfigName>_<yyyy-MM-dd_HHmm>.log (gitignored)
 └── docs/                                # Dieses Doku-Set

@@ -3,17 +3,19 @@
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I7 – Treiber-Integrität (2026-10-09)
-**Nächster Schritt:** I8 – Inkrementelles Wasserzeichen mit Überlappungsfenster
-**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (geplant I7, I8, I10; I9 ist vorgezogen erledigt) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I11 – Rollout-Check (`Test-SQLSyncConnections.ps1 -PreDeploy`)
+**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I7 zählt; geplant danach I11, I8 – Reflexion nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**I8 – Wasserzeichen mit Überlappungsfenster.** Der Incremental-Extrakt liest strikt `> MAX(ts)` der
-Zieltabelle (K3): gleiche Zeitstempel aus späteren Commits gehen bis zum nächsten Full-Lauf verloren. Neuer
-Konfigschlüssel `General.IncrementalOverlapMinutes`; das MERGE ist idempotent.
+**I11 – Rollout-Check.** Der Stand ist seit PR #1 auf `main`, aber nicht produktiv deployt. Vier der
+Risiken unten betreffen das Deployment; `Test-SQLSyncConnections.ps1 -PreDeploy` prüft sie rein lesend in
+einem Lauf (Konfigs gegen Schema, Treiber-Hash, `decimal(18,4)`-Altbestand, Firebird-Version/SYSDBA).
+Danach I8 (Überlappungsfenster + erster Schnitt der Hauptskript-Zerlegung), dann I10a/I10b.
+Reihenfolge nach Konsolidierung (KICKOFF 2a) am 2026-10-09 festgelegt, siehe `CHANGELOG.md`.
 
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -47,8 +49,10 @@ Coverage-Gate 80 %); keine CI.
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I8 | Inkrementelles Wasserzeichen mit Überlappungsfenster | Mittel |
-| I10 | Doku-/Repo-Drift beheben (copilot-instructions, READMEs, Kleinigkeiten) | Niedrig |
+| I11 | Rollout-Check (`-PreDeploy`): Konfigs, Treiber-Hash, Altbestand, Firebird-Version/SYSDBA | Hoch |
+| I8 | Wasserzeichen mit Überlappungsfenster + Extrakt als Modulfunktion | Mittel |
+| I10a | Doku- und Repo-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `MSSQL.Port`, `Protect-SqlString`) | Niedrig |
+| I10b | CI auf GitHub (Pester + PSScriptAnalyzer) | Niedrig |
 
 ---
 
@@ -57,7 +61,7 @@ Coverage-Gate 80 %); keine CI.
 | Risiko / Blocker | Auswirkung | Mitigation / Nächster Schritt | Owner | Status |
 |---|---|---|---|---|
 | Firebird-Server < 5.0.4 von CVE-2026-34232 (unauthentifizierter Absturz, CVSS 7.5) und CVE-2026-40342 (Codeausführung über `CREATE FUNCTION`, CVSS 9.9) betroffen; mindestens ein intern eingesetzter Server betroffen (Hosts/Versionen nur in `docs/local/ENVIRONMENT.md`) | Absturz von ERP und Sync; bei Sync-Konto mit `CREATE FUNCTION`-Recht (z. B. SYSDBA) macht ein Credential-Leak Codeausführung auf dem Datenbankserver möglich | Firebird-Server auf ≥ 5.0.4 aktualisieren (Server-Betrieb); Port 3050 per Firewall einschränken; für den Sync ein reines Lesekonto statt SYSDBA anlegen (`security/THREAT_MODEL.md`) | Betreiber Firebird-Server | offen |
-| Branch-Stand (Sync v2.16, Treiberprüfung, Schema-Prüfung) noch nicht auf dem produktiven Sync-Server | Dort bleiben fehlgeschlagene Tabellen unbemerkt (Exit 0), Identifier, Konfig und Treiber-DLL ungeprüft | Branch `docs/i1-baseline` mergen und deployen (`operations/DEPLOYMENT.md`); vorher produktive Konfigs mit `Get-SQLSyncConfig` prüfen (neue Namensregeln); Tasks nur bei Bedarf neu anlegen – dann Installationsordner und Konfignamen explizit übergeben (Aufruf in `docs/local/ENVIRONMENT.md`) | Betreiber | offen |
+| Stand v2.16 (auf `main`) noch nicht auf dem produktiven Sync-Server | Dort bleiben fehlgeschlagene Tabellen unbemerkt (Exit 0), Identifier, Konfig und Treiber-DLL ungeprüft | Auf `main` gemergt (PR #1, 2026-10-09); deployen nach `operations/DEPLOYMENT.md`, Prüfungen ab I11 per `Test-SQLSyncConnections.ps1 -PreDeploy`; vorher produktive Konfigs mit `Get-SQLSyncConfig` prüfen (neue Namensregeln); Tasks nur bei Bedarf neu anlegen – dann Installationsordner und Konfignamen explizit übergeben (Aufruf in `docs/local/ENVIRONMENT.md`) | Betreiber | offen |
 | Neue Exit-Codes 10/11 lassen Tasks „fehlschlagen", die bisher „erfolgreich" waren | Häufige Sanity-„FEHLER" bei laufenden Schreibzugriffen in Firebird (Zählung nach dem Merge) könnten Fehlalarme auslösen | Nach Deployment Task-Historie beobachten; bei Fehlalarmen `FailOnSanityError: false` im Daily-Profil | Betreiber | offen |
 | Altbestand: vor v2.14 angelegte Zieltabellen haben `DECIMAL(18,4)` und runden weiter (der Sync ändert keine bestehenden Tabellen) | Nachkommastellen > 4 im Ziel weiterhin gerundet | Nach Deployment betroffene Spalten prüfen und Zieltabellen anpassen bzw. neu aufbauen (`operations/RUNBOOK.md`) | Betreiber | offen |
 | Einstiegsskripte ohne Unit-Tests | SQL-Ablauf im Hauptskript ist nur per Integrationslauf prüfbar (Typmapping/Strategie seit I5 im Modul getestet) | Integrationslauf gegen die Testumgebung; Zerlegung in Modulfunktionen im Backlog | Maintainer | offen |
