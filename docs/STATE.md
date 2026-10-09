@@ -3,18 +3,18 @@
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I8 – Wasserzeichen mit Überlappungsfenster (2026-10-09)
-**Nächster Schritt:** Reflexion (fällig nach I8), danach I10b – CI auf GitHub
-**Nächste Reflexion:** jetzt fällig (I7, I11, I8 abgeschlossen) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I10b – CI auf GitHub
+**Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**Reflexion (fällig).** Nach `REFLECTION.md`: Prozess-Docs korrigieren (u. a. veraltete KICKOFF-Passagen,
-Kopf von `KNOWN_ISSUES.md`, Reihenfolge der Inkrementtabelle), Template-Backports L1/L3/L6/L8/L9 und
-L5-Ergänzung prüfen, Befundliste für I10c. Danach **I10b – CI auf GitHub** (Pester + PSScriptAnalyzer bei
-Push auf `main`), dann I10a (Konfig-/Modul-Hygiene) → I10c (Doku-Konsolidierung).
+**I10b – CI auf GitHub.** GitHub Actions auf `windows-latest`: Pester (`tests/pester.config.ps1`) und
+PSScriptAnalyzer (nur Severity `Error` blockiert) bei Push auf `main` und bei PRs. Danach I10a
+(Konfig-/Modul-Hygiene inkl. `-PreDeploy`-Warnung für fehlende Zeitstempelspalten) → I10c (Doku-Konsolidierung).
+Offene Template-Backport-Vorschläge (Freigabe ausstehend): siehe `CHANGELOG.md` „Reflexion nach I8".
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -38,11 +38,11 @@ Coverage-Gate 80 %); keine CI.
 | I3 | Pester-Testharness: 74 Unit-Tests für alle exportierten Modulfunktionen, Pester 5.7.1 gepinnt, Coverage-Gate 80 % | 2026-10-08 | a082e9d |
 | I4 | SQL-Identifier gehärtet: Whitelist-Validierung (Fail-Fast), `[...]`/`QUOTENAME` überall, parametrisierte Metadaten-Abfragen und SP-Aufruf | 2026-10-08 | a082e9d |
 | I5 | Typmapping-Datentreue: `DECIMAL(p,s)` aus Precision/Scale; Hauptskript nutzt Modulfunktionen (Typmapping, Strategie) | 2026-10-08 | 2d1a7ef |
+| I9 | Scheduled-Task-Setup parametrisiert (neutrale Defaults, `-WhatIf`, Dienstkonto/gMSA); keine internen Begriffe mehr im Repo | 2026-10-08 | 438dd57 |
 | I6 | Konfig gegen `config.schema.json` geprüft (Fail-Fast), gemeinsame Pfadauflösung, `-ConfigFile` für Hilfsskripte | 2026-10-09 | c5f94f0 |
 | I7 | Treiber-Integrität: SHA-256-Prüfung jeder DLL vor dem Laden, Ausnahme nur über `Firebird.DllSha256` | 2026-10-09 | e173ac2 |
-| I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
 | I11 | Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (Konfigs, Treiber-Hash, Firebird-CVEs/SYSDBA, `decimal`-Altbestand), rein lesend | 2026-10-09 | 89e4565 |
-| I9 | Scheduled-Task-Setup parametrisiert (neutrale Defaults, `-WhatIf`, Dienstkonto/gMSA); keine internen Begriffe mehr im Repo | 2026-10-08 | 438dd57 |
+| I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
 
 ---
 

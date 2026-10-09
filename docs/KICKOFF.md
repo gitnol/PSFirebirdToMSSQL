@@ -189,7 +189,7 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 | `config.sample.json` / `config.schema.json` | Konfigvorlage / JSON-Schema (lokale `config*.json` sind gitignored) |
 | `Setup_Credentials.ps1` | Credentials im Windows Credential Manager ablegen |
 | `Setup-ScheduledTasks.ps1` | Aufgabenplanung (Daily Diff, Weekly Full) anlegen |
-| `Test-SQLSyncConnections.ps1` | Verbindungs-/Umgebungs-Smoke-Test |
+| `Test-SQLSyncConnections.ps1` | Verbindungs-/Umgebungs-Smoke-Test; mit `-PreDeploy` rein lesender Rollout-Check vor jedem Deployment |
 | `Get_Firebird_Schema.ps1` / `Manage_Config_Tables.ps1` | Typanalyse einer Tabelle / Tabellenauswahl per GridView |
 | `Logs/` | Transcript-Logs je Lauf (gitignored) |
 
@@ -200,7 +200,7 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 - **Verbindungen immer in `try/finally` mit `Close()` + `Dispose()`** schließen (auch im `ForEach-Object -Parallel`-Block, der keine Modulfunktionen sieht, solange das Modul dort nicht importiert wird).
 - **Keine Löschungen im MERGE** (`WHEN NOT MATCHED BY SOURCE`): Staging enthält im Incremental-Modus nur das Delta. Löschungen nur über `CleanupOrphans` oder `ForceFullSync`.
 - **Here-Strings mit `RDB$`-Referenzen als Literal (`@'...'@`) + `-f`** — doppelte Anführungszeichen würden `$RELATION_NAME` als Variable interpretieren.
-- **Identifier aus Konfig/Metadaten nie ungeprüft in SQL einsetzen** (bis I4 umgesetzt ist: mindestens in `[...]` bzw. `"..."` quoten); Werte immer als Parameter.
+- **Identifier aus Konfig/Metadaten nie ungeprüft in SQL einsetzen** (Whitelist `Assert-SqlIdentifier` bzw. Validierung in `Get-SQLSyncConfig`, zusätzlich immer in `[...]` bzw. `"..."` quoten); Werte immer als Parameter.
 - **Schreibende Tests nur gegen eine Test-Ziel-DB** — der Sync legt Datenbanken, Tabellen und Primärschlüssel an und leert Tabellen per `TRUNCATE`.
 
 ---
@@ -209,19 +209,19 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 
 | # | Titel | Priorität | Begründung |
 |---|-------|-----------|------------|
-| I1 | docs/ initialisiert | — | Abgeschlossen (diese Session) |
-| I2 | Fehlschläge sichtbar machen (Exit-Codes) | Hoch | Sync endet immer mit Exit 0, auch bei fehlgeschlagenen Tabellen → Task Scheduler meldet Erfolg, veraltete Zieldaten bleiben unbemerkt (K1) |
-| I3 | Pester-Testharness + Unit-Tests Modul | Hoch | Keine Tests vorhanden; Voraussetzung für sichere Refactorings I4–I6 |
-| I4 | SQL-Identifier härten | Hoch | Tabellen-/Spaltennamen aus Konfig und Firebird-Metadaten werden ungeprüft in SQL interpoliert (teilweise ohne Quoting) |
-| I5 | Typmapping-Datentreue + Modulfunktionen nutzen | Hoch | `DECIMAL(18,4)` fest → stiller Präzisionsverlust (K2); doppelte Mapping-/Strategielogik |
-| I6 | Config-Schema-Validierung + gemeinsame Configpfad-Auflösung | Mittel | `config.schema.json` wird nie geprüft (K7); Hilfsskripte fest auf `config.json` (K8) |
-| I7 | Treiber-Integrität für vorhandene DLL | Mittel | SHA-256 nur beim Download geprüft; vorhandene/konfigurierte DLL wird ungeprüft per `Add-Type` geladen |
-| I8 | Wasserzeichen mit Überlappungsfenster | Mittel | Striktes `> MAX(ts)` kann Datensätze bis zum Full-Lauf überspringen (K3) |
-| I9 | Scheduled-Task-Setup parametrisieren, interne Namen entfernen | Mittel | Hart codierte Pfade/Konfignamen, Task als interaktiver Benutzer, realistisch wirkende Beispielwerte im öffentlichen Repo |
+| I1 | docs/ initialisiert | — | Abgeschlossen |
+| I2 | Fehlschläge sichtbar machen (Exit-Codes) | Abgeschlossen (Hoch) | Sync endet immer mit Exit 0, auch bei fehlgeschlagenen Tabellen → Task Scheduler meldet Erfolg, veraltete Zieldaten bleiben unbemerkt (K1) |
+| I3 | Pester-Testharness + Unit-Tests Modul | Abgeschlossen (Hoch) | Keine Tests vorhanden; Voraussetzung für sichere Refactorings I4–I6 |
+| I4 | SQL-Identifier härten | Abgeschlossen (Hoch) | Tabellen-/Spaltennamen aus Konfig und Firebird-Metadaten werden ungeprüft in SQL interpoliert (teilweise ohne Quoting) |
+| I5 | Typmapping-Datentreue + Modulfunktionen nutzen | Abgeschlossen (Hoch) | `DECIMAL(18,4)` fest → stiller Präzisionsverlust (K2); doppelte Mapping-/Strategielogik |
+| I6 | Config-Schema-Validierung + gemeinsame Configpfad-Auflösung | Abgeschlossen (Mittel) | `config.schema.json` wird nie geprüft (K7); Hilfsskripte fest auf `config.json` (K8) |
+| I7 | Treiber-Integrität für vorhandene DLL | Abgeschlossen (Mittel) | SHA-256 nur beim Download geprüft; vorhandene/konfigurierte DLL wird ungeprüft per `Add-Type` geladen |
+| I8 | Wasserzeichen mit Überlappungsfenster | Abgeschlossen (Mittel) | Striktes `> MAX(ts)` kann Datensätze bis zum Full-Lauf überspringen (K3) |
+| I9 | Scheduled-Task-Setup parametrisieren, interne Namen entfernen | Abgeschlossen (Mittel) | Hart codierte Pfade/Konfignamen, Task als interaktiver Benutzer, realistisch wirkende Beispielwerte im öffentlichen Repo |
 | I10a | Konfig- und Modul-Hygiene | Mittel | Ungenutztes `MSSQL.Port`/`Protect-SqlString`; Klartext-Passwörter und unbegrenzte `.bak`-Kopien unbemerkt (nach I10b) |
 | I10b | CI auf GitHub | Mittel | Integration ohne PR (lokaler Merge) → einziges automatisches Prüftor bei Push auf `main` |
 | I10c | Doku-Konsolidierung | Niedrig | Exit-Code-Tabelle an 5 Stellen, drei ID-Systeme, `copilot-instructions.md` veraltet |
-| I11 | Rollout-Check (`-PreDeploy`) | Hoch | Stand auf `main`, aber nicht deployt; Konfig-, Treiber-, Altbestands- und Firebird-Risiken in einem lesenden Lauf prüfen (vor I8 einzuplanen) |
+| I11 | Rollout-Check (`-PreDeploy`) | Abgeschlossen (Hoch) | Stand auf `main`, aber nicht deployt; Konfig-, Treiber-, Altbestands- und Firebird-Risiken in einem lesenden Lauf prüfen (vor I8 einzuplanen) |
 
 ---
 

@@ -9,7 +9,7 @@ dokumentiert sein müssen, damit niemand zweimal darüber stolpert.
 - `KNOWN_ISSUES.md` = bekannt, akzeptiert oder verschoben; mit Workaround
 - `BACKLOG.md` = noch unpriorisierte Ideen, keine konkreten Probleme
 
-Stand: Code `721d5e0`, aus Code-Analyse abgeleitet (nicht alle Punkte mit echten Daten reproduziert).
+Stand: 2026-10-09 (nach I8). Erstfassung aus Code-Analyse auf `721d5e0`; nicht alle aktiven Punkte mit echten Daten reproduziert.
 
 ---
 
