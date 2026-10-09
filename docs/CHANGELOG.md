@@ -12,6 +12,37 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 I10b – CI auf GitHub
+
+### Added
+- `.github/workflows/ci.yml`: `windows-latest`, Auslöser Push auf `main`, PRs nach `main`, `workflow_dispatch`;
+  Schritte: gepinnte Module installieren → `tests/scriptanalyzer.ps1` → `tests/pester.config.ps1`
+- `tests/scriptanalyzer.ps1`: PSScriptAnalyzer 1.25.0 (gepinnt in `tests/RequiredModules.psd1`), Exit 1 nur bei
+  Severity `Error`; CI-Badge in beiden READMEs
+
+### Security
+- `actions/checkout` per Commit-SHA (v7.0.1) gepinnt, `permissions: contents: read`, `persist-credentials: false`,
+  keine Secrets (Recherche Security-Currency: GitHub-Härtungsleitfaden, SHA-Pinning und Least Privilege);
+  `THREAT_MODEL.md` Bedrohung 7, Update-Prüfung der Action in `DEPENDENCY_AUDIT.md`
+
+### Changed
+- Vier `Error`-Befunde begründet per `SuppressMessageAttribute` unterdrückt: `PSAvoidUsingUsernameAndPasswordParams`
+  an `New-FirebirdConnectionString`/`New-MSSQLConnectionString` (exportierte Signatur bleibt),
+  `PSAvoidUsingConvertToSecureStringWithPlainText` in den Testdaten; 207 Warnungen als Liste in `BACKLOG.md`
+
+### Iterations-Log
+- Kein klassisches TDD (Workflow-Konfiguration); Nachweis über beide Pfade: `tests/scriptanalyzer.ps1` lokal mit
+  Probe-Datei rot (Exit 1) und ohne grün (Exit 0); CI-Lauf auf `main` (8ec55c4) **success** mit 0 Error,
+  176/176 Tests, Coverage 95,63 %; temporärer Branch mit absichtlich rotem Test, per `workflow_dispatch`
+  gestartet → Schritt Pester **failure** („Expected 2, but got 1", 176 passed / 1 failed), Lauf **failure**.
+
+### Confidence / Ungeprüft
+- Ein PR-Lauf wurde nicht ausgelöst (Integration ohne PRs); der Auslöser `pull_request` ist nur konfiguriert.
+- PSGallery-Module per Version, nicht per Hash gepinnt.
+- Lokal liegen Pester 5.7.1 und PSScriptAnalyzer 1.25.0 bereits vor; ein frisches Entwickler-Setup wurde nur in
+  der CI (windows-latest) durchlaufen.
+
+---
 ## 2026-10-09 Reflexion nach I8 (I7, I11, I8)
 
 ### Advocatus Diaboli
