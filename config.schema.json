@@ -133,7 +133,7 @@
           "description": "Vollständiger Pfad zur .FDB Datei auf dem Server",
           "minLength": 1,
           "pattern": ".*\\.(fdb|FDB)$",
-          "examples": ["D:\\DB\\LA01_ECHT.FDB", "/var/firebird/data/mydb.fdb"]
+          "examples": ["D:\\DB\\ERP.FDB", "/var/firebird/data/mydb.fdb"]
         },
         "Port": {
           "type": "integer",

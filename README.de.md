@@ -153,7 +153,7 @@ Kopiere `config.sample.json` nach `config.json` und passe die Werte an.
   },
   "Firebird": {
     "Server": "FIREBIRD01",
-    "Database": "D:\\DB\\LA01_ECHT.FDB",
+    "Database": "D:\\DB\\ERP.FDB",
     "Port": 3050,
     "Charset": "UTF8"
   },
