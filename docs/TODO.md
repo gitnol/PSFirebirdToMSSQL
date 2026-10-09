@@ -30,30 +30,43 @@ Bezug: `KNOWN_ISSUES.md` K3.
 
 - [ ] Neuer Konfigschlüssel `General.IncrementalOverlapMinutes` (Default z. B. 10); Extrakt mit `ts >= MAX(ts) - Overlap` (MERGE ist idempotent)
 - [ ] Untergrenze und Extrakt-Abfrage als Modulfunktion aus dem Hauptskript ziehen (erster, kleiner Schnitt des Backlog-Punkts „Hauptskript zerlegen"; macht den Extrakt unit-testbar)
+- [ ] Stiller Rückfall beseitigen: schlägt die `MAX(ts)`-Abfrage fehl, liest der Extrakt heute ohne Hinweis ab 1900 (Vollabzug); künftig sichtbar in Status/Info (gebündelt, KICKOFF 2a — dieselben Zeilen)
 - [ ] Schema, Sample, README und `architecture/CONFIGURATION.md` ergänzen
 - **DoD:** Unit-Test für die Untergrenze (behaviorales Rot); Integrationstest: Datensatz mit identischem Zeitstempel wie das Wasserzeichen wird übernommen; gemeinsame DoD erfüllt
 - Bewusst nicht gebündelt: K5 (Orphan-Cleanup) und K6 (Schema-Drift) betreffen andere Schritte des Hauptskripts und würden die Größengrenze sprengen.
+- Danach Reflexion (`REFLECTION.md`): korrigiert nur Prozess-Docs (KICKOFF, STATE, KNOWN_ISSUES) und liefert die Befundliste für I10c.
+
+### I10b: CI auf GitHub
+
+Vorgezogen (KICKOFF 2a): Integration läuft ohne Pull Requests (lokaler Merge, Push auf `main`) — die CI ist damit das einzige automatische Prüftor und sichert den Modulumbau in I10a ab.
+
+- [ ] GitHub Actions auf `windows-latest`: `pwsh -NoProfile -File ./tests/pester.config.ps1` und PSScriptAnalyzer bei Push auf `main` und bei PRs
+- [ ] PSScriptAnalyzer: nur Severity `Error` lässt den Lauf scheitern; Warnungen als Liste in `BACKLOG.md` (kein Aufräumen im selben Inkrement)
+- **DoD:** Push auf `main` zeigt beide Prüfungen; ein absichtlich roter Test lässt den Check fehlschlagen; gemeinsame DoD erfüllt
+
+### I10a: Konfig- und Modul-Hygiene
+
+Neu zugeschnitten (KICKOFF 2a): Code-Teil der bisherigen Konsolidierung, gebündelt mit dem Klartext-Passwort-Risiko (`STATE.md`) und dem Backlog-Punkt „`.bak`-Bereinigung".
+
+- [ ] `MSSQL.Port` (K9): im Connection-String verwenden oder aus Sample/Schema entfernen
+- [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer); über `Write-SyncStatus`/`Close-DatabaseConnection` (von keinem Skript genutzt) entscheiden
+- [ ] `Test-SQLSyncConnections.ps1 -PreDeploy`: WARNUNG bei Klartext-Passwort in einer Konfig und bei vorhandenen `config*.bak`
+- [ ] `Manage_Config_Tables.ps1`: Backups rotieren statt unbegrenzt anzulegen
+- **DoD:** Unit-Tests mit behavioralem Rot für Port und Klartext-Erkennung; CI grün; gemeinsame DoD erfüllt
 
 ---
 
 ## Niedrige Priorität
 
-### I10a: Doku- und Repo-Konsolidierung
+### I10c: Doku-Konsolidierung
 
-Konsolidiert (KICKOFF 2a) mit den Backlog-Punkten „Doku-Duplikate", „drei ID-Systeme" und „ungenutzte Exporte".
+Doku-Teil der bisherigen I10a; Umfang ergänzt um die Befundliste der Reflexion nach I8.
 
-- [ ] Exit-Code-Tabelle: einzige Quelle `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen verlinken (READMEs behalten ihre Nutzer-Tabelle)
+- [ ] Exit-Code-Tabelle: einzige Quelle `architecture/ERROR_HANDLING.md` (inkl. Exit-Codes von `Test-SQLSyncConnections.ps1`), übrige `docs/`-Stellen verlinken (READMEs behalten ihre Nutzer-Tabelle)
 - [ ] Schwachstellen-Katalog (S-IDs) in K-/I-IDs überführen und S-Verweise ersetzen
 - [ ] `.github/copilot-instructions.md` an den Code angleichen (kein `Install-Package`, Verweis auf `docs/`, Schlussfrage entfernen)
 - [ ] `README_alternativ.md` zusammenführen oder entfernen
-- [ ] `MSSQL.Port` (K9): im Connection-String verwenden oder aus Sample/Schema entfernen
-- [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer)
 - **DoD:** Doku und Code widerspruchsfrei (Stichprobe aller Skriptparameter); eine Exit-Code-Änderung berührt höchstens 3 Dateien; gemeinsame DoD erfüllt
-
-### I10b: CI auf GitHub
-
-- [ ] GitHub Actions auf `windows-latest`: `pwsh -NoProfile -File ./tests/pester.config.ps1` und PSScriptAnalyzer für PRs nach `main`
-- **DoD:** PR zeigt beide Prüfungen; ein absichtlich roter Test lässt den Check fehlschlagen; gemeinsame DoD erfüllt
 
 ---
 

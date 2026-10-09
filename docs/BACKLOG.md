@@ -19,7 +19,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 - Strukturiertes Laufergebnis (JSON/CSV je Lauf neben dem Transcript) — maschinenlesbar für Monitoring/Dashboards; heute nur `Format-Table` im Transcript
 - Schema-Drift-Erkennung (`KNOWN_ISSUES.md` K6) — neue Firebird-Spalten erkennen und `ALTER TABLE ... ADD` für Staging und Ziel vorschlagen bzw. ausführen
 - Orphan-Cleanup für nicht-numerische IDs (`KNOWN_ISSUES.md` K5) — Typ der Temp-Tabelle aus der Zielspalte ableiten
-- CI mit GitHub Actions: PSScriptAnalyzer + Pester auf `windows-latest` — Voraussetzung (Pester-Harness, I3) erfüllt; Testlauf: `tests/pester.config.ps1`
+- CI mit GitHub Actions: PSScriptAnalyzer + Pester auf `windows-latest` — Voraussetzung (Pester-Harness, I3) erfüllt; Testlauf: `tests/pester.config.ps1` — eingeplant in I10b
 - Overlay `compliance-tisax` prüfen — falls die replizierten ERP-Daten (Kunden, Lieferanten, Personen) im TISAX-Scope des Betreibers liegen
 
 ---
@@ -27,19 +27,19 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 ## Refactoring-Kandidaten
 
 - Hauptskript in Modulfunktionen zerlegen (`Invoke-TableSync`, `Invoke-PreFlight`) — 743 Zeilen in einer Datei, Logik nur schwer testbar; Aufnahme nach I3/I5
-- Ungenutzte/teilweise genutzte Exporte prüfen (nicht exportierte Helfer `Invoke-With…Connection` seit 2026-10-09 entfernt; `Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`)
+- Ungenutzte/teilweise genutzte Exporte prüfen (nicht exportierte Helfer `Invoke-With…Connection` seit 2026-10-09 entfernt; `Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`) — eingeplant in I10a
 - Wiederholter Code in `Setup_Credentials.ps1` (Firebird/MSSQL-Blöcke identisch) in eine Funktion ziehen
 
 ---
 
 ## Technische Schuld
 
-- Doku-Duplikate (Reflexion nach I3) — die Exit-Code-Tabelle steht in `README.md`, `README.de.md`, `features/firebird-mssql-sync.md`, `operations/MONITORING.md` und `architecture/ERROR_HANDLING.md`; jede Änderung zieht 10–15 Doku-Dateien nach sich. Single Source: `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen nur verlinken (READMEs behalten ihre Nutzer-Tabelle). eingeplant in I10a.
-- Drei parallele ID-Systeme (S = Schwachstellen-Katalog, K = bekannte Probleme, I = Inkremente) — erhöht Pflegeaufwand; in I10a prüfen, ob S-IDs in K/I aufgehen können.
+- Doku-Duplikate (Reflexion nach I3) — die Exit-Code-Tabelle steht in `README.md`, `README.de.md`, `features/firebird-mssql-sync.md`, `operations/MONITORING.md` und `architecture/ERROR_HANDLING.md`; jede Änderung zieht 10–15 Doku-Dateien nach sich. Single Source: `architecture/ERROR_HANDLING.md`, übrige `docs/`-Stellen nur verlinken (READMEs behalten ihre Nutzer-Tabelle). Eingeplant in I10c.
+- Drei parallele ID-Systeme (S = Schwachstellen-Katalog, K = bekannte Probleme, I = Inkremente) — erhöht Pflegeaufwand; in I10c prüfen, ob S-IDs in K/I aufgehen können.
 
 - `System.Data.SqlClient` → `Microsoft.Data.SqlClient` — Microsoft hat `System.Data.SqlClient` abgekündigt; wird teurer, sobald eine PowerShell-Version das Paket nicht mehr mitliefert
 - Firebird-Treiber-Version 10.3.4 fest im Code inkl. Hash — Updates erfordern Codeänderung; Ablauf in `security/DEPENDENCY_AUDIT.md`
-- Bereinigung alter `config.json.*.bak`-Dateien fehlt — Backups (ggf. mit Passwörtern) sammeln sich unbegrenzt an
+- Bereinigung alter `config.json.*.bak`-Dateien fehlt — Backups (ggf. mit Passwörtern) sammeln sich unbegrenzt an — eingeplant in I10a
 
 ---
 

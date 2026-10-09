@@ -12,6 +12,21 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-09 Roadmap nach I11 (KICKOFF 2a)
+
+### Changed
+- I8 gebündelt mit dem stillen Vollabzug bei Fehler der `MAX(ts)`-Abfrage (dieselben Zeilen im Hauptskript)
+- I10b (CI) vor I10a gezogen, Priorität Mittel: Integration läuft seit I11 ohne Pull Requests (lokaler Merge,
+  Push auf `main`), Auslöser daher Push auf `main` und PRs; PSScriptAnalyzer scheitert nur bei Severity `Error`
+- Bisherige I10a gesplittet (Größengrenze): **I10a Konfig- und Modul-Hygiene** (`MSSQL.Port`, `Protect-SqlString`,
+  gebündelt mit Klartext-Passwort-Warnung in `-PreDeploy` und `.bak`-Rotation in `Manage_Config_Tables.ps1`) und
+  **I10c Doku-Konsolidierung** (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`)
+- Reflexion nach I8 korrigiert nur Prozess-Docs und liefert die Befundliste für I10c
+- Bewusst getrennt: K5/K6 (andere Abschnitte des Hauptskripts); `Microsoft.Data.SqlClient` und Treiber-Update
+  (nur Prüfung im Security-Sweep 2026-10-22, Umstellung wäre eigenes Inkrement)
+
+---
+
 ## 2026-10-09 I11 – Rollout-Check
 
 ### Added
