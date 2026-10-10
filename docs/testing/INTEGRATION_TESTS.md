@@ -61,15 +61,7 @@ Prüft: Firebird-Verbindung + Server-Version, Anzahl Tabellen, Test-`COUNT` auf 
 konfigurierte Tabelle; SQL-Server-Verbindung + Version, Tabellen, Vorhandensein von
 `sp_Merge_Generic`.
 
-| Exit-Code | Bedeutung |
-|---|---|
-| 0 | alle Tests OK |
-| 1 | Modul/Konfigdatei fehlt **oder** mindestens ein Test fehlgeschlagen |
-| 2 | Konfiguration nicht parsebar / ungültig (inkl. Verstoß gegen `config.schema.json`) |
-| 3 | Credentials nicht auflösbar |
-| 4 | Treiber nicht ladbar |
-| 6 | nur mit `-PreDeploy`: mindestens ein `FEHLER` (Abschnitt 2.1) |
-
+Exit-Codes: `docs/architecture/ERROR_HANDLING.md` → „`Test-SQLSyncConnections.ps1`".
 Manuell belegt am 2026-10-08/09 (Schema-Prüfung, v2.15): schemawidrige Konfig (Typfehler +
 Tippfehler-Schlüssel) → Sync Exit 2 vor jeder DB-Verbindung; gültige Konfig Exit 0;
 `Test-SQLSyncConnections.ps1` mit relativem `-ConfigFile` Exit 0; `Get_Firebird_Schema.ps1 -ConfigFile`
@@ -216,7 +208,7 @@ It 'Ein-Tabellen-Sync: FB-Count == Ziel-Count' {
 `Get-FbCount`, `Get-SqlCount` und `Remove-TestTargetTables` sind Helfer in
 `tests/helpers/TestHelpers.ps1` (mit den Integrationstests anzulegen; existieren noch nicht).
 
-**Wichtig zu S1:** Seit I2 (Sync v2.11) endet der Sync bei Tabellenfehlern mit Exit `10` und
+**Wichtig zu K1:** Seit I2 (Sync v2.11) endet der Sync bei Tabellenfehlern mit Exit `10` und
 bei Sanity „FEHLER" mit `11`. Das ist bisher nur per Unit-Test (`Get-SyncExitCode`) belegt;
 der folgende Negativtest ist die noch offene Abnahme von I2 und muss einmal gegen echte
 Instanzen laufen. Ein E2E-Test verlässt sich trotzdem nicht allein auf den Exit-Code
@@ -251,7 +243,7 @@ zeigen. Achtung: Der Sync legt das Transcript-Log im Skriptordner an (`Logs\`), 
   heruntergeladen — Testrechner vorher einmal einrichten.
 
 Optionale Folge-Szenarien (jeweils eigener Test, Opt-in): `ForceFullSync = true`,
-`CleanupOrphans = true` (Orphan-Cleanup, nur numerische IDs — S7), Tabelle ohne ID
+`CleanupOrphans = true` (Orphan-Cleanup, nur numerische IDs — K4/K5), Tabelle ohne ID
 (Strategie Snapshot), Tabelle mit `TableOverrides`.
 
 ### 4.1 Überlappungsfenster / K3 (I8, manuell)

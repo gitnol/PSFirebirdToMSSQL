@@ -3,8 +3,8 @@
 Stand: 2026-10-10 (I10a, Rollout-Check-Erweiterung; I7, Rollout-Check `-PreDeploy`; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,
 `sql_server_setup.sql`, `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`,
-`Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I11 entsprechen
-`KNOWN_ISSUES.md` bzw. `TODO.md`.
+`Manage_Config_Tables.ps1`). Verweise: K-IDs (bekannte Probleme) und I-IDs (Inkremente) entsprechen
+`KNOWN_ISSUES.md` bzw. `STATE.md`.
 
 **Systemkontext in einem Satz:** Ein Windows-Host führt per Task Scheduler PowerShell 7 aus, liest
 mit Credentials aus dem Windows Credential Manager ERP-Tabellen aus einer Firebird-Datenbank und
@@ -27,7 +27,7 @@ treffen derzeit nicht zu.
 
 ---
 
-## 1. SQL-Identifier-Injection über Tabellen- und Spaltennamen (S2)
+## 1. SQL-Identifier-Injection über Tabellen- und Spaltennamen
 
 **Gefahr:** Tabellen- und Spaltennamen aus der Konfiguration (`Tables`, `TableOverrides`,
 `General.IdColumn`, `General.TimestampColumns`, `MSSQL.Database`, `MSSQL.Prefix`, `MSSQL.Suffix`)
@@ -86,7 +86,7 @@ Injection-Frage (Bedrohung 5).
 
 ---
 
-## 2. Credential-Exposition und Klartext-Fallback (S3)
+## 2. Credential-Exposition und Klartext-Fallback
 
 **Gefahr:**
 - `Resolve-FirebirdCredentials` und `Resolve-MSSQLCredentials` (`SQLSyncCommon.psm1`) fallen auf
@@ -135,7 +135,7 @@ realistische Werte zeigt, hängt der Schutz an Betriebsdisziplin.
 
 ---
 
-## 3. Treiber-Supply-Chain und DLL-Hijacking (S4)
+## 3. Treiber-Supply-Chain und DLL-Hijacking
 
 **Gefahr:** `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) lädt
 `FirebirdSql.Data.FirebirdClient.dll` per `Add-Type -Path` in den Sync-Prozess. Kandidatenreihenfolge:
@@ -194,24 +194,24 @@ beides setzt bereits weitgehende lokale Rechte voraus.
 
 ---
 
-## 4. Unbemerkte Fehlschläge und stiller Datenverlust (S1, S5, S6, S11)
+## 4. Unbemerkte Fehlschläge und stiller Datenverlust (K1, K2, K3, K6)
 
 **Gefahr:** Integritätsbedrohung – Zieldaten werden falsch oder unvollständig, ohne dass es
 jemand bemerkt:
-- **S1:** Bis Version 2.10 endete `Sync_Firebird_MSSQL_AutoSchema.ps1` immer mit Exit-Code 0,
+- **K1:** Bis Version 2.10 endete `Sync_Firebird_MSSQL_AutoSchema.ps1` immer mit Exit-Code 0,
   auch wenn Tabellen den Status `Fehler` oder der Sanity Check `FEHLER` hatte; Batch-Fehler beim
   Installieren von `sql_server_setup.sql` waren nur Warnungen. Der Task Scheduler meldete Erfolg.
   Seit v2.11 (I2) im Code mitigiert, siehe unten.
-- **S5:** Bis Version 2.13 bildete das Typmapping im Sync-Skript `Decimal` fest auf `DECIMAL(18,4)`
+- **K2:** Bis Version 2.13 bildete das Typmapping im Sync-Skript `Decimal` fest auf `DECIMAL(18,4)`
   ab – Werte mit mehr als 4 Nachkommastellen wurden gerundet, Werte mit Precision > 18 liefen über
   (Fehler oder Verlust). Seit v2.14 (I5) für neu angelegte Tabellen mitigiert, siehe unten;
   bestehende Zieltabellen behalten ihren Typ.
-- **S6:** Bis Version 2.16 war das Wasserzeichen strikt `> MAX(ts)` der Zieltabelle; Sätze mit
+- **K3:** Bis Version 2.16 war das Wasserzeichen strikt `> MAX(ts)` der Zieltabelle; Sätze mit
   identischem Zeitstempel oder aus länger laufenden Firebird-Transaktionen wurden bis zum nächsten
   Full-Lauf übersprungen. Fiel die `MAX`-Abfrage aus, wurde still `1900-01-01` verwendet
   (Voll-Extrakt). Seit v2.18 (I8) weitgehend mitigiert, siehe unten.
-- Löschungen werden standardmäßig nicht repliziert (S7, by design; `CleanupOrphans` optional).
-- **S11 (Schema-Drift):** Der Sync ändert vorhandene Ziel- und Staging-Tabellen nicht. Fehlt im Ziel
+- Löschungen werden standardmäßig nicht repliziert (K4/K5, by design; `CleanupOrphans` optional).
+- **K6 (Schema-Drift):** Der Sync ändert vorhandene Ziel- und Staging-Tabellen nicht. Fehlt im Ziel
   eine Quellspalte, übernimmt `sp_Merge_Generic` sie still nicht (Status `Erfolg`, Exit 0, K6). Fehlt
   im Ziel die ID-Spalte, endet `sp_Merge_Generic` mit `PRINT` + `RETURN` ohne Fehler – die Tabelle
   meldet `Erfolg`, gemergt wird nichts (aus `sql_server_setup.sql` abgeleitet, nicht Ende-zu-Ende
@@ -222,7 +222,7 @@ jemand bemerkt:
   `WARNUNG`/`FEHLER` in der Zusammenfassung und im Transcript-Log.
 - Retry-Schleife pro Tabelle (`MaxRetries`, `RetryDelaySeconds`).
 - `sp_Merge_Generic` ist idempotent (MERGE auf ID); der wöchentliche Full-Lauf
-  (`SQLSync_Firebird_Weekly_Full`) korrigiert Lücken aus S6.
+  (`SQLSync_Firebird_Weekly_Full`) korrigiert Lücken aus K3.
 - Abbruch mit Exit-Codes 1/2/5/7/9 bei Modul-, Konfig-, Credential-, Treiber- und
   Pre-Flight-Fehlern; seit I2 bricht auch ein fehlgeschlagener SQL-Batch aus
   `sql_server_setup.sql` den Pre-Flight ab (Exit 9).
@@ -237,7 +237,7 @@ jemand bemerkt:
   Nachkommastelle identisch mit Firebird. Der Sync ändert keine bestehenden Tabellen –
   Zieltabellen aus v2.13 oder älter runden weiter, bis sie migriert sind
   (`operations/RUNBOOK.md`, „Nachkommastellen im Ziel gerundet“).
-- Erkennung des S5-Altbestands (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht
+- Erkennung des K2-Altbestands (seit 2026-10-09): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht
   rein lesend die Dezimalspalten der konfigurierten Tabellen (Firebird-Metadaten) mit den
   Zieltabellen (`Find-SQLSyncDecimalTruncation`) und meldet jede Zielspalte mit kleinerer Precision
   oder Scale als `WARNUNG`. In der Testumgebung erprobt: künstlich verkleinerte Spalte erkannt,
@@ -249,7 +249,7 @@ jemand bemerkt:
   die Tabelle nach den Retries mit `Fehler` (Exit 10) statt still voll zu laden. Unit-Tests
   vorhanden; Integrationslauf am 2026-10-09: ein im Ziel gelöschter Satz knapp unter dem
   Wasserzeichen wurde mit v2.18 wiederhergestellt (Sanity `OK`), mit v2.16 nicht (Sanity `FEHLER`).
-- Erkennung von S11 seit I10a (v2.19): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht rein
+- Erkennung von K6 seit I10a (v2.19): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht rein
   lesend die Spalten der konfigurierten Tabellen (Firebird-Metadaten) mit vorhandenen Ziel- und
   Staging-Tabellen (`Find-SQLSyncSchemaDrift`). Fehlende ID-Spalte und fehlende Zeitstempelspalte
   einer Incremental-Tabelle im Ziel sowie fehlende Staging-Spalten → `FEHLER` (Exit 6), andere
@@ -260,19 +260,19 @@ jemand bemerkt:
   still fehlender Spalte). Die Prüfung ändert nichts; Korrektur per RUNBOOK.
 
 **Offene Maßnahme:** (I2 abgenommen 2026-10-08: echter Lauf Exit 10, Aufgabenplanung `0xA`.) Migration von Zieltabellen aus v2.13 oder
-älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe). Automatische Ergänzung
-fehlender Spalten (S11/K6) offen; bis dahin Erkennung per `-PreDeploy` und Korrektur per RUNBOOK. Backlog: strukturiertes
+älter je Installation (K2-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe). Automatische Ergänzung
+fehlender Spalten (K6/K6) offen; bis dahin Erkennung per `-PreDeploy` und Korrektur per RUNBOOK. Backlog: strukturiertes
 Run-Ergebnis (JSON/CSV) und Alarmierung auf `LastTaskResult`.
 
 **Restrisiko:** Mittel – Tabellen- und Sanity-Fehler sind über den Exit-Code erkennbar (Abnahme
-offen), es gibt aber keine aktive Alarmierung; von S6 bleiben nur Commit-Verzögerungen länger als das
-Überlappungsfenster offen (bis zum Weekly Full), ebenso S5 für nicht migrierte
+offen), es gibt aber keine aktive Alarmierung; von K3 bleiben nur Commit-Verzögerungen länger als das
+Überlappungsfenster offen (bis zum Weekly Full), ebenso K2 für nicht migrierte
 Zieltabellen aus v2.13 oder älter – beides erzeugt nicht immer einen Sanity-`FEHLER` (z. B.
 gerundete Nachkommastellen bei gleicher Zeilenzahl).
 
 ---
 
-## 5. Übermäßige Rechte von Konto, Datenbank-Login und Ausführungsumgebung (S13)
+## 5. Übermäßige Rechte von Konto, Datenbank-Login und Ausführungsumgebung
 
 **Gefahr:**
 - **Pre-Flight** im Hauptskript legt die Zieldatenbank über `master` an (`CREATE DATABASE` +
@@ -384,11 +384,12 @@ Update-Prüfung der Action steht in `DEPENDENCY_AUDIT.md`.
 
 ---
 
-## Schwachstellen-Katalog (S-IDs)
+## Historische Zuordnung der früheren S-IDs
 
-Die Kürzel `S1`–`S13` werden in `docs/features/`, `docs/operations/`, `docs/security/` und
-`docs/testing/` als stabile Referenz auf die bei der Initialisierung (I1, Code-Stand `721d5e0`)
-gefundenen Schwachstellen verwendet. Zuordnung:
+Bis I10c gab es ein drittes ID-System `S1`–`S13` (Schwachstellen aus der Initialisierung, Code-Stand
+`721d5e0`). Seit I10c verweist die Doku nur noch auf K-IDs (`KNOWN_ISSUES.md`), I-IDs (Inkremente) und
+die nummerierten Bedrohungen dieser Datei. Die Tabelle bleibt, damit ältere Commits und `CHANGELOG.md`-
+Einträge mit S-IDs nachvollziehbar sind; neue Verweise nicht mehr mit S-IDs schreiben. Zuordnung:
 
 | S-ID | Kurzbeschreibung | Bekanntes Problem | Inkrement |
 |---|---|---|---|

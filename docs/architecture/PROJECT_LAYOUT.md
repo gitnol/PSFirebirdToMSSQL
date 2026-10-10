@@ -54,8 +54,8 @@ PSFirebirdToMSSQL/
 ├── config.schema.json                   # JSON-Schema (versioniert, beim Laden jeder Konfig geprüft)
 ├── config.json                          # Lokale Konfiguration (gitignored, kann Secrets enthalten)
 ├── config.json.<yyyyMMdd_HHmmss>.bak    # Backups von Manage_Config_Tables (gitignored; seit I10a nur die neuesten -KeepBackups, Default 5)
-├── README.md / README.de.md / README_alternativ.md   # Nutzerdoku EN / DE / alternative DE-Fassung
-├── .github/copilot-instructions.md      # Agent-Hinweise (teilweise veraltet, Inkrement I10c)
+├── README.md / README.de.md             # Nutzerdoku EN / DE (README_alternativ.md in I10c entfernt)
+├── .github/copilot-instructions.md      # Kurzhinweise für KI-Agenten, verweisen auf docs/ (I10c)
 ├── .github/workflows/ci.yml             # CI: PSScriptAnalyzer + Pester auf windows-latest (Push main, PR)
 ├── .gitignore
 ├── Logs/                                # Laufzeit: Sync_<ConfigName>_<yyyy-MM-dd_HHmm>.log (gitignored)

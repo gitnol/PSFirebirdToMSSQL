@@ -61,9 +61,9 @@ verifiziert") statt eine sichere Aussage zu formulieren.
 
 **Projektbeispiele für „erst prüfen, dann zitieren":**
 
-- **Doku ist nicht Code:** `.github/copilot-instructions.md` behauptet, `Example_Sync_Start.ps1`
+- **Doku ist nicht Code:** `.github/copilot-instructions.md` behauptete bis I10c, `Example_Sync_Start.ps1`
   rufe `*_Prod.ps1` auf und der Treiber werde per `Install-Package` installiert — beides
-  stimmt nicht (der Treiber kommt per `Invoke-WebRequest` von NuGet in `Initialize-FirebirdDriver`).
+  stimmte nicht (der Treiber kommt per `Invoke-WebRequest` von NuGet in `Initialize-FirebirdDriver`).
   Aussagen aus READMEs/Agent-Hinweisen vor dem Zitieren im Code gegenprüfen.
 - **Konfigschlüssel:** `MSSQL.Port` steht in `config.sample.json`/`config.schema.json`, wird vom
   Code aber nicht verwendet (S12). Schlüssel nur als wirksam zitieren, wenn `Get-SQLSyncConfig`

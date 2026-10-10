@@ -237,7 +237,7 @@ Den Namen dann in der Konfigdatei unter `MSSQL.CredentialTarget` (bzw.
 **Wichtig:** Credential-Manager-Einträge gehören dem Windows-Konto, unter dem
 `Setup_Credentials.ps1` läuft. Es muss **dasselbe Konto** sein, unter dem später
 die Scheduled Tasks laufen (`-RunAsUser`/`-GmsaAccount` von
-`Setup-ScheduledTasks.ps1`, S13). Details: `architecture/CREDENTIAL_STRATEGY.md`,
+`Setup-ScheduledTasks.ps1`, Bedrohung 5). Details: `architecture/CREDENTIAL_STRATEGY.md`,
 `operations/SECRETS_MANAGEMENT.md`.
 
 ```powershell

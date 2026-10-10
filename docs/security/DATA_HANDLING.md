@@ -38,7 +38,7 @@ Konfigurationsdatei) liegt beim Betreiber.
 - Explizit **nicht** übertragen werden: Firebird-Systemtabellen (nur, wenn sie nicht konfiguriert
   sind – technisch wird nicht verhindert, sie einzutragen), Passwörter (werden nicht geloggt).
 - Keine Limits/Truncation für sensible Felder. Backlog-Kandidat: Spalten-Ausschlussliste pro Tabelle.
-- **Löschungen werden standardmäßig nicht repliziert** (S7). In der Quelle gelöschte Datensätze
+- **Löschungen werden standardmäßig nicht repliziert** (K4/K5). In der Quelle gelöschte Datensätze
   bleiben in der Zieltabelle, bis `General.CleanupOrphans = true` gesetzt ist (nur Tabellen mit
   numerischer ID-Spalte) oder ein Lauf mit `ForceFullSync` die Zieltabelle neu befüllt.
   **Konsequenz für die DSGVO-Löschpflicht (Art. 17):** Eine Löschung im ERP erfüllt die Pflicht im

@@ -2,20 +2,20 @@
 
 Zuletzt aktualisiert: 2026-10-10
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I10a – Rollout-Check-Erweiterung und Backup-Hygiene (2026-10-10)
-**Nächster Schritt:** I10c – Doku-Konsolidierung
-**Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8), vor I10d (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
+**Nächster Schritt:** Reflexion (fällig nach I10c, inkl. freigegebener Template-Backports), danach I10d – Modul-Aufräumen
+**Nächste Reflexion:** jetzt fällig (I10b, I10a, I10c abgeschlossen), vor I10d (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**I10c – Doku-Konsolidierung.** Exit-Code-Tabelle mit einziger Quelle `architecture/ERROR_HANDLING.md`, S-IDs in
-K-/I-IDs überführen, `.github/copilot-instructions.md` angleichen, `README_alternativ.md` zusammenführen oder
-entfernen. Danach Reflexion (fällig nach I10c), dann I10d (Modul-Aufräumen). Seit I10b prüft die CI jeden Push
-auf `main`; seit I10a erkennt `-PreDeploy` Schema-Drift (K6) und die stille Merge-Rückkehr ohne ID-Spalte (K10).
-Offene Template-Backport-Vorschläge (Freigabe ausstehend): siehe `CHANGELOG.md` „Reflexion nach I8".
+**Reflexion (fällig).** Nach `REFLECTION.md`; Template-Backports sind seit 2026-10-10 freigegeben (alle
+Vorschläge aus „Reflexion nach I8" plus L10) — einspielen, Tag nur nach bestandenem Pre-Tag-Gate. Danach
+**I10d – Modul-Aufräumen** (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder).
+Exit-Codes stehen seit I10c nur noch in `architecture/ERROR_HANDLING.md` (plus Nutzer-Tabellen der READMEs).
+Template-Backport-Vorschläge: siehe `CHANGELOG.md` „Reflexion nach I8" (freigegeben 2026-10-10).
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -46,6 +46,7 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 | I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
 | I10b | CI auf GitHub Actions: Pester + PSScriptAnalyzer (nur `Error` blockiert) bei Push auf `main`/PR, Action per SHA gepinnt | 2026-10-09 | f7423b3 |
 | I10a | Rollout-Check-Erweiterung: `-PreDeploy` mit Schema-Drift (K6/K10), Klartext-Passwort- und `.bak`-Warnung; Backup-Rotation in `Manage_Config_Tables.ps1` | 2026-10-10 | 1299c5e |
+| I10c | Doku-Konsolidierung: Exit-Codes mit einziger Quelle, S-IDs aufgelöst, `copilot-instructions.md` angeglichen, `README_alternativ.md` entfernt | 2026-10-10 | 6d93b9b |
 
 ---
 
@@ -53,7 +54,6 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I10c | Doku-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`) | Niedrig |
 | I10d | Modul-Aufräumen (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder) | Niedrig |
 
 ---

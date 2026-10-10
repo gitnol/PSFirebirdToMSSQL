@@ -76,4 +76,4 @@ Sie kosten bei Full-Load überproportional Token ohne Nutzen für das laufende I
 | Scheduled Tasks | `Setup-ScheduledTasks.ps1`, `operations/TASK_SCHEDULER.md` | — |
 | Laufergebnisse | einzelnes Log aus `Logs/` gezielt (grep auf „Fehler"/„FEHLER") | nicht den ganzen `Logs/`-Ordner |
 
-`.github/copilot-instructions.md` ist teilweise veraltet (S12) — nicht als Faktenquelle laden.
+`.github/copilot-instructions.md` ist seit I10c eine Kurzfassung mit Verweisen auf `docs/` — Fakten aus `docs/` und dem Code laden, nicht aus dieser Datei.

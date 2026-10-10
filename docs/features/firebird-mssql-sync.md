@@ -205,36 +205,12 @@ der MERGE schreibt in die alten Zieltypen. Prüfung und Korrektur je Tabelle:
 
 ## Exit-Codes
 
-`Sync_Firebird_MSSQL_AutoSchema.ps1`:
-
-| Code | Bedeutung |
-|---|---|
-| `0` | Alle Tabellen `Erfolg`; Sanity `OK`, `N/A` oder `WARNUNG (+n)` |
-| `1` | `SQLSyncCommon.psm1` fehlt (kein Log, Transcript noch nicht gestartet) |
-| `2` | Konfiguration fehlt / ungültig (Parsefehler, Schema-Verstoß `Konfiguration verletzt das Schema (config.schema.json): …`, Namensregeln) |
-| `5` | Credentials nicht auflösbar |
-| `7` | Firebird-Treiber fehlt / Download, Hash oder Laden fehlgeschlagen |
-| `9` | Pre-Flight (Ziel-DB oder Stored Procedure, inkl. fehlgeschlagener SQL-Batch aus `sql_server_setup.sql`) fehlgeschlagen |
-| `10` | Mindestens eine Tabelle mit Status `Fehler`, oder weniger Ergebnisse als konfigurierte Tabellen (in der `ERGEBNIS`-Zeile als `<Name> (kein Ergebnis)`); Vorrang vor `11` |
-| `11` | Keine Tabellenfehler, aber Sanity `FEHLER (-n)`; nur mit `General.FailOnSanityError = true` (Default) |
-
-Seit Version 2.11 (Inkrement I2). Unit-getestet (`Get-SyncExitCode`); ein
-End-to-End-Abnahme am 2026-10-08 bestanden (Exit 0 ohne Fehler, Exit 10 bei nicht existierender Tabelle, Task Scheduler `0xA`).
-
-Hilfsskripte:
-
-| Skript | Exit-Codes |
-|---|---|
-| `Test-SQLSyncConnections.ps1` | 0 OK (mit `-PreDeploy`: kein `FEHLER`, `WARNUNG`en zulässig), 1 Modul/Config fehlt oder ein Verbindungstest fehlgeschlagen, 2 Config ungültig (Parse, Schema, Namen), 3 Credentials, 4 Treiber, 6 `-PreDeploy` mit mindestens einem `FEHLER` |
-| `Get_Firebird_Schema.ps1` | 0 OK, 1 Modul/Konfigdatei fehlt, 2 Config ungültig (Parse, Schema, Namen), 3 Treiber, 4 Analysefehler, 5 Credentials |
-| `Manage_Config_Tables.ps1` | 0 sonst, 1 Modul/Config fehlt, 2 Config ungültig (Schema, Namen; vor GridView und Backup) oder FB-Metadaten nicht lesbar, 3 Treiber, 4 letzte Tabelle würde entfernt oder Backup fehlgeschlagen, 5 Credentials |
-
-Achtung: Die Codes sind zwischen den Skripten **nicht** einheitlich (Treiber
-= 7 / 4 / 3). I2 hat nur den Sync um die Codes `10`/`11` ergänzt; eine
-Vereinheitlichung der Hilfsskripte ist nicht umgesetzt.
+Exit-Codes aller Skripte (Sync und Hilfsskripte, inkl. Log-Zeilen und Vorrangregeln): einzige Quelle
+`docs/architecture/ERROR_HANDLING.md` → „Exit-Codes". Seit Version 2.11 (I2) meldet der Sync Tabellenfehler
+und Sanity-`FEHLER` über eigene Codes; ermittelt von `Get-SyncExitCode` (unit-getestet), Ende-zu-Ende
+abgenommen am 2026-10-08 (Task Scheduler `0xA`).
 
 ---
-
 ## Kritische Patterns
 
 - Verbindungen pro Versuch neu öffnen und im `finally` schließen + disposen
@@ -261,17 +237,17 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 
 | Einschränkung | Ursache | Status |
 |---------------|---------|--------|
-| Exit-Code 0 trotz Tabellenfehlern/Sanity FEHLER; SP-Batch-Fehler nur Warnung | früher kein Exit-Code-Mapping am Skriptende (S1) | behoben in I2 (Exit 10/11/9), abgenommen 2026-10-08 |
-| ~~Tabellen-/Spaltennamen, Prefix/Suffix ungeprüft in SQL interpoliert, teils ohne `[]`~~ | früher fehlende Identifier-Validierung (S2) | behoben in I4 / v2.12 (Allow-List + Klammerung + Parameter), Integrationsläufe 2026-10-08 bestanden |
-| ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (S5) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy` (`WARNUNG` „Altbestand DECIMAL“), Migration per `operations/RUNBOOK.md` |
-| ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (S8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
-| ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (S9) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
-| ~~Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung~~ | früher Prüfung nur beim Download (S4) | behoben in I7 (2026-10-09): jede DLL wird vor dem Laden geprüft, Abweichung → Exit 7; echter Lauf mit manipulierter Kopie bestanden. Grenze: eine in der Sitzung bereits geladene Assembly wird ohne Prüfung weiterverwendet |
-| ~~Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung)~~ | früher striktes `> MAX(ts)` (S6) | weitgehend behoben in I8 / v2.18: Extrakt ab Wasserzeichen minus `General.IncrementalOverlapMinutes` (Default 10), inklusive; Integrationslauf 2026-10-09 bestanden. Rest: Commit-Verzögerungen länger als das Fenster holt erst der Weekly Full (`ForceFullSync`) |
+| Exit-Code 0 trotz Tabellenfehlern/Sanity FEHLER; SP-Batch-Fehler nur Warnung | früher kein Exit-Code-Mapping am Skriptende (K1) | behoben in I2 (Exit 10/11/9), abgenommen 2026-10-08 |
+| ~~Tabellen-/Spaltennamen, Prefix/Suffix ungeprüft in SQL interpoliert, teils ohne `[]`~~ | früher fehlende Identifier-Validierung (Bedrohung 1) | behoben in I4 / v2.12 (Allow-List + Klammerung + Parameter), Integrationsläufe 2026-10-08 bestanden |
+| ~~`DECIMAL(18,4)` fest: NUMERIC mit Scale > 4 oder Precision > 18 verliert Stellen/überläuft~~ | früher Typmapping ohne Precision/Scale (K2) | behoben in I5 / v2.14 für neu angelegte Tabellen, Integrationslauf 2026-10-08 bestanden; Zieltabellen aus v2.13 oder älter behalten `DECIMAL(18,4)` → Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy` (`WARNUNG` „Altbestand DECIMAL“), Migration per `operations/RUNBOOK.md` |
+| ~~Typmapping und Spaltenermittlung doppelt (Sync-Skript und Modul), Guid fehlte im Sync~~ | früher Logik-Duplikat (K8) | behoben in I5 / v2.14 (Parallel-Block nutzt `ConvertTo-SqlServerType`/`Get-TableColumnConfig`); Configpfad-Duplikat behoben in I6 / v2.15 (`Resolve-SQLSyncConfigPath`) |
+| ~~`config.schema.json` wird nie geprüft~~ | früher wurde `-SchemaPath` nicht übergeben (K7) | behoben in I6 / v2.15: alle vier Skripte prüfen Fail-Fast gegen das Schema (Exit 2), Integrationsläufe 2026-10-09 bestanden |
+| ~~Bereits vorhandene oder per `DllPath` konfigurierte Treiber-DLL ohne Hash-Prüfung~~ | früher Prüfung nur beim Download (Bedrohung 3) | behoben in I7 (2026-10-09): jede DLL wird vor dem Laden geprüft, Abweichung → Exit 7; echter Lauf mit manipulierter Kopie bestanden. Grenze: eine in der Sitzung bereits geladene Assembly wird ohne Prüfung weiterverwendet |
+| ~~Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung)~~ | früher striktes `> MAX(ts)` (K3) | weitgehend behoben in I8 / v2.18: Extrakt ab Wasserzeichen minus `General.IncrementalOverlapMinutes` (Default 10), inklusive; Integrationslauf 2026-10-09 bestanden. Rest: Commit-Verzögerungen länger als das Fenster holt erst der Weekly Full (`ForceFullSync`) |
 | `RowsLoaded` ist bei Incremental auch ohne Quelländerung oft > 0 | Überlappungsfenster liest Zeilen erneut (I8) | by design; MERGE idempotent, keine Duplikate |
-| Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
-| Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | Sync ändert vorhandene Tabellen nicht (S11, K6) | Erkennung seit I10a / v2.19: `Test-SQLSyncConnections.ps1 -PreDeploy` meldet fehlende Spalten in vorhandenen Ziel-/Staging-Tabellen (`Schema-Drift`: `FEHLER` für ID-, Zeitstempel- und Staging-Spalten, sonst `WARNUNG`), Integrationslauf 2026-10-10 bestanden; Korrektur per `operations/RUNBOOK.md`. Automatische Ergänzung: Backlog |
-| `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10d |
+| Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (K4/K5) | Akzeptiert / Backlog |
+| Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | Sync ändert vorhandene Tabellen nicht (K6, K6) | Erkennung seit I10a / v2.19: `Test-SQLSyncConnections.ps1 -PreDeploy` meldet fehlende Spalten in vorhandenen Ziel-/Staging-Tabellen (`Schema-Drift`: `FEHLER` für ID-, Zeitstempel- und Staging-Spalten, sonst `WARNUNG`), Integrationslauf 2026-10-10 bestanden; Korrektur per `operations/RUNBOOK.md`. Automatische Ergänzung: Backlog |
+| `MSSQL.Port` wird ignoriert | nicht implementiert (K9) | geplant in I10d |
 | Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) und der Incremental-Extrakt (seit I8) liegen im Modul (unit-getestet) |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen; eine fehlende ID-Spalte in der vorhandenen Zieltabelle meldet `-PreDeploy` seit I10a als `FEHLER` „Schema-Drift“ |
 
@@ -308,7 +284,7 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 
 ## Teststrategie
 
-Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
+Unit-Tests (seit I3): `tests/Unit/SQLSyncCommon.Tests.ps1`
 mit 179 Pester-5-Tests (insgesamt 192 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
 `pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 96,23 % am 2026-10-10)
