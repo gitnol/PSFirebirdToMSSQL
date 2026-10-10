@@ -8,7 +8,7 @@ Pre-Flight inkl. SP-Batch-Fehler → `9`. Ein Monitoring kann sich damit auf
 `LastTaskResult` stützen; das Log bleibt die Quelle für Details (welche Tabelle,
 welche Ursache). Einschränkung: Das Exit-Code-Verhalten ist per Unit-Test
 geprüft, ein End-to-End-Lauf gegen echte Instanzen steht noch aus (Abnahme
-offen, S1).
+offen, K1).
 
 ---
 
@@ -26,27 +26,15 @@ JSON/CSV-Ergebnis, Metriken, Heartbeat-Datei.
 
 ---
 
-## Exit-Codes (Sync_Firebird_MSSQL_AutoSchema.ps1)
+## Exit-Codes
 
-| Code | Bedeutung | Im Log |
-|---|---|---|
-| `0` | Alle Tabellen `Erfolg`, Sanity `OK` / `N/A` / `WARNUNG (+n)` | `ERGEBNIS: OK (Exit-Code 0)` |
-| `1` | `SQLSyncCommon.psm1` fehlt im Skriptordner (vor Transcript-Start, daher **kein** Log) | – |
-| `2` | Konfiguration nicht gefunden / nicht parsebar / ungültig (z. B. leere `Tables`) | `KRITISCH: ...` |
-| `5` | Credentials nicht auflösbar | `KRITISCH: Keine ... Credentials gefunden!` |
-| `7` | Firebird-Treiber fehlt, Download/Hash/Laden fehlgeschlagen | `KRITISCH: ...` |
-| `9` | Pre-Flight: Ziel-DB prüfen/anlegen oder `sp_Merge_Generic` installieren fehlgeschlagen (auch ein einzelner fehlgeschlagener SQL-Batch aus `sql_server_setup.sql`) | `KRITISCH: ...` bzw. `PRE-FLIGHT CHECK (PROCEDURE) FAILED: Fehler beim Ausführen eines SQL-Batch ...` |
-| `10` | Mindestens eine Tabelle `Fehler` oder weniger Ergebnisse als konfigurierte Tabellen | `ERGEBNIS: FEHLER (Exit-Code 10) - betroffene Tabellen: ...` (fehlende als `<Name> (kein Ergebnis)`) |
-| `11` | Keine Tabellenfehler, aber Sanity `FEHLER (-n)`; nur mit `General.FailOnSanityError = true` (Default) | `ERGEBNIS: FEHLER (Exit-Code 11) - betroffene Tabellen: ...` |
-| `0xC000013A` | Prozess abgebrochen (Strg+C / Kill) | Log endet abrupt, keine Zusammenfassung |
-
-Task Scheduler zeigt die Codes hexadezimal: `0x9`, `0xA` (= 10), `0xB` (= 11).
-Sanity `WARNUNG (+n)` (Ziel hat mehr Zeilen, z. B. nicht replizierte
-Löschungen) führt bewusst **nicht** zu einem Fehlercode – dafür weiterhin das
-Log prüfen. Exit-Codes der Hilfsskripte: `features/firebird-mssql-sync.md`.
+Bedeutung jedes Codes und die zugehörige Log-Zeile (`ERGEBNIS: … (Exit-Code n)`, `KRITISCH: …`):
+`docs/architecture/ERROR_HANDLING.md` → „Exit-Codes" (einzige Quelle für alle Skripte). Für das Monitoring
+gilt: jeder Code ungleich `0` ist ein Alarm; Task Scheduler zeigt ihn hexadezimal („Letztes
+Ausführungsergebnis"), ein Abbruch erscheint als `0xC000013A`. Sanity `WARNUNG (+n)` ergibt bewusst keinen
+Fehlercode – dafür weiterhin das Log prüfen.
 
 ---
-
 ## Erfolgsindikatoren (manuell prüfbar)
 
 | Indikator | Erwartet | Prüfung |
@@ -124,8 +112,8 @@ eingerichtet; die Ausgabe ist für die Konsole gedacht.
 | Signal | Mögliche Ursache | Maßnahme (`operations/RUNBOOK.md`) |
 |---|---|---|
 | `Abschluss: Fehler` | Tabelle nach allen Retries fehlgeschlagen | Störungsfall „Tabelle mit Status Fehler" |
-| Sanity `FEHLER (-n)` | Zeilen fehlen im Ziel (Commit-Verzögerung länger als das Überlappungsfenster, Rest von S6/K3; Fehler) | ForceFullSync für Tabelle |
-| Sanity `WARNUNG (+n)` | Löschungen nicht repliziert (S7) | CleanupOrphans / ForceFullSync |
+| Sanity `FEHLER (-n)` | Zeilen fehlen im Ziel (Commit-Verzögerung länger als das Überlappungsfenster, Rest von K3; Fehler) | ForceFullSync für Tabelle |
+| Sanity `WARNUNG (+n)` | Löschungen nicht repliziert (K4/K5) | CleanupOrphans / ForceFullSync |
 | `Warnung: Versuch n von m` | Transiente Fehler, Retry lief | beobachten; dauerhaft → Ursache klären |
 | `(Erstlauf (Zieltabelle fehlt) - Vollabzug)` in Info | Incremental-Tabelle ohne Zieltabelle (Erstlauf oder Zieltabelle gelöscht): Vollabzug, Zieltabelle wird angelegt | erwartet beim ersten Lauf; sonst klären, wer die Zieltabelle gelöscht hat |
 | `(Kein Wasserzeichen (Zieltabelle leer oder Zeitstempel NULL) - Vollabzug)` in Info | Incremental-Tabelle mit leerer Zieltabelle oder nur NULL in der Zeitstempelspalte (z. B. nachgerüstete Spalte): Vollabzug ab 1900-01-01 | erwartet nach manuellem Leeren; sonst Ursache klären |
@@ -138,7 +126,7 @@ eingerichtet; die Ausgabe ist für die Konsole gedacht.
 | `LastTaskResult` `0x2`/`0x5`/`0x7`/`0x9` | siehe Exit-Codes oben | Log `KRITISCH:` lesen |
 | `LastTaskResult` `0xA` | mindestens eine Tabelle fehlgeschlagen bzw. ohne Ergebnis | `ERGEBNIS:`-Zeile lesen, Störungsfall „Tabelle mit Status Fehler" |
 | `LastTaskResult` `0xB` | Sanity `FEHLER` (Ziel hat weniger Zeilen) | ForceFullSync für die genannten Tabellen |
-| `[Credentials] ...: config.json (WARNUNG: unsicher!)` | Fallback-Passwort in Konfig im Einsatz (S3) | Credential Manager nutzen |
+| `[Credentials] ...: config.json (WARNUNG: unsicher!)` | Fallback-Passwort in Konfig im Einsatz (Bedrohung 2) | Credential Manager nutzen |
 
 ---
 
@@ -148,7 +136,7 @@ eingerichtet; die Ausgabe ist für die Konsole gedacht.
 Trigger:          Daily Diff: Mo–Fr ab 06:01 alle 30 Min für 15 h
                   Weekly Full: So 05:13
 Ausführung:       Unabhängig von Benutzeranmeldung (gespeichertes Windows-Passwort, bei gMSA keins)
-Konto:            -RunAsUser (Default: Benutzer, der Setup-ScheduledTasks.ps1 ausführt) oder -GmsaAccount (S13)
+Konto:            -RunAsUser (Default: Benutzer, der Setup-ScheduledTasks.ps1 ausführt) oder -GmsaAccount (Bedrohung 5)
 Protokollierung:  <Skriptordner>\Logs\Sync_<Konfigname>_<yyyy-MM-dd_HHmm>.log
 ```
 

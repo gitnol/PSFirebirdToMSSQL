@@ -143,8 +143,8 @@ Der Sanity Check vergleicht `COUNT(*)` in Firebird mit `COUNT(*)` der Zieltabell
 | Anzeige | Bedeutung | Maßnahme |
 |---|---|---|
 | `OK` | Gleiche Zeilenzahl | – |
-| `FEHLER (-n)` | Ziel hat **n Zeilen weniger** als Quelle: Datensätze fehlen (z. B. Commit-Verzögerung länger als das Überlappungsfenster `General.IncrementalOverlapMinutes`, Rest von S6/K3; oder Lauf mit Fehler). Ohne Tabellenfehler endet der Lauf mit Exit `11` (`0xB`), sofern `General.FailOnSanityError` nicht `false` ist | Einmal-Konfig mit `ForceFullSync: true` für die Tabelle, oder Weekly Full abwarten |
-| `WARNUNG (+n)` | Ziel hat **n Zeilen mehr**: in Firebird gelöschte Datensätze sind im Ziel noch vorhanden (Löschungen werden standardmäßig nicht repliziert, S7) | siehe „Löschungen in Firebird" |
+| `FEHLER (-n)` | Ziel hat **n Zeilen weniger** als Quelle: Datensätze fehlen (z. B. Commit-Verzögerung länger als das Überlappungsfenster `General.IncrementalOverlapMinutes`, Rest von K3; oder Lauf mit Fehler). Ohne Tabellenfehler endet der Lauf mit Exit `11` (`0xB`), sofern `General.FailOnSanityError` nicht `false` ist | Einmal-Konfig mit `ForceFullSync: true` für die Tabelle, oder Weekly Full abwarten |
+| `WARNUNG (+n)` | Ziel hat **n Zeilen mehr**: in Firebird gelöschte Datensätze sind im Ziel noch vorhanden (Löschungen werden standardmäßig nicht repliziert, K4/K5) | siehe „Löschungen in Firebird" |
 | `N/A` | `RunSanityCheck` aus oder Tabelle fehlgeschlagen | – |
 
 Kleine Abweichungen während laufender Firebird-Schreiblast sind möglich, da
@@ -308,7 +308,7 @@ lassen; Ergebnis in SSMS prüfen: `EXEC sp_help 'dbo.sp_Merge_Generic'`.
 Symptom: Tabellenfehler beim BulkCopy (Spaltenzuordnung), Typkonvertierung oder
 MERGE; oder neue Spalte kommt im Ziel nicht an. Ursache: Staging wird nur beim
 Anlegen bzw. mit `RecreateStagingTable` neu aufgebaut, die Zieltabelle wird nie
-automatisch erweitert (S11).
+automatisch erweitert (K6).
 
 ```powershell
 # 1. Neue Struktur ansehen
@@ -381,7 +381,7 @@ Remove-SQLSyncConfigBackup -ConfigPath .\config.json -Keep 2 -WhatIf
 
 Symptom: Dezimalwerte im Ziel haben höchstens 4 Nachkommastellen, in Firebird mehr
 (z. B. Gewichte, Umrechnungsfaktoren); Summen weichen ab, Sanity bleibt `OK`.
-Ursache: Bis v2.13 wurde jedes `Decimal` als `DECIMAL(18,4)` angelegt (S5). Seit v2.14
+Ursache: Bis v2.13 wurde jedes `Decimal` als `DECIMAL(18,4)` angelegt (K2). Seit v2.14
 übernimmt der Sync Precision/Scale aus Firebird (`DECIMAL(p,s)`) – aber nur beim
 **Anlegen** von Tabellen. Der Sync ändert keine bestehenden Tabellen: Zieltabellen aus
 v2.13 oder älter behalten `DECIMAL(18,4)` und runden weiter, auch wenn
@@ -437,7 +437,7 @@ Standardmäßig werden Löschungen nicht repliziert (Sanity `WARNUNG (+n)`).
 - Dauerhaft: `General.CleanupOrphans = true` im Job-Profil. Lädt pro Lauf alle IDs
   aus Firebird in `#SourceIDs_<Tabelle>` und löscht im Ziel per `NOT IN`. Kostet
   Laufzeit bei großen Tabellen; funktioniert nur mit numerischer ID-Spalte (Temp-
-  Tabelle ist `BIGINT`, S7) – Fehler erscheinen nur in der Spalte `Info`
+  Tabelle ist `BIGINT`, K4/K5) – Fehler erscheinen nur in der Spalte `Info`
   (`Cleanup-Fehler: ...`), nicht als Tabellenfehler.
 - Einmalig: Einmal-Konfig mit `ForceFullSync: true` (TRUNCATE Ziel + Voll-Load).
   Hinweis: bei 0 geladenen Zeilen wird das Ziel **nicht** geleert.
@@ -448,7 +448,7 @@ Seit v2.18 liest der Incremental-Extrakt ab Wasserzeichen minus
 `General.IncrementalOverlapMinutes` (Default 10 Min). Datensätze mit Zeitstempel
 ≤ Wasserzeichen (gleicher Zeitstempel, späterer Commit, Uhrenabweichung) werden
 nur noch übersprungen, wenn sie mehr als das Fenster unter dem Wasserzeichen liegen
-(Rest von S6/K3). Abhilfe: Einmal-Konfig mit `ForceFullSync: true` für die Tabelle;
+(Rest von K3). Abhilfe: Einmal-Konfig mit `ForceFullSync: true` für die Tabelle;
 regulär repariert der Weekly-Full-Lauf. Tritt das wiederholt auf (lange
 Transaktionen, Uhrenabweichung zwischen Servern), `IncrementalOverlapMinutes`
 im Job-Profil erhöhen (bis 1440); dann werden je Lauf mehr Zeilen erneut gelesen.

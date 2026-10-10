@@ -12,6 +12,36 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-10 I10c – Doku-Konsolidierung
+
+### Changed
+- Exit-Codes: einzige Quelle `architecture/ERROR_HANDLING.md` (alle Skripte, um Log-Zeilen je Code und
+  `0xC000013A` aus `operations/MONITORING.md` ergänzt); Tabellen in `features/firebird-mssql-sync.md`,
+  `operations/MONITORING.md` und `testing/INTEGRATION_TESTS.md` durch Verweise ersetzt; die Nutzer-Tabellen in
+  `README.md`/`README.de.md` bleiben (gegen den Code geprüft)
+- S-IDs aufgelöst: Verweise in 13 Doku-Dateien durch K-IDs bzw. Bedrohungsnummern aus `THREAT_MODEL.md` ersetzt
+  (S1→K1, S2→Bedrohung 1, S3→Bedrohung 2, S4→Bedrohung 3, S5→K2, S6→K3, S7→K4/K5, S8→K8, S9→K7, S10→I3, S11→K6,
+  S12→K9, S13→Bedrohung 5); der Katalog bleibt als „Historische Zuordnung" für ältere Commits/CHANGELOG-Einträge
+- `.github/copilot-instructions.md` neu geschrieben: Verweis auf `docs/`, Tests/CI/`-PreDeploy`, Regeln zu
+  Identifiern, Konfig-Validierung, Secrets und öffentlichem Repo; ohne `Install-Package` und ohne Schlussfrage
+- Prinzipien-Notizen zu `copilot-instructions.md` (`CONTEXT_DISCIPLINE`, `EXTERNAL_SOURCE_ADOPTION`,
+  `VERIFY_BEFORE_CITE`) aktualisiert
+
+### Removed
+- `README_alternativ.md` (Initial-Commit, „alternative Ansicht"): Inhalt vollständig in `README.de.md` bzw.
+  `architecture/OVERVIEW.md` (Mermaid-Diagramme), dazu veraltet (ohne `-PreDeploy`, Exit-Codes, Überlappungsfenster)
+
+### Confidence / Ungeprüft
+- DoD-Stichprobe: alle 22 Parameter der 6 Skripte mit Parametern (per AST ausgelesen) kommen in `README.md`, `README.de.md`
+  und in `docs/` vor; README-Exit-Code-Tabellen gegen die `exit`-Anweisungen der Skripte geprüft.
+- DoD „eine Exit-Code-Änderung berührt höchstens 3 Dateien" gilt für die **Tabellen**; im Fließtext nennen
+  weiterhin 13 Doku-Dateien einzelne Codes (z. B. „Exit 10" im RUNBOOK) — bewusst belassen, weil sie dort
+  konkrete Abläufe beschreiben.
+- S-ID-Ersetzung per Skript mit Ausnahmen (Template-Prinzipien, `REFLECTION.md`: dort bezeichnen S1–S3
+  Eval-Szenarien); zwei Fehlersetzungen („K1–Bedrohung 5", Überschriften mit Selbstverweis) im Review gefunden
+  und korrigiert.
+
+---
 ## 2026-10-10 I10a – Rollout-Check-Erweiterung und Backup-Hygiene
 
 ### Added

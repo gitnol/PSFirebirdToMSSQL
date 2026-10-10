@@ -1,6 +1,6 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
-> **Stand 2026-10-10: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
+> **Stand 2026-10-10: Pester-5-Testharness vorhanden** (Inkrement I3):
 > 192 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (179) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).

@@ -29,7 +29,7 @@ das Konto sind per Parameter änderbar (Abschnitt „Parameter“).
 Job-Profile: Das Daily-Profil ist für inkrementelle Läufe gedacht
 (`ForceFullSync`/`RecreateStagingTable` aus), das Weekly-Profil als
 wöchentliche Reparatur mit `RecreateStagingTable: true` und
-`ForceFullSync: true` (holt übersprungene Änderungen nach, S6). Die Inhalte
+`ForceFullSync: true` (holt übersprungene Änderungen nach, K3). Die Inhalte
 dieser Konfigdateien liegen nicht im Repo.
 
 Die Weekly-Full- und Daily-Läufe überschneiden sich mit den Defaults zeitlich
@@ -143,8 +143,8 @@ ausführen.
 | Punkt | Auswirkung | Status |
 |---|---|---|
 | Pfade und Konfignamen hart codiert | Skript musste vor jeder Nutzung editiert werden | erledigt (I9): Parameter mit Default Skriptordner, Vorschau per `-WhatIf` |
-| Interne Konfignamen/DB-Kürzel im öffentlichen Repo | Informationsabfluss über Betriebsinterna | erledigt (S3, I9): generische Defaults |
-| Persönliches Benutzerkonto mit gespeichertem Windows-Passwort | Passwortwechsel bricht die Tasks; Kopplung an eine Person; Credential-Manager-Einträge hängen am selben Konto | Option vorhanden (S13): `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Default bleibt der aktuelle Benutzer |
+| Interne Konfignamen/DB-Kürzel im öffentlichen Repo | Informationsabfluss über Betriebsinterna | erledigt (Bedrohung 2, I9): generische Defaults |
+| Persönliches Benutzerkonto mit gespeichertem Windows-Passwort | Passwortwechsel bricht die Tasks; Kopplung an eine Person; Credential-Manager-Einträge hängen am selben Konto | Option vorhanden (Bedrohung 5): `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Default bleibt der aktuelle Benutzer |
 | Fehlende Dateien nur als Warnung | Tasks werden auch mit falschen Pfaden angelegt | offen; Gegenmittel `-WhatIf` vor dem Registrieren |
 | Kein `ExecutionTimeLimit` | hängender Lauf blockiert per `IgnoreNew` alle Folgeläufe bis zu 72 h | offen; `operations/RUNBOOK.md` „Task hängt" |
 | `-ExecutionPolicy Bypass` | Skriptsignatur wird nicht geprüft; Integrität der Skripte hängt allein an den Dateirechten des Installationsordners (die Treiber-DLL wird seit I7 per SHA-256 geprüft) | offen (Rechte: `security/THREAT_MODEL.md` Bedrohung 5) |

@@ -21,10 +21,10 @@ Spalten `Status`, `Sanity`).
 
 | Stufe | Definition | Beispiele (projektbezogen) | Reaktionsfenster |
 |---|---|---|---|
-| **P0 – Kritisch** | Datenleck, Credential-Kompromittierung, Datenverlust im Ziel | Passwort aus `config.json`/`*.bak`/Log im öffentlichen Repo oder auf einem Share gefunden; nachweislich manipulierte Treiber-DLL in `%ProgramData%\SQLSync\Drivers\...` oder `DllPath`; Codeausführung auf dem Firebird-Server über das Sync-Konto (CVE-2026-40342); Zieltabellen geleert/gedroppt (z. B. durch manipulierte Konfig, Identifier-Injection S2); Zieldaten mit personenbezogenen Daten für Unbefugte lesbar | sofort |
-| **P1 – Hoch** | Sync fällt für alle oder kritische Tabellen aus, oder Zieldaten nachweislich falsch | `SHA-256 der Treiber-DLL … stimmt nicht` (Exit 7) – möglicher Manipulationsversuch, bis zur Klärung als Sicherheitsvorfall behandeln (bestätigt → P0); Abbruch mit Exit-Code 2/5/7/9; Exit 10 für alle bzw. kritische Tabellen; Credential-Eintrag fehlt nach Kontowechsel (Exit 5); Task läuft nicht mehr (Windows-Passwort abgelaufen); Sanity `FEHLER` (Ziel hat weniger Zeilen als Quelle, Exit 11); Nachkommastellen gerundet (S5, Zieltabellen aus v2.13 oder älter; `operations/RUNBOOK.md`) | < 2 Stunden |
-| **P2 – Mittel** | Einzelne Tabellen fehlerhaft oder verspätet, kein Sicherheitsrisiko | Einzelne Tabelle mit Status `Fehler` nach allen Retries (Exit 10); Sanity `WARNUNG` (+n, z. B. nicht replizierte Löschungen); Schema-Drift (neue Spalte in Firebird, S11); Laufzeit überschreitet 30-Minuten-Takt | < 24 Stunden |
-| **P3 – Niedrig** | Kosmetisch / nicht blockierend | Veraltete Doku (S12); Schönheitsfehler in Konsolenausgaben | Backlog |
+| **P0 – Kritisch** | Datenleck, Credential-Kompromittierung, Datenverlust im Ziel | Passwort aus `config.json`/`*.bak`/Log im öffentlichen Repo oder auf einem Share gefunden; nachweislich manipulierte Treiber-DLL in `%ProgramData%\SQLSync\Drivers\...` oder `DllPath`; Codeausführung auf dem Firebird-Server über das Sync-Konto (CVE-2026-40342); Zieltabellen geleert/gedroppt (z. B. durch manipulierte Konfig, Identifier-Injection Bedrohung 1); Zieldaten mit personenbezogenen Daten für Unbefugte lesbar | sofort |
+| **P1 – Hoch** | Sync fällt für alle oder kritische Tabellen aus, oder Zieldaten nachweislich falsch | `SHA-256 der Treiber-DLL … stimmt nicht` (Exit 7) – möglicher Manipulationsversuch, bis zur Klärung als Sicherheitsvorfall behandeln (bestätigt → P0); Abbruch mit Exit-Code 2/5/7/9; Exit 10 für alle bzw. kritische Tabellen; Credential-Eintrag fehlt nach Kontowechsel (Exit 5); Task läuft nicht mehr (Windows-Passwort abgelaufen); Sanity `FEHLER` (Ziel hat weniger Zeilen als Quelle, Exit 11); Nachkommastellen gerundet (K2, Zieltabellen aus v2.13 oder älter; `operations/RUNBOOK.md`) | < 2 Stunden |
+| **P2 – Mittel** | Einzelne Tabellen fehlerhaft oder verspätet, kein Sicherheitsrisiko | Einzelne Tabelle mit Status `Fehler` nach allen Retries (Exit 10); Sanity `WARNUNG` (+n, z. B. nicht replizierte Löschungen); Schema-Drift (neue Spalte in Firebird, K6); Laufzeit überschreitet 30-Minuten-Takt | < 24 Stunden |
+| **P3 – Niedrig** | Kosmetisch / nicht blockierend | Veraltete Doku; Schönheitsfehler in Konsolenausgaben | Backlog |
 
 ---
 
@@ -66,7 +66,7 @@ Ziel: weiteren Schaden verhindern, Beweise sichern. Erst danach analysieren.
   `Select-String -Path .\Logs\Sync_*.log -Pattern 'Fehler|FEHLER|WARNUNG'`; Verlauf im Task
   Scheduler (Ereignisanzeige *Microsoft-Windows-TaskScheduler/Operational*).
 - **Welcher Vektor?** Abgleich mit `security/THREAT_MODEL.md` (Bedrohungen 1–6) und
-  `KNOWN_ISSUES.md` (S1–S13).
+  `KNOWN_ISSUES.md` (K-IDs).
 - **Diagnose:** `.\Test-SQLSyncConnections.ps1 -ConfigFile <Konfig>` (Exit 0 = Verbindungen und
   `sp_Merge_Generic` OK).
 - **Wer muss informiert werden?** Intern (ERP-/DB-Betrieb, Nutzer der Ziel-DB), bei
@@ -103,7 +103,7 @@ Innerhalb von 5 Werktagen nach P0/P1-Vorfall:
 
 - **Zeitleiste:** wer hat wann was bemerkt / getan.
 - **Wurzelursache:** technisch + prozessual (5-Why-Analyse). Besonders: Warum wurde es nicht
-  früher bemerkt (S1; wurde `LastTaskResult` ausgewertet)?
+  früher bemerkt (K1; wurde `LastTaskResult` ausgewertet)?
 - **Lessons Learned:** Einträge in `LESSONS_LEARNED.md` und `CHANGELOG.md`.
 - **Maßnahmen:** konkrete TODO-Punkte (Inkrement-IDs in `TODO.md`) oder ADRs.
 - **Update Threat Model:** falls die Bedrohung neu ist → Eintrag in `security/THREAT_MODEL.md`.

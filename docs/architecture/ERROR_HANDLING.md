@@ -73,19 +73,24 @@ Implementiert im Parallel-Block des Sync-Skripts (Abschnitt 8):
 
 ## Exit-Codes (Konvertierungstabelle)
 
+**Einzige Quelle** für die Exit-Codes aller Skripte (seit I10c). Andere Doku-Dateien verlinken hierher; nur
+`README.md` / `README.de.md` behalten eine Kurztabelle für Nutzer. Eine Änderung an einem Exit-Code berührt damit
+das Skript, diese Datei und die beiden READMEs. Task Scheduler zeigt die Codes hexadezimal (`10` = `0xA`).
+
 ### `Sync_Firebird_MSSQL_AutoSchema.ps1`
 
 | Ursache | Exit-Code | Bemerkung |
 |---|---|---|
-| Alle Tabellen `Erfolg`, Sanity `OK` / `N/A` / `WARNUNG (+n)` | `0` | `ERGEBNIS: OK (Exit-Code 0)` |
-| `SQLSyncCommon.psm1` fehlt | `1` | vor Transcript-Start |
+| Alle Tabellen `Erfolg`, Sanity `OK` / `N/A` / `WARNUNG (+n)` | `0` | Log: `ERGEBNIS: OK (Exit-Code 0)`. Sanity `WARNUNG (+n)` (z. B. nicht replizierte Löschungen) ist bewusst kein Fehlercode |
+| `SQLSyncCommon.psm1` fehlt | `1` | vor Transcript-Start, daher **kein** Log |
 | Konfiguration fehlt / ungültig (`Get-SQLSyncConfig`) | `2` | inkl. Schema-Prüfung (seit v2.15): `Konfiguration verletzt das Schema (config.schema.json): … bei "/General/GlobalTimeout"; …` (je Verstoß der JSON-Pfad; Typfehler, fehlende Pflichtfelder, Grenzen, unbekannte Schlüssel/Tippfehler); fehlt die Schema-Datei → nur Warnung, Lauf geht weiter. Inkl. Namensprüfung (seit v2.12): `Ungültiger Name in '<Feld>': …` bei leerem, zu langem (> 63) oder nicht erlaubtem Namen (nur `A-Z`, `a-z`, `0-9`, `_`, `$`) bzw. `Ungültiger Name: Zieltabelle '…' … ist länger als 128 Zeichen.`; Abbruch vor jedem Verbindungsaufbau, Regeln in `docs/architecture/CONFIGURATION.md` |
-| Keine Credentials (`Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials`) | `5` | |
+| Keine Credentials (`Resolve-FirebirdCredentials` / `Resolve-MSSQLCredentials`) | `5` | Log: `KRITISCH: Keine ... Credentials gefunden!` |
 | Treiber nicht ladbar (`Initialize-FirebirdDriver`, inkl. SHA-256-Abweichung, fehlende Admin-Rechte beim Erst-Download) | `7` | Hash-Abweichung (seit I7 für jede DLL: Download, vorhanden, `DllPath`): `SHA-256 der Treiber-DLL (vorhanden) stimmt nicht: <Pfad> (erhalten <Hash>, erlaubt <Hash> / <Hash>). Treiber wurde NICHT geladen.` bzw. `(Download)`; Abbruch vor jeder Datenbankverbindung, beim Download wird der Ordner verworfen. Möglicher Manipulationsversuch → `docs/operations/RUNBOOK.md`, `docs/operations/INCIDENT_RESPONSE.md` |
-| Pre-Flight: Datenbank prüfen/anlegen über `master` fehlgeschlagen | `9` | z. B. fehlendes `dbcreator`, Server nicht erreichbar |
-| Pre-Flight: `sp_Merge_Generic` prüfen/installieren fehlgeschlagen | `9` | `sql_server_setup.sql` fehlt, Verbindung scheitert oder **ein SQL-Batch** der Datei schlägt fehl (`Fehler beim Ausführen eines SQL-Batch aus 'sql_server_setup.sql': …`); nur „Database … already exists" wird ignoriert |
-| Mindestens eine Tabelle mit Status `Fehler` (nach allen Retries), oder weniger Ergebnisse als konfigurierte Tabellen (z. B. Abbruch eines Parallel-Blocks außerhalb seines `try`; auch: gar keine Ergebnisse) | `10` | hat Vorrang vor `11`; fehlende Tabellen erscheinen in der `ERGEBNIS`-Zeile als `<Name> (kein Ergebnis)` |
-| Keine Tabellenfehler, aber mindestens ein Sanity `FEHLER (-n)` | `11` | nur bei `General.FailOnSanityError = true` (Default); bei `false` → `0` |
+| Pre-Flight: Datenbank prüfen/anlegen über `master` fehlgeschlagen | `9` | z. B. fehlendes `dbcreator`, Server nicht erreichbar; Log: `KRITISCH: ...` |
+| Pre-Flight: `sp_Merge_Generic` prüfen/installieren fehlgeschlagen | `9` | `sql_server_setup.sql` fehlt, Verbindung scheitert oder **ein SQL-Batch** der Datei schlägt fehl (`Fehler beim Ausführen eines SQL-Batch aus 'sql_server_setup.sql': …`); nur „Database … already exists" wird ignoriert; Log: `PRE-FLIGHT CHECK (PROCEDURE) FAILED: …` |
+| Mindestens eine Tabelle mit Status `Fehler` (nach allen Retries), oder weniger Ergebnisse als konfigurierte Tabellen (z. B. Abbruch eines Parallel-Blocks außerhalb seines `try`; auch: gar keine Ergebnisse) | `10` | hat Vorrang vor `11`; Log: `ERGEBNIS: FEHLER (Exit-Code 10) - betroffene Tabellen: ...`, fehlende Tabellen als `<Name> (kein Ergebnis)` |
+| Keine Tabellenfehler, aber mindestens ein Sanity `FEHLER (-n)` | `11` | nur bei `General.FailOnSanityError = true` (Default); bei `false` → `0`; Log: `ERGEBNIS: FEHLER (Exit-Code 11) - betroffene Tabellen: ...` |
+| Prozess abgebrochen (Strg+C, Kill, Task-Scheduler-Zeitlimit) | `0xC000013A` | kein eigener Code des Skripts; Log endet abrupt ohne Zusammenfassung |
 
 Ermittlung von `0`/`10`/`11`: `Get-SyncExitCode -Results <Ergebnisse> -FailOnSanityError <bool> -ExpectedTableCount <Anzahl>` (das Skript übergibt `$Tabellen.Count`) in
 `SQLSyncCommon.psm1` (reine Funktion, Unit-Tests in `tests/Unit/SQLSyncCommon.Tests.ps1`). Zusammenfassung,

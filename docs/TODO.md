@@ -24,18 +24,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Niedrige Priorität
 
-### I10c: Doku-Konsolidierung
-
-Doku-Teil der bisherigen I10a; Umfang ergänzt um die Befundliste der Reflexion nach I8.
-
-- [ ] Exit-Code-Tabelle: einzige Quelle `architecture/ERROR_HANDLING.md` (inkl. Exit-Codes von `Test-SQLSyncConnections.ps1`), übrige `docs/`-Stellen verlinken (READMEs behalten ihre Nutzer-Tabelle)
-- [ ] Schwachstellen-Katalog (S-IDs) in K-/I-IDs überführen und S-Verweise ersetzen
-- [ ] `.github/copilot-instructions.md` an den Code angleichen (kein `Install-Package`, Verweis auf `docs/`, Schlussfrage entfernen)
-- [ ] `README_alternativ.md` zusammenführen oder entfernen
-- **DoD:** Doku und Code widerspruchsfrei (Stichprobe aller Skriptparameter); eine Exit-Code-Änderung berührt höchstens 3 Dateien; gemeinsame DoD erfüllt
-
----
-
 ### I10d: Modul-Aufräumen
 
 Code-Teil der bisherigen I10a; nach I10c, damit die Doku-Änderungen auf konsolidierte Stellen treffen.
@@ -49,6 +37,7 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 ---
 ## Abgeschlossen
 
+- I10c Doku-Konsolidierung: Exit-Codes nur noch in `architecture/ERROR_HANDLING.md` (plus Nutzer-Tabellen der READMEs), S-IDs durch K-IDs/Bedrohungsnummern ersetzt (historische Zuordnung in `THREAT_MODEL.md`), `.github/copilot-instructions.md` an Code und `docs/` angeglichen, `README_alternativ.md` entfernt — [ABGESCHLOSSEN 2026-10-10] (Commit siehe `STATE.md`)
 - I10a Rollout-Check-Erweiterung und Backup-Hygiene: `-PreDeploy` erkennt Schema-Drift Quelle → Ziel/Staging (ID-/Zeitstempelspalte und Staging `FEHLER`, sonst `WARNUNG`; K6-Erkennung), warnt bei Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1 -KeepBackups` rotiert Backups — [ABGESCHLOSSEN 2026-10-10] (Commit 1299c5e)
 - I10b CI auf GitHub: `.github/workflows/ci.yml` (windows-latest; Push auf `main`, PRs, manuell) mit `tests/scriptanalyzer.ps1` (PSScriptAnalyzer 1.25.0, nur Severity `Error` blockiert) und `tests/pester.config.ps1`; Action per SHA gepinnt, `contents: read` — [ABGESCHLOSSEN 2026-10-09] (Commit f7423b3)
 - I8 Wasserzeichen mit Überlappungsfenster: `General.IncrementalOverlapMinutes` (Default 10), Extrakt ab `MAX(ts) − Überlappung` inklusive, Wasserzeichen/Untergrenze/Abfrage als Modulfunktionen; kein stiller Vollabzug mehr (fehlende/leere Zieltabelle mit Hinweis, MAX-Fehler → Retry/Fehler) — [ABGESCHLOSSEN 2026-10-09] (Commit ab1de66)
