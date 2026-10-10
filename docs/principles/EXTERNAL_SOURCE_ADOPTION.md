@@ -165,9 +165,9 @@ Spec-Edit ausführen.**
 
 ## Verweise
 
-- Konkrete Anwendung im PowerArubaSW-Projekt: `docs/architecture/openapi.yaml`,
+- Beispiel-Anwendung (REST-API-Client-Projekt, nicht dieses Repo): `docs/architecture/openapi.yaml`,
   `docs/architecture/REST_API_SCHEMA.md`, `Tools/Validate-Fixture.py`,
-  `Tests/unit/FixturesAgainstSchema.Tests.ps1` (eingeführt in Inkrement I11).
+  `Tests/unit/FixturesAgainstSchema.Tests.ps1`.
 - Verbindet sich mit [[VERIFY_BEFORE_CITE]] (jede Behauptung in der externen
   Quelle wird gegen Realität geprüft) und [[FAIL_FAST]] (Drift bricht den
   CI-Lauf sofort).

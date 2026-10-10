@@ -13,7 +13,7 @@ dort kurze Beschreibung, hier der strukturierte Steckbrief.
 - Inkrement: I1
 - Scope: generisch-base
 - Backport-Ziel: `base/BOOTSTRAP.md` (Abschnitt `.gitignore`) bzw. `scripts/validate_project_docs.sh` (Check: `git check-ignore` gegen alle `docs/`-Dateien)
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 Das bestehende Muster `config*` hätte unter Windows (`core.ignorecase=true`) auch
 `docs/architecture/CONFIGURATION.md` ignoriert — die Datei wäre stillschweigend nie committet
@@ -26,7 +26,7 @@ worden. Muster für Root-Dateien mit `/` verankern und vor dem Init-Commit
 - Inkrement: I2
 - Scope: projekt-spezifisch
 - Backport-Ziel: keiner
-- Status: offen
+- Status: kein Backport (projekt-spezifisch)
 
 Eine aus einer Produktivkonfig abgeleitete Testkonfig erbt `General.DeleteLogOlderThanDays` und
 löscht beim ersten Lauf alte `Sync_*.log` im `Logs\`-Ordner neben dem Skript (bei der I2-Abnahme
@@ -39,7 +39,7 @@ siehe auch `testing/INTEGRATION_TESTS.md`.
 - Inkrement: I3
 - Scope: generisch-base
 - Backport-Ziel: `base/KICKOFF.md` Phase 2 Punkt 2 (TDD-Startregel) und `base/principles/` (z. B. `ADVOCATUS_DIABOLI.md` oder `VERIFY_BEFORE_CITE.md`)
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 Die TDD-Regel „neuer Test muss behavioral rot sein, erster Lauf grün → stoppen" passt für neue
 Logik, nicht für Tests, die bestehendes Verhalten festschreiben (Brownfield-Testharness) — die
@@ -53,7 +53,7 @@ Suchmuster für Mutationen an Funktionsnamen verankern, sonst greift die Mutatio
 - Inkrement: I4
 - Scope: projekt-spezifisch
 - Backport-Ziel: keiner
-- Status: offen
+- Status: kein Backport (projekt-spezifisch)
 
 Der Pre-Flight legt eine fehlende Ziel-Datenbank stillschweigend an. Bei I4 hat ein Testlauf die
 vom Nutzer bereits gelöschte `STAGING_I2TEST` dadurch ungefragt wiederhergestellt. Vor jedem
@@ -66,7 +66,7 @@ und bei Abweichung vom erwarteten Zustand nachfragen bzw. den Nutzer informieren
 - Inkrement: zwischen I4 und I5 (2026-10-08)
 - Scope: generisch-base
 - Backport-Ziel: `base/CONVENTIONS.md` 3.1, `base/BOOTSTRAP.md`, `base/REFLECTION.md`, `NEUES_PROJECT_INITIALISIEREN.md`
-- Status: backported v26 (unreleased, Template-Commit 7ad733e; vom Prompter vorab freigegeben)
+- Status: backported v26 (unreleased, Template-Commit 7ad733e; Ergänzung „Denylist erkennt Namen, keine Aussagen" in 19ba253)
 
 Beim Befüllen und Fortschreiben von `docs/` landeten interne Hostnamen, Serverpfade, Credential-
 Eintragsnamen und — am kritischsten — die CVE-Betroffenheit eines konkreten internen Servers in
@@ -85,7 +85,7 @@ formulieren („erwartete Befunde, Details in `docs/local/`").
 - Inkrement: I4, I6 (Reflexion nach I6, 2026-10-09)
 - Scope: generisch-base
 - Backport-Ziel: `base/principles/FAIL_FAST.md` (Abschnitt „Einführung neuer Prüfungen")
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 Eine neue harte Prüfung (Identifier-Whitelist in I4, Schema-Validierung in I6) bricht jeden Lauf ab,
 dessen Konfiguration oder Daten sie nicht erfüllen — auch produktive, die bisher funktionierten.
@@ -114,7 +114,7 @@ beachten, Roadmap-Änderung als eigener `docs:`-Commit.
 - Inkrement: I8
 - Scope: generisch-stack
 - Backport-Ziel: `stacks/powershell-automation/` Testing-Konventionen (Mutationsprüfung, ergänzt L3)
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 Ein Hilfsskript hielt das Original im Speicher (`$orig`), schrieb Mutanten nach `$p` und stellte im
 `finally` per `WriteAllText($p, $orig)` wieder her — und rief `Invoke-Pester` **im selben Prozess** auf.
@@ -130,7 +130,7 @@ pro Mutant in einem **Kindprozess** starten; zuerst einen Kontrolllauf ohne Muta
 - Inkrement: I8
 - Scope: generisch-stack
 - Backport-Ziel: `stacks/powershell-automation/CONVENTIONS.md` (SQL-Server-Zugriff)
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 `SqlParameterCollection.AddWithValue('@m', [DateTime])` erzeugt einen Parameter vom Typ `datetime`
 (Auflösung 3,33 ms). Ein Gleichheitsvergleich gegen eine `datetime2`-Spalte findet den Wert dann nicht
@@ -143,13 +143,25 @@ SQL selbst formulieren (Unterabfrage) oder den Parameter explizit als `SqlDbType
 - Inkrement: I10a
 - Scope: generisch-stack
 - Backport-Ziel: `stacks/powershell-automation/` Testing-Konventionen (Mutationsprüfung, ergänzt L3/L8)
-- Status: offen
+- Status: backported v26 (unreleased, Template-Commit 19ba253; freigegeben 2026-10-10)
 
 Mutant „`if ($PSCmdlet.ShouldProcess(...))` durch `if ($true)` ersetzt" blieb grün: `Remove-Item` erbt `-WhatIf`
 über `$WhatIfPreference` aus der aufrufenden Funktion und löscht trotzdem nichts — der Mutant ist äquivalent,
 der Test beweist nur das Zusammenspiel, nicht die eigene `ShouldProcess`-Abfrage. Solche Mutanten im
 Iterations-Log als „äquivalent" ausweisen statt den Test zu verbiegen; wer die eigene Abfrage absichern muss
 (z. B. weil .NET-Methoden statt Cmdlets löschen), prüft per `Mock` auf `ShouldProcess`-Verhalten.
+
+---## L11: Aus dem Code abgeleitete Verhaltensaussagen in Betriebsdoku messen, bevor sie committet werden
+- Inkrement: I10a
+- Scope: generisch-base
+- Backport-Ziel: keiner — abgedeckt durch `principles/VERIFY_BEFORE_CITE.md` (Advocatus-Filter der Reflexion nach I10c)
+- Status: kein Backport (abgedeckt)
+
+Die RUNBOOK-Anleitung „Spalte per `ALTER TABLE … ADD` ergänzen, dann normaler Lauf" (seit I1) und die
+Gegenbehauptung im Doku-Entwurf eines Subagenten („bleibt auch nach Full-Lauf `NULL`") waren beide aus dem
+Code abgeleitet — und beide falsch (gemessen: 0/33 bzw. 33/33). Betriebsanleitungen mit Ablauf-Aussagen
+(„danach X ausführen, dann ist Y") vor dem Commit in der Testumgebung nachstellen oder ausdrücklich als
+„abgeleitet, nicht getestet" kennzeichnen; Subagenten-Entwürfe gelten dabei wie eigene Behauptungen.
 
 ---## Pflege
 

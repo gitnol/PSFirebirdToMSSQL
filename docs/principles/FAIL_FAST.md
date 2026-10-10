@@ -16,6 +16,15 @@ Stilles Scheitern ist verboten.
 "Wenn hier ein ungueltiger Wert uebergeben wird – wann und wie deutlich wird das gemeldet?"
 → Sofort und explizit, nicht irgendwann und still.
 
+## Einfuehrung neuer Pruefungen
+
+Eine neue harte Pruefung (Namens-Whitelist, Schema-Validierung) bricht jeden Lauf ab, dessen Daten sie
+nicht erfuellen — auch produktive, die bisher funktionierten. Vor dem Scharfschalten alle erreichbaren
+Bestandsdaten gegen die neue Regel pruefen (ohne Inhalte auszugeben), das Ergebnis im CHANGELOG
+festhalten und fuer nicht erreichbare Installationen einen Pruefbefehl fuer das Deployment dokumentieren.
+Dabei fallen oft Widersprueche zwischen zwei Regelwerken auf (z. B. Schema erlaubt nur Grossbuchstaben,
+Whitelist auch Kleinbuchstaben). (L6, aus I4/I6 dieses Projekts)
+
 ## Projektspezifisch
 
 <!-- Projekt-adaptierte Beispiele, Stage-Tabellen, Modul-Referenzen hier einfügen.

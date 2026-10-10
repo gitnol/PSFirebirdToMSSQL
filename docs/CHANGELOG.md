@@ -12,6 +12,36 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-10 Reflexion nach I10c (I10b, I10a, I10c)
+
+### Advocatus Diaboli
+- **Positiv:** Behauptungen wurden durch Gegenproben in der Test-Datenbank belegt statt angenommen — CI rot/grün
+  (I10b), jede Drift-Einstufung per echtem Sync (I10a), Skriptparameter per AST gegen die Doku (I10c). Die
+  Messungen haben zwei falsche Betriebsaussagen gefunden (RUNBOOK `ALTER TABLE … ADD`) und K10 aufgedeckt.
+- **Negativ:** I10a ging über die DoD hinaus (Staging-Drift); begründet durch einen gemessenen Fehlerfall, aber
+  Scope-Wachstum. Der ID-Fall (K10) ist weiter nur abgeleitet. I10c lässt drei Verweisarten bestehen (K-, I-IDs,
+  Bedrohungsnummern) — weniger als vorher, aber kein einheitliches System. Subagenten-Doku brauchte in jedem
+  Inkrement Korrekturen (Versionsnummern, eine falsche Ablaufaussage).
+- **Backport-Filter:** L11 (abgeleitete Ablaufaussagen messen) nicht zurückgespielt — durch
+  `VERIFY_BEFORE_CITE` abgedeckt. L2/L4 projekt-spezifisch.
+
+### Changed
+- Struktur-Checks V1–V4, Interna-Scan, Cross-Refs, Validator: ohne Befund; BACKLOG-Zeile zu K6 auf „erledigt"
+- Template-Backports (vom Prompter freigegeben) in `docs_template` eingespielt, Commit 19ba253 im offenen
+  v26-Block: L1 (`base/BOOTSTRAP.md`), L5-Ergänzung (`base/CONVENTIONS.md` 3.1), L3/L8 (`base/KICKOFF.md`
+  TDD-Startregel), L8/L10 (`stacks/powershell-automation/testing/UNIT_TESTS.md` 8.6), L9
+  (`stacks/powershell-automation/CONVENTIONS.md`), L6 (`base/principles/FAIL_FAST.md`), Fremdprojekt-Verweis in
+  `base/principles/EXTERNAL_SOURCE_ADOPTION.md` neutralisiert. Gate: `validate_template.sh` und
+  `smoke_stacks.sh` Exit 0; Eval S1–S3 (base/-Änderung) ausstehend → **kein Tag**, nicht gepusht.
+- Projekt-Kopien `principles/FAIL_FAST.md` und `principles/EXTERNAL_SOURCE_ADOPTION.md` angeglichen
+- Roadmap (2b): neues **I12** bündelt K10 und K5 (beide melden „Erfolg" trotz Fehler) mit dem Herauslösen des
+  Orphan-Cleanups als Modulfunktion; Reihenfolge I10d → I12; `Microsoft.Data.SqlClient` erst nach dem
+  Security-Sweep 2026-10-22 entscheiden; Reflexions-Marker → nach drei weiteren Inkrementen
+
+### Lessons Learned
+- L11: aus dem Code abgeleitete Ablaufaussagen in Betriebsdoku vor dem Commit messen (kein Backport)
+
+---
 ## 2026-10-10 I10c – Doku-Konsolidierung
 
 ### Changed
