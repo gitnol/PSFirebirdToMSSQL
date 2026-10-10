@@ -17,7 +17,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 ## Ideen / Features
 
 - Strukturiertes Laufergebnis (JSON/CSV je Lauf neben dem Transcript) — maschinenlesbar für Monitoring/Dashboards; heute nur `Format-Table` im Transcript
-- Schema-Drift-Erkennung (`KNOWN_ISSUES.md` K6) — neue Firebird-Spalten erkennen und `ALTER TABLE ... ADD` für Staging und Ziel vorschlagen bzw. ausführen
+- Schema-Drift (`KNOWN_ISSUES.md` K6) — Erkennung eingeplant in I10a (`-PreDeploy`); offen bleibt `ALTER TABLE ... ADD` für Staging und Ziel vorschlagen bzw. ausführen
 - Orphan-Cleanup für nicht-numerische IDs (`KNOWN_ISSUES.md` K5) — Typ der Temp-Tabelle aus der Zielspalte ableiten
 - Overlay `compliance-tisax` prüfen — falls die replizierten ERP-Daten (Kunden, Lieferanten, Personen) im TISAX-Scope des Betreibers liegen
 
@@ -26,7 +26,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 ## Refactoring-Kandidaten
 
 - Hauptskript in Modulfunktionen zerlegen (`Invoke-TableSync`, `Invoke-PreFlight`) — 743 Zeilen in einer Datei, Logik nur schwer testbar; Aufnahme nach I3/I5
-- Ungenutzte/teilweise genutzte Exporte prüfen (nicht exportierte Helfer `Invoke-With…Connection` seit 2026-10-09 entfernt; `Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`) — eingeplant in I10a
+- Ungenutzte/teilweise genutzte Exporte prüfen (nicht exportierte Helfer `Invoke-With…Connection` seit 2026-10-09 entfernt; `Write-SyncStatus`, `Close-DatabaseConnection`, `Protect-SqlString`) — werden vom Hauptskript nicht verwendet; `Protect-SqlString` seit v2.12 von keinem Skript mehr (ersetzt durch `Assert-SqlIdentifier`) — eingeplant in I10d
 - Wiederholter Code in `Setup_Credentials.ps1` (Firebird/MSSQL-Blöcke identisch) in eine Funktion ziehen
 
 ---

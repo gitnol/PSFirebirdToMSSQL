@@ -12,6 +12,17 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-10 Roadmap nach I10b (KICKOFF 2a)
+
+### Changed
+- I10a neu zugeschnitten: **Rollout-Check-Erweiterung und Backup-Hygiene** — gebündelt mit der Erkennungshälfte von
+  K6 (fehlende Zeitstempelspalte im Ziel ist ein Sonderfall von Schema-Drift); automatische DDL bleibt im Backlog
+- Modul-Teil der bisherigen I10a (`MSSQL.Port`, `Protect-SqlString`) als **I10d** abgetrennt (Größengrenze), gebündelt
+  mit den PSScriptAnalyzer-Warnungen an `New-*ConnectionString` (dieselben Funktionen wie der Port)
+- Reihenfolge I10a → I10c → (Reflexion) → I10d: Doku erst konsolidieren, dann trifft I10d weniger doppelte Stellen
+- Bewusst getrennt: `Microsoft.Data.SqlClient`, Zerlegung des Hauptskripts, K5, `Setup_Credentials.ps1`-Duplikate
+
+---
 ## 2026-10-09 I10b – CI auf GitHub
 
 ### Added

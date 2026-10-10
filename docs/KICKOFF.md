@@ -218,9 +218,10 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 | I7 | Treiber-Integrität für vorhandene DLL | Abgeschlossen (Mittel) | SHA-256 nur beim Download geprüft; vorhandene/konfigurierte DLL wird ungeprüft per `Add-Type` geladen |
 | I8 | Wasserzeichen mit Überlappungsfenster | Abgeschlossen (Mittel) | Striktes `> MAX(ts)` kann Datensätze bis zum Full-Lauf überspringen (K3) |
 | I9 | Scheduled-Task-Setup parametrisieren, interne Namen entfernen | Abgeschlossen (Mittel) | Hart codierte Pfade/Konfignamen, Task als interaktiver Benutzer, realistisch wirkende Beispielwerte im öffentlichen Repo |
-| I10a | Konfig- und Modul-Hygiene | Mittel | Ungenutztes `MSSQL.Port`/`Protect-SqlString`; Klartext-Passwörter und unbegrenzte `.bak`-Kopien unbemerkt (nach I10b) |
+| I10a | Rollout-Check-Erweiterung und Backup-Hygiene | Mittel | Fehlende Zielspalten (Zeitstempel → Exit 10, K6) und Klartext-Passwörter/`.bak`-Kopien vor dem Deployment unbemerkt |
 | I10b | CI auf GitHub | Mittel | Integration ohne PR (lokaler Merge) → einziges automatisches Prüftor bei Push auf `main` |
 | I10c | Doku-Konsolidierung | Niedrig | Exit-Code-Tabelle an 5 Stellen, drei ID-Systeme, `copilot-instructions.md` veraltet |
+| I10d | Modul-Aufräumen | Niedrig | Ungenutztes `MSSQL.Port`/`Protect-SqlString`; Analyzer-Warnungen an den Connection-String-Buildern |
 | I11 | Rollout-Check (`-PreDeploy`) | Abgeschlossen (Hoch) | Stand auf `main`, aber nicht deployt; Konfig-, Treiber-, Altbestands- und Firebird-Risiken in einem lesenden Lauf prüfen (vor I8 einzuplanen) |
 
 ---

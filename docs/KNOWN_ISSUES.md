@@ -19,8 +19,8 @@ Stand: 2026-10-09 (nach I8). Erstfassung aus Code-Analyse auf `721d5e0`; nicht a
 |---|---|---|---|---|---|
 | K4 | Löschungen in Firebird werden im Standardbetrieb nicht repliziert (bewusstes Design, siehe `sql_server_setup.sql`) | Datensatz in Firebird löschen, Incremental-Lauf → bleibt im Ziel | `CleanupOrphans: true` oder Weekly-Full-Lauf mit `ForceFullSync` | Design-Entscheidung (Performance, DWH-Historie) | „nie" (by design) |
 | K5 | Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle `#SourceIDs_<Tabelle>` als `BIGINT` an → bei nicht-numerischen IDs schlägt der Cleanup fehl; der Fehler erscheint nur in der Info-Spalte, Status bleibt „Erfolg" | Tabelle mit `VARCHAR`-ID und `CleanupOrphans: true` | `CleanupOrphans` für diese Tabelle nicht nutzen; Full-Lauf | selten genutzte Option | offen (`BACKLOG.md`) |
-| K6 | Schema-Drift: neue Spalten in Firebird werden weder in Staging noch Ziel automatisch ergänzt → BulkCopy-Fehler oder Spalte fehlt im Ziel | Spalte in Firebird hinzufügen, Incremental-Lauf | `RecreateStagingTable: true` (Staging) und Zieltabelle manuell per `ALTER TABLE` ergänzen | Automatische DDL am Ziel ist riskant | offen (`BACKLOG.md`) |
-| K9 | `MSSQL.Port` aus Sample/Schema wird vom Code ignoriert (Verbindung nutzt nur `MSSQL.Server`) | Abweichenden Port eintragen → keine Wirkung | Port als `Server,Port` in `MSSQL.Server` angeben | — | `I10a` |
+| K6 | Schema-Drift: neue Spalten in Firebird werden weder in Staging noch Ziel automatisch ergänzt → BulkCopy-Fehler oder Spalte fehlt im Ziel | Spalte in Firebird hinzufügen, Incremental-Lauf | `RecreateStagingTable: true` (Staging) und Zieltabelle manuell per `ALTER TABLE` ergänzen | Automatische DDL am Ziel ist riskant | Erkennung `I10a` (`-PreDeploy`); automatische DDL offen (`BACKLOG.md`) |
+| K9 | `MSSQL.Port` aus Sample/Schema wird vom Code ignoriert (Verbindung nutzt nur `MSSQL.Server`) | Abweichenden Port eintragen → keine Wirkung | Port als `Server,Port` in `MSSQL.Server` angeben | — | `I10d` |
 
 ---
 

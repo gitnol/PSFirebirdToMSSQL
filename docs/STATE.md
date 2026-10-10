@@ -3,17 +3,19 @@
 Zuletzt aktualisiert: 2026-10-09
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I10b – CI auf GitHub (2026-10-09)
-**Nächster Schritt:** I10a – Konfig- und Modul-Hygiene
-**Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I10a – Rollout-Check-Erweiterung und Backup-Hygiene
+**Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8), vor I10d (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**I10a – Konfig- und Modul-Hygiene.** `MSSQL.Port` (K9), `Protect-SqlString` entfernen, `-PreDeploy`-Warnungen
-(Klartext-Passwort, `config*.bak`, fehlende Zeitstempelspalte im Ziel), Backup-Rotation in
-`Manage_Config_Tables.ps1`. Danach I10c (Doku-Konsolidierung). Seit I10b prüft die CI jeden Push auf `main`.
+**I10a – Rollout-Check-Erweiterung und Backup-Hygiene.** `-PreDeploy` erkennt Schema-Drift Quelle → Ziel
+(fehlende Zeitstempelspalte = `FEHLER`, andere fehlende Spalten = `WARNUNG`, K6-Erkennung), warnt bei
+Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1` rotiert Backups. Danach I10c
+(Doku-Konsolidierung), Reflexion, I10d (Modul-Aufräumen: `MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen).
+Seit I10b prüft die CI jeden Push auf `main`.
 Offene Template-Backport-Vorschläge (Freigabe ausstehend): siehe `CHANGELOG.md` „Reflexion nach I8".
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
@@ -51,8 +53,9 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I10a | Konfig- und Modul-Hygiene (`MSSQL.Port`, `Protect-SqlString`, Klartext-Passwort-/`.bak`-Warnung, Backup-Rotation) | Mittel |
+| I10a | Rollout-Check-Erweiterung (Schema-Drift inkl. Zeitstempelspalte, Klartext-Passwort, `.bak`) und Backup-Rotation | Mittel |
 | I10c | Doku-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`) | Niedrig |
+| I10d | Modul-Aufräumen (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder) | Niedrig |
 
 ---
 
