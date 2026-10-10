@@ -334,8 +334,8 @@ pwsh -NoProfile -File .\tests\pester.config.ps1           # Gate 4 — Unit-Test
 `main` und bei PRs). Gate 1 blockiert nur Befunde der Severity `Error`; begründete Ausnahmen stehen als
 `SuppressMessageAttribute` an der Fundstelle, Warnungen als Liste in `BACKLOG.md`.
 Gate 4 ist seit I3 vorhanden: `tests/pester.config.ps1` lädt das in `tests/RequiredModules.psd1`
-gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (176, Stand 2026-10-09) und endet mit Exit-Code 1 bei einem
-roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 95,63 % am 2026-10-09). Schneller Lauf
+gepinnte Pester 5.7.1, führt die Tests unter `tests/Unit/` aus (192, Stand 2026-10-10) und endet mit Exit-Code 1 bei einem
+roten Test oder einer Coverage von `SQLSyncCommon.psm1` unter 80 % (gemessen 96,23 % am 2026-10-10). Schneller Lauf
 ohne Coverage: `Invoke-Pester ./tests`. Details in `docs/testing/UNIT_TESTS.md`. Die Einstiegsskripte
 sind nicht unit-getestet; für sie bleibt als Minimal-Gate: `Test-SQLSyncConnections.ps1 -PreDeploy` gegen eine
 Testumgebung liefert Exit-Code 0 (kein `FEHLER`; rein lesend).

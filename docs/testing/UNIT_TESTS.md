@@ -1,14 +1,14 @@
 # Unit Test Conventions – PSFirebirdToMSSQL
 
-> **Stand 2026-10-09: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
-> 176 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (163) – jede exportierte
+> **Stand 2026-10-10: Pester-5-Testharness vorhanden** (Inkrement I3, Schwachstelle S10 erledigt):
+> 192 Pester-5-Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` (179) – jede exportierte
 > Funktion von `SQLSyncCommon.psm1` hat mindestens einen Test – und
 > `tests/Unit/Setup-ScheduledTasks.Tests.ps1` (13, nur `-WhatIf`, seit I9; Übersicht in Abschnitt 5).
 > Pester ist in `tests/RequiredModules.psd1` auf 5.7.1 gepinnt; `tests/pester.config.ps1` führt
-> die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-09:
-> 95,63 %, Stand nach I8 Überlappungsfenster). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
-> (Modul 13 von 13, Incremental-Extrakt aus I8 7 von 7, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt,
-> siehe Abschnitt 8.6).
+> die Tests mit Code-Coverage auf `SQLSyncCommon.psm1` aus (Ziel 80 %, gemessen am 2026-10-10:
+> 96,23 %, Stand nach I10a Rollout-Check-Erweiterung). Die Diskriminierung der Tests ist per Mutationsprüfung belegt
+> (Modul 13 von 13, Incremental-Extrakt aus I8 7 von 7, Rollout-Check-Erweiterung aus I10a 9 von 10 – der
+> zehnte Mutant ist äquivalent –, `Setup-ScheduledTasks.ps1` 8 von 8 Mutationen erkannt, siehe Abschnitt 8.6).
 > CI (seit I10b): `.github/workflows/ci.yml` führt bei Push auf `main`, bei PRs und manuell
 > (`workflow_dispatch`) `tests/scriptanalyzer.ps1` und `tests/pester.config.ps1` auf `windows-latest` aus.
 > Weiterhin offen: keine automatisierten Tests für die übrigen Einstiegsskripte
@@ -312,7 +312,7 @@ Lauf mit Adminrechten ist noch nicht durchgeführt (`operations/TASK_SCHEDULER.m
 
 ## 5. Was wird getestet
 
-Ist-Stand 2026-10-09 (176 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 163, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
+Ist-Stand 2026-10-10 (192 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1` 179, `tests/Unit/Setup-ScheduledTasks.Tests.ps1` 13):
 
 | Funktion (`SQLSyncCommon.psm1`) | Unit-Test | Was geprüft wird |
 |---|---|---|
@@ -336,8 +336,16 @@ Ist-Stand 2026-10-09 (176 Tests, alle grün: `tests/Unit/SQLSyncCommon.Tests.ps1
 | `Get-SQLSyncIncrementalLowerBound` | Ja (Describe `Get-SQLSyncIncrementalLowerBound (I8)`) | ohne Wasserzeichen → `1900-01-01`; Wasserzeichen minus Fenster; Fenster 0 → Wasserzeichen selbst (Millisekunden bleiben); negatives Fenster → throw |
 | `Get-SQLSyncIncrementalWatermark` | Ja, mit nachgebildeter Connection (Describe `Get-SQLSyncIncrementalWatermark (I8)`) | Zieltabelle fehlt → Grund „Zieltabelle fehlt“ ohne `MAX`-Abfrage; leere Tabelle → Grund „leer“; `MAX(ts)` als Wasserzeichen ohne Grund; scheiternde `MAX`-Abfrage wirft (kein stiller Vollabzug); Tabellenname als Parameter, Namen in `[...]`, Timeout gesetzt; Zielname über 63 bis 128 Zeichen erlaubt; ungültige Namen werfen, bevor SQL läuft |
 | `Get-SQLSyncExtractQuery` | Ja (Describe `Get-SQLSyncExtractQuery (I8)`) | Incremental mit `>= @LastDate` (inklusive), ohne `-Incremental` ganze Tabelle, `-Incremental` ohne Zeitstempelspalte → throw, ungültige Namen → throw |
+| `Find-SQLSyncSchemaDrift` | Ja (Describe `Find-SQLSyncSchemaDrift (I10a)`, 9 Fälle) | Ziel und Staging vollständig → nichts; Namensvergleich ohne Groß-/Kleinschreibung; fehlende Nicht-Schlüsselspalte im Ziel → `WARNUNG`; fehlende Zeitstempelspalte einer Incremental-Tabelle → `FEHLER`, bei `ForceFullSync` nur `WARNUNG`; fehlende ID-Spalte → `FEHLER`; nicht vorhandene Zieltabelle (Erstlauf) → nichts; fehlende Staging-Spalte → `FEHLER`, mit `RecreateStagingTable` ignoriert |
+| `Find-SQLSyncPlaintextPassword` | Ja (Describe `Find-SQLSyncPlaintextPassword (I10a)`, 2 Fälle) | gesetzte Passwortfelder nur als Schlüsselname (`Firebird.Password`, `MSSQL.Password`); fehlendes oder leeres Feld → nichts |
+| `Get-SQLSyncConfigBackup`, `Remove-SQLSyncConfigBackup` | Ja, mit Dateien in `TestDrive:` (Describe `Konfig-Backups: Get-SQLSyncConfigBackup / Remove-SQLSyncConfigBackup (I10a)`, 5 Fälle) | nur Backups mit Zeitstempel, neueste zuerst; Filter auf eine Konfig; behält die neuesten N der Konfig und löscht ältere; `-WhatIf` löscht nichts; `-Keep` unter 1 wird abgewiesen |
 | `Setup-ScheduledTasks.ps1` | Ja, nur `-WhatIf` (Register-/Unregister-ScheduledTask, Get-Credential gemockt) | Task-Definitionen aus Defaults und Parametern, gMSA-Principal, keine Registrierung, keine festen Laufwerkspfade (Abschnitt 4.3) |
 | Übrige Einstiegsskripte (`Sync_Firebird_MSSQL_AutoSchema.ps1` usw.) | Nein → Integration/E2E | Ablauf mit DB-Zugriff; Typmapping und Spalten-/Strategieermittlung nutzt der Sync seit v2.14 aus dem Modul (dort unit-getestet), ebenso die Configpfad-Auflösung (`Resolve-SQLSyncConfigPath`), die Schema-Prüfung (`Get-SQLSyncConfig -SchemaPath`) und seit v2.18 Wasserzeichen, Untergrenze und Extrakt-Abfrage |
+
+Die Backup-Rotation in `Manage_Config_Tables.ps1` (`-KeepBackups`) ist nur über
+`Remove-SQLSyncConfigBackup` unit-getestet; das Skript selbst ist interaktiv (Out-GridView) und wurde
+nicht automatisiert durchlaufen. Die Verdrahtung der neuen Prüfungen in
+`Test-SQLSyncConnections.ps1 -PreDeploy` ist per Integrationslauf belegt (`INTEGRATION_TESTS.md`).
 
 Querschnittlich: Edge Cases (leeres Array, `$null`, Sonderzeichen in Tabellennamen und
 Passwörtern, Identifier-Allow-List `^[A-Za-z0-9_$]+$` mit Quote-, Klammer- und Semikolon-Fällen).
@@ -589,6 +597,13 @@ Farbe in `Write-SyncStatus`, Escaping in `Protect-SqlString`, entfernter Admin-C
 Angewendet in I8 auf die Funktionen des Incremental-Extrakts (`Get-SQLSyncIncrementalLowerBound`,
 `Get-SQLSyncIncrementalWatermark`, `Get-SQLSyncExtractQuery`, Validierung `IncrementalOverlapMinutes`)
 mit 7 Mutationen, alle erkannt.
+
+Angewendet in I10a auf die Rollout-Check-Erweiterung (`Find-SQLSyncSchemaDrift`,
+`Find-SQLSyncPlaintextPassword`, `Get-SQLSyncConfigBackup`, `Remove-SQLSyncConfigBackup`) mit
+10 Mutationen, 9 erkannt. Der zehnte Mutant – die `ShouldProcess`-Abfrage in
+`Remove-SQLSyncConfigBackup` durch `$true` ersetzt – ist **äquivalent**: `Remove-Item` erbt `-WhatIf`
+über `$WhatIfPreference` und löscht auch dann nichts, das beobachtbare Verhalten ist identisch. Keine
+Testlücke, kein zusätzlicher Test.
 
 Angewendet in I9 auf `Setup-ScheduledTasks.ps1` mit 8 Mutationen (in einer Kopie, nie im
 Arbeitsstand), alle erkannt. Ein echter Registrierungslauf mit Adminrechten ersetzt das nicht.

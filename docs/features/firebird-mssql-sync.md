@@ -270,10 +270,10 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | ~~Änderungen mit Zeitstempel ≤ Wasserzeichen werden übersprungen (gleicher ts, späte Commits, Uhrabweichung)~~ | früher striktes `> MAX(ts)` (S6) | weitgehend behoben in I8 / v2.18: Extrakt ab Wasserzeichen minus `General.IncrementalOverlapMinutes` (Default 10), inklusive; Integrationslauf 2026-10-09 bestanden. Rest: Commit-Verzögerungen länger als das Fenster holt erst der Weekly Full (`ForceFullSync`) |
 | `RowsLoaded` ist bei Incremental auch ohne Quelländerung oft > 0 | Überlappungsfenster liest Zeilen erneut (I8) | by design; MERGE idempotent, keine Duplikate |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
-| Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
+| Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | Sync ändert vorhandene Tabellen nicht (S11, K6) | Erkennung seit I10a / v2.19: `Test-SQLSyncConnections.ps1 -PreDeploy` meldet fehlende Spalten in vorhandenen Ziel-/Staging-Tabellen (`Schema-Drift`: `FEHLER` für ID-, Zeitstempel- und Staging-Spalten, sonst `WARNUNG`), Integrationslauf 2026-10-10 bestanden; Korrektur per `operations/RUNBOOK.md`. Automatische Ergänzung: Backlog |
 | `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10d |
 | Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) und der Incremental-Extrakt (seit I8) liegen im Modul (unit-getestet) |
-| `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
+| `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen; eine fehlende ID-Spalte in der vorhandenen Zieltabelle meldet `-PreDeploy` seit I10a als `FEHLER` „Schema-Drift“ |
 
 ---
 
@@ -291,6 +291,14 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
   (`TRUNCATE` vor dem Befüllen, keine Transaktion um beide Schritte).
 - `Manage_Config_Tables.ps1` und `Get_Firebird_Schema.ps1` nehmen ohne
   `-ConfigFile` die `config.json`; für andere Job-Profile `-ConfigFile` angeben.
+- `Manage_Config_Tables.ps1` löscht seit v2.2 (I10a) nach dem Speichern ältere
+  Backups `<Konfig>.<yyyyMMdd_HHmmss>.bak` dieser Konfig; es bleiben die neuesten
+  `-KeepBackups` (Default 5). Ein älterer Stand, der länger gebraucht wird, muss
+  vorher woanders gesichert werden.
+- `-PreDeploy` bewertet Schema-Drift mit den Einstellungen des übergebenen
+  Profils: Mit `RecreateStagingTable: true` wird Staging-Drift nicht gemeldet, mit
+  `ForceFullSync: true` ist eine fehlende Zeitstempelspalte nur `WARNUNG`. Für das
+  Daily-Profil daher mit dessen Konfig prüfen.
 - Neue Konfigschlüssel müssen in `config.schema.json` stehen, sonst bricht jeder
   Lauf mit dieser Konfig mit Exit 2 ab (`additionalProperties: false`).
 - `config.schema.json` gehört zur Auslieferung; fehlt sie, läuft der Sync nur mit
@@ -301,15 +309,15 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 ## Teststrategie
 
 Unit-Tests (seit I3, Schwachstelle S10 erledigt): `tests/Unit/SQLSyncCommon.Tests.ps1`
-mit 163 Pester-5-Tests (insgesamt 176 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
+mit 179 Pester-5-Tests (insgesamt 192 mit `Setup-ScheduledTasks.Tests.ps1`); jede exportierte Funktion von `SQLSyncCommon.psm1` hat mindestens
 einen Test. Pester 5.7.1 ist in `tests/RequiredModules.psd1` gepinnt. Aufruf
-`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 95,63 % am 2026-10-09)
+`pwsh -NoProfile -File .\tests\pester.config.ps1` (mit Coverage, Ziel 80 %, gemessen 96,23 % am 2026-10-10)
 oder schnell `Invoke-Pester ./tests`. Die Diskriminierung der Tests ist per
 Mutationsprüfung belegt (13 von 13 Mutationen erkannt; für den Incremental-Extrakt aus I8
-weitere 7 von 7). Seit I8 ist der Extrakt (Wasserzeichen, Untergrenze, Abfrage) im Modul
+weitere 7 von 7; für die Rollout-Check-Erweiterung aus I10a 9 von 10, der zehnte Mutant ist äquivalent). Seit I8 ist der Extrakt (Wasserzeichen, Untergrenze, Abfrage) im Modul
 und damit unit-getestet. Die Einstiegsskripte werden
 weiterhin manuell verifiziert über `Test-SQLSyncConnections.ps1` (vor Deployments mit
-`-PreDeploy`, rein lesend) und die Zusammenfassungstabelle eines Laufs; eine CI gibt es nicht.
+`-PreDeploy`, rein lesend) und die Zusammenfassungstabelle eines Laufs; die CI (seit I10b) führt Pester und PSScriptAnalyzer bei Push auf `main` aus.
 
 - Details zu Konventionen, Testumfang und Konfiguration: `testing/UNIT_TESTS.md`.
 - Integration gegen echte Firebird-/SQL-Server-Instanzen:

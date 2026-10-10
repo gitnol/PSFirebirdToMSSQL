@@ -12,6 +12,48 @@ Abschnitt „Changelog" von `README.md`.
 
 ---
 
+## 2026-10-10 I10a – Rollout-Check-Erweiterung und Backup-Hygiene
+
+### Added
+- `Test-SQLSyncConnections.ps1 -PreDeploy` (v2.2): **Schema-Drift** Quelle → vorhandene Ziel-/Staging-Tabellen (Ziel
+  ohne ID-Spalte oder ohne Zeitstempelspalte einer Incremental-Tabelle → `FEHLER`, bei `ForceFullSync` Zeitstempel nur
+  `WARNUNG`; andere fehlende Zielspalte → `WARNUNG`; Staging ohne Quellspalte → `FEHLER`, außer
+  `RecreateStagingTable`); **Klartext-Passwort** je Konfig (nur Schlüsselnamen); **Konfig-Backups** im Skriptordner
+- `Manage_Config_Tables.ps1` (v2.2): `-KeepBackups` (Default 5) löscht ältere Backups der bearbeiteten Konfig
+- Modulfunktionen `Find-SQLSyncSchemaDrift`, `Find-SQLSyncPlaintextPassword`, `Get-SQLSyncConfigBackup`,
+  `Remove-SQLSyncConfigBackup` (`-WhatIf`); 16 Pester-Tests (192 gesamt, Coverage 96,23 %)
+- `KNOWN_ISSUES.md` K10: `sp_Merge_Generic` kehrt bei fehlender ID-Spalte ohne Fehler zurück (Fix im Backlog)
+
+### Lessons Learned
+- L10: `-WhatIf`-Mutanten sind äquivalent, wenn die Funktion nur Cmdlets aufruft (`$WhatIfPreference` wird vererbt)
+
+### Iterations-Log
+- Tests zuerst: strukturell rot (15/16), mit Stubs 11 behavioral rot („Expected 1, but got 0" u. a.); die 5
+  Negativtests („meldet nichts …") waren mit leeren Stubs zwangsläufig grün → per Mutation abgesichert.
+  Mutationsprüfung (Dateikopie + Kindprozess nach L8): 10 Mutanten, 9 erkannt, 1 äquivalent (L10).
+- Eigener Testfehler korrigiert: Erwartete Reihenfolge zweier Backups mit gleichem Zeitstempel aus verschiedenen
+  Konfigs hing an der Sortierkultur — Reihenfolge jetzt je Konfig geprüft, für den Ordner nur die Menge.
+- Einstufung zuerst aus dem Code abgeleitet (`SqlBulkCopy.ColumnMappings`, Spaltenlisten von `sp_Merge_Generic`
+  aus `sys.columns` des Ziels), dann gegengeprüft (siehe Confidence).
+- **Fixed (Doku, gemessen):** Die bisherige RUNBOOK-Anleitung „Spalte per `ALTER TABLE … ADD` ergänzen, dann
+  normaler Lauf" war falsch — der Merge aktualisiert nur Zeilen mit geändertem Zeitstempel. Test-Datenbank:
+  normaler Lauf füllte 0 von 33 Altzeilen, `ForceFullSync` (TRUNCATE + Neuladen) 33 von 33. Eine aus dem Code
+  abgeleitete Gegenbehauptung im Doku-Entwurf („auch nach Full-Lauf `NULL`") war ebenfalls falsch; beides per
+  Messung korrigiert (RUNBOOK, K6).
+
+### Confidence / Ungeprüft
+- Integration (Test-Datenbank): Basislauf Schema-Drift OK (76 Spalten); künstliche Drift an einer Testtabelle →
+  `FEHLER` Zeitstempel, `WARNUNG` andere Zielspalte, `FEHLER` Staging. Gegenproben mit dem echten Sync (je nur eine
+  Drift): Zeitstempelspalte fehlt → 4 Versuche „Ungültiger Spaltenname", Exit 10 (damit ist auch der I8-Fehlerpfad
+  Ende-zu-Ende belegt); Staging-Spalte fehlt → BulkCopy „ColumnMapping does not match", Exit 10; andere Zielspalte
+  fehlt → Erfolg, Exit 0, Spalte fehlt still. Danach Tabellen per Erstlauf neu aufgebaut, `-PreDeploy` wieder OK.
+- **Nicht** Ende-zu-Ende: fehlende ID-Spalte (K10, nur aus `sql_server_setup.sql` abgeleitet); Backup-Rotation in
+  `Manage_Config_Tables.ps1` (interaktiv mit `Out-GridView`, nur Modulfunktion unit-getestet); Klartext-Warnung trat
+  im Integrationslauf nicht auf (keine Testkonfig mit Passwortfeld) — nur unit-getestet.
+- Drift in Gegenrichtung (Zielspalte, die in der Quelle fehlt) wird nicht geprüft.
+- Die Exit-6-Prüfung lief im Integrationslauf ohnehin rot wegen der absichtlich ungültigen Testkonfig aus I6.
+
+---
 ## 2026-10-10 Roadmap nach I10b (KICKOFF 2a)
 
 ### Changed

@@ -814,3 +814,104 @@ Describe 'Get-SQLSyncConfig: IncrementalOverlapMinutes (I8)' {
         { Get-SQLSyncConfig -ConfigPath $script:OverlapPath } | Should -Throw '*IncrementalOverlapMinutes*'
     }
 }
+
+Describe 'Find-SQLSyncSchemaDrift (I10a)' {
+    BeforeAll {
+        function New-DriftConfig([hashtable]$Extra = @{}) {
+            $c = @{ IdColumn = 'ID'; TimestampColumns = @('GESPEICHERT'); TableOverrides = @{}; MSSQLPrefix = 'P_'; MSSQLSuffix = ''; ForceFullSync = $false; RecreateStagingTable = $false }
+            foreach ($k in $Extra.Keys) { $c[$k] = $Extra[$k] }
+            $c
+        }
+        function Cols([string]$Table, [string[]]$Names) { foreach ($n in $Names) { [PSCustomObject]@{ Table = $Table; Column = $n } } }
+        $script:Src = @(Cols 'T1' 'ID', 'NAME', 'GESPEICHERT')
+    }
+    It 'meldet nichts, wenn Ziel und Staging alle Quellspalten haben' {
+        $Tgt = @(Cols 'P_T1' 'ID', 'NAME', 'GESPEICHERT') + @(Cols 'STG_T1' 'ID', 'NAME', 'GESPEICHERT')
+        @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns $Tgt -Config (New-DriftConfig)).Count | Should -Be 0
+    }
+    It 'vergleicht Namen ohne Groß-/Kleinschreibung' {
+        $Tgt = @(Cols 'p_t1' 'id', 'name', 'gespeichert')
+        @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns $Tgt -Config (New-DriftConfig)).Count | Should -Be 0
+    }
+    It 'meldet eine fehlende Nicht-Schlüsselspalte im Ziel als WARNUNG' {
+        $r = @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns @(Cols 'P_T1' 'ID', 'GESPEICHERT') -Config (New-DriftConfig))
+        $r.Count     | Should -Be 1
+        $r[0].Column | Should -Be 'NAME'
+        $r[0].Target | Should -Be 'P_T1'
+        $r[0].Status | Should -Be 'WARNUNG'
+    }
+    It 'meldet die fehlende Zeitstempelspalte einer Incremental-Tabelle als FEHLER' {
+        $r = @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns @(Cols 'P_T1' 'ID', 'NAME') -Config (New-DriftConfig))
+        $r[0].Column | Should -Be 'GESPEICHERT'
+        $r[0].Status | Should -Be 'FEHLER'
+    }
+    It 'stuft die fehlende Zeitstempelspalte bei ForceFullSync nur als WARNUNG ein' {
+        $r = @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns @(Cols 'P_T1' 'ID', 'NAME') -Config (New-DriftConfig @{ ForceFullSync = $true }))
+        $r[0].Status | Should -Be 'WARNUNG'
+    }
+    It 'meldet die fehlende ID-Spalte im Ziel als FEHLER (Merge-Prozedur kehrt sonst still zurück)' {
+        $r = @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns @(Cols 'P_T1' 'NAME', 'GESPEICHERT') -Config (New-DriftConfig))
+        $r[0].Column | Should -Be 'ID'
+        $r[0].Status | Should -Be 'FEHLER'
+    }
+    It 'meldet nichts für eine noch nicht vorhandene Zieltabelle (Erstlauf)' {
+        @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns @() -Config (New-DriftConfig)).Count | Should -Be 0
+    }
+    It 'meldet eine fehlende Spalte in der Staging-Tabelle als FEHLER' {
+        $Tgt = @(Cols 'P_T1' 'ID', 'NAME', 'GESPEICHERT') + @(Cols 'STG_T1' 'ID', 'GESPEICHERT')
+        $r = @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns $Tgt -Config (New-DriftConfig))
+        $r.Count     | Should -Be 1
+        $r[0].Target | Should -Be 'STG_T1'
+        $r[0].Status | Should -Be 'FEHLER'
+    }
+    It 'ignoriert Staging-Drift, wenn RecreateStagingTable gesetzt ist' {
+        $Tgt = @(Cols 'P_T1' 'ID', 'NAME', 'GESPEICHERT') + @(Cols 'STG_T1' 'ID', 'GESPEICHERT')
+        @(Find-SQLSyncSchemaDrift -SourceColumns $script:Src -TargetColumns $Tgt -Config (New-DriftConfig @{ RecreateStagingTable = $true })).Count | Should -Be 0
+    }
+}
+
+Describe 'Find-SQLSyncPlaintextPassword (I10a)' {
+    It 'meldet gesetzte Passwortfelder nur mit Schlüsselnamen' {
+        $Raw = '{"Firebird":{"Password":"geheim123"},"MSSQL":{"Password":"auch-geheim"}}' | ConvertFrom-Json
+        $r = @(Find-SQLSyncPlaintextPassword -RawConfig $Raw)
+        $r | Should -Be @('Firebird.Password', 'MSSQL.Password')
+        ($r -join ' ') | Should -Not -Match 'geheim'
+    }
+    It 'meldet nichts ohne bzw. mit leerem Passwortfeld' {
+        $Raw = '{"Firebird":{"Password":""},"MSSQL":{"Server":"s"}}' | ConvertFrom-Json
+        @(Find-SQLSyncPlaintextPassword -RawConfig $Raw).Count | Should -Be 0
+    }
+}
+
+Describe 'Konfig-Backups: Get-SQLSyncConfigBackup / Remove-SQLSyncConfigBackup (I10a)' {
+    BeforeEach {
+        $script:Dir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:Dir | Out-Null
+        foreach ($n in 'config.json.20261001_080000.bak', 'config.json.20261003_080000.bak', 'config.json.20261002_080000.bak',
+            'config_b.json.20261001_080000.bak', 'config.json.bak', 'config.json') { Set-Content -Path (Join-Path $script:Dir $n) -Value 'x' }
+    }
+    It 'listet nur Backups mit Zeitstempel, neueste zuerst' {
+        (Get-SQLSyncConfigBackup -Directory $script:Dir -ConfigName 'config.json').Name |
+            Should -Be @('config.json.20261003_080000.bak', 'config.json.20261002_080000.bak', 'config.json.20261001_080000.bak')
+        @(Get-SQLSyncConfigBackup -Directory $script:Dir).Name | Sort-Object |
+            Should -Be (@('config.json.20261001_080000.bak', 'config.json.20261002_080000.bak', 'config.json.20261003_080000.bak', 'config_b.json.20261001_080000.bak') | Sort-Object)
+    }
+    It 'filtert auf eine Konfig' {
+        @(Get-SQLSyncConfigBackup -Directory $script:Dir -ConfigName 'config_b.json').Name | Should -Be @('config_b.json.20261001_080000.bak')
+    }
+    It 'behält die neuesten N Backups der Konfig und löscht ältere' {
+        $Removed = @(Remove-SQLSyncConfigBackup -ConfigPath (Join-Path $script:Dir 'config.json') -Keep 2)
+        $Removed.Name | Should -Be @('config.json.20261001_080000.bak')
+        Test-Path (Join-Path $script:Dir 'config.json.20261001_080000.bak') | Should -BeFalse
+        Test-Path (Join-Path $script:Dir 'config.json.20261003_080000.bak') | Should -BeTrue
+        Test-Path (Join-Path $script:Dir 'config_b.json.20261001_080000.bak') | Should -BeTrue
+        Test-Path (Join-Path $script:Dir 'config.json.bak') | Should -BeTrue
+    }
+    It 'löscht mit -WhatIf nichts' {
+        $null = Remove-SQLSyncConfigBackup -ConfigPath (Join-Path $script:Dir 'config.json') -Keep 1 -WhatIf
+        @(Get-SQLSyncConfigBackup -Directory $script:Dir -ConfigName 'config.json').Count | Should -Be 3
+    }
+    It 'verlangt mindestens ein behaltenes Backup' {
+        { Remove-SQLSyncConfigBackup -ConfigPath (Join-Path $script:Dir 'config.json') -Keep 0 } | Should -Throw
+    }
+}

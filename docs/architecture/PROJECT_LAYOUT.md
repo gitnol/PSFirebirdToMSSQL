@@ -53,7 +53,7 @@ PSFirebirdToMSSQL/
 ├── config.sample.json                   # Beispielkonfiguration (versioniert)
 ├── config.schema.json                   # JSON-Schema (versioniert, beim Laden jeder Konfig geprüft)
 ├── config.json                          # Lokale Konfiguration (gitignored, kann Secrets enthalten)
-├── config.json.<yyyyMMdd_HHmmss>.bak    # Backups von Manage_Config_Tables (gitignored)
+├── config.json.<yyyyMMdd_HHmmss>.bak    # Backups von Manage_Config_Tables (gitignored; seit I10a nur die neuesten -KeepBackups, Default 5)
 ├── README.md / README.de.md / README_alternativ.md   # Nutzerdoku EN / DE / alternative DE-Fassung
 ├── .github/copilot-instructions.md      # Agent-Hinweise (teilweise veraltet, Inkrement I10c)
 ├── .github/workflows/ci.yml             # CI: PSScriptAnalyzer + Pester auf windows-latest (Push main, PR)
@@ -77,7 +77,7 @@ Tests (Pester-5-Harness seit I3, Details in `docs/testing/UNIT_TESTS.md`):
 | `tests/RequiredModules.psd1` | gepinnte Testabhängigkeiten: Pester 5.7.1, PSScriptAnalyzer 1.25.0 |
 | `tests/scriptanalyzer.ps1` | statische Analyse mit gepinntem PSScriptAnalyzer; Exit 1 bei Severity `Error` (lokal und in der CI) |
 | `tests/pester.config.ps1` | Testlauf mit gepinntem Pester und Coverage auf `SQLSyncCommon.psm1` (Ziel 80 %); Exit 1 bei rotem Test oder Coverage unter Ziel |
-| `tests/Unit/SQLSyncCommon.Tests.ps1` | 163 Unit-Tests (176 inkl. `Setup-ScheduledTasks.Tests.ps1`), jede exportierte Funktion von `SQLSyncCommon.psm1` |
+| `tests/Unit/SQLSyncCommon.Tests.ps1` | 179 Unit-Tests (192 inkl. `Setup-ScheduledTasks.Tests.ps1`), jede exportierte Funktion von `SQLSyncCommon.psm1` |
 | `tests/Unit/Setup-ScheduledTasks.Tests.ps1` | 13 Unit-Tests für `Setup-ScheduledTasks.ps1`, nur mit `-WhatIf` (Registrierung und Passwortabfrage gemockt) |
 | `tests/coverage.xml` | Coverage-Report, vom Testlauf erzeugt, gitignored |
 

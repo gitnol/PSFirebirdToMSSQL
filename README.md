@@ -214,6 +214,9 @@ In addition to the connection test it checks:
 - the Firebird server version against known server advisories (CVE-2026-34232, CVE-2026-40342) → `WARNUNG`
 - login as `SYSDBA` → `WARNUNG` (use a read-only account)
 - legacy target tables: decimal columns of the configured tables whose target precision or scale is smaller than in Firebird → `WARNUNG` with target and source type (fix: `docs/operations/RUNBOOK.md`)
+- schema drift (since v2.19): source columns of the configured tables that are missing in an **existing** target table (`<Prefix><Table><Suffix>`) or staging table (`STG_<Table>`). Missing ID column in the target → `FEHLER` (the merge procedure returns without an error, nothing is merged); missing timestamp column of an incremental table → `FEHLER` (the sync ends with exit code 10; with `ForceFullSync: true` only `WARNUNG`); any other missing target column → `WARNUNG` (the column is silently not synchronized); missing staging column → `FEHLER` (BulkCopy fails), unless `RecreateStagingTable: true`. Tables that do not exist yet are skipped. Nothing is changed (fix: `docs/operations/RUNBOOK.md`)
+- plaintext passwords (since v2.19): every `config*.json` with `Firebird.Password` or `MSSQL.Password` set → `WARNUNG` (key name only, never the value)
+- config backups (since v2.19): `<config>.<yyyyMMdd_HHmmss>.bak` in the script folder → `WARNUNG` with the count and up to three file names (backups may contain plaintext passwords), otherwise `OK`
 
 Example output (fictional names and version; messages are in German):
 
@@ -224,11 +227,13 @@ Example output (fictional names and version; messages are in German):
 ========================================
   OK       Konfig config.json         Schema und Namensregeln erfüllt
   OK       Konfig config_weekly_full.json Schema und Namensregeln erfüllt
+  OK       Konfig-Backups             keine Konfig-Backups im Skriptordner
   OK       Treiber-DLL                SHA-256 entspricht der erlaubten Liste: C:\ProgramData\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\lib\net8.0\FirebirdSql.Data.FirebirdClient.dll
   WARNUNG  Firebird-Version           Firebird 4.0.5: CVE-2026-34232 (CVSS 7.5, unauthentifizierter Server-Absturz (op_response)) – behoben ab 3.0.14 / 4.0.7 / 5.0.4
   WARNUNG  Firebird-Version           Firebird 4.0.5: CVE-2026-40342 (CVSS 9.9, Codeausführung über CREATE FUNCTION (ENGINE-Pfad)) – behoben ab 3.0.14 / 4.0.7 / 5.0.4
   WARNUNG  Firebird-Konto             Sync meldet sich als SYSDBA an – reines Lesekonto empfohlen (docs/operations/SETUP.md)
   WARNUNG  Altbestand DECIMAL         DWH_ARTICLES.WEIGHT: Ziel DECIMAL(18,4) < Quelle NUMERIC(15,6) – Korrektur siehe docs/operations/RUNBOOK.md
+  WARNUNG  Schema-Drift               DWH_ARTICLES.COLOR: Spalte fehlt im Ziel und wird nicht übernommen (K6) – siehe docs/operations/RUNBOOK.md
 ```
 
 | Exit code | Meaning |
@@ -256,6 +261,12 @@ The manager offers a **toggle logic**:
 - Selected tables that are _already_ in the config -> Will be **removed**.
 
 Before the GridView opens, the configuration is validated (schema + naming rules; violation → exit 2, no backup). A selection that would remove the last table is rejected (exit 4), so a config without tables is never written. `Get_Firebird_Schema.ps1 -TableName <table>` also accepts `-ConfigFile`.
+
+Before saving, the manager creates a backup `<config>.<yyyyMMdd_HHmmss>.bak`. Since v2.19 only the newest `-KeepBackups` backups of this config are kept afterwards (default 5, 1–1000); older ones are deleted (`Ältere Backups gelöscht: n (behalten: N)`):
+
+```powershell
+.\Manage_Config_Tables.ps1 -KeepBackups 3
+```
 
 ### Step 7: Automatic Task Scheduling (Optional)
 
@@ -484,7 +495,8 @@ The module centrally provides the following functions:
 - **Configuration:** `Get-SQLSyncConfig` (including fail-fast schema validation), `Resolve-SQLSyncConfigPath` (shared `-ConfigFile` resolution)
 - **Column Configuration:** `Get-TableColumnConfig` (resolves ID/timestamp columns per table)
 - **Driver Loading:** `Initialize-FirebirdDriver`, `Test-FirebirdDriverIntegrity` (hash check without loading; constants in `$script:FirebirdDriver`)
-- **Rollout Check:** `Get-FirebirdServerAdvisory` (server version vs. known CVEs in `$script:FirebirdServerAdvisories`), `Find-SQLSyncDecimalTruncation` (target `DECIMAL` columns smaller than the source); used by `Test-SQLSyncConnections.ps1 -PreDeploy`
+- **Rollout Check:** `Get-FirebirdServerAdvisory` (server version vs. known CVEs in `$script:FirebirdServerAdvisories`), `Find-SQLSyncDecimalTruncation` (target `DECIMAL` columns smaller than the source), `Find-SQLSyncSchemaDrift` (source columns missing in existing target/staging tables), `Find-SQLSyncPlaintextPassword` (plaintext password fields, key names only); used by `Test-SQLSyncConnections.ps1 -PreDeploy`
+- **Config Backups:** `Get-SQLSyncConfigBackup` (backups in a folder, newest first), `Remove-SQLSyncConfigBackup` (keeps the newest N, supports `-WhatIf`); used by `Manage_Config_Tables.ps1` and `-PreDeploy`
 - **Type Mapping:** `ConvertTo-SqlServerType` (.NET to SQL data types; `Decimal` with precision/scale from the Firebird schema). Since v2.14 the parallel sync block imports the module and uses `ConvertTo-SqlServerType` and `Get-TableColumnConfig` directly
 
 ---
@@ -621,7 +633,14 @@ Start in: C:\Scripts
 
 ## Changelog
 
-Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.18 — v2.13 and v2.17 changed other files only; `Test-SQLSyncConnections.ps1`: 2.1).
+Version numbers refer to the repository state. Each script keeps the number of the last version that changed it (`Sync_Firebird_MSSQL_AutoSchema.ps1`: 2.18 — v2.13 and v2.17 changed other files only; `Test-SQLSyncConnections.ps1`: 2.2; `Manage_Config_Tables.ps1`: 2.2).
+
+### v2.19 (2026-10-10) - Rollout Check Extension (Schema Drift, Plaintext Passwords, Config Backups)
+- `Test-SQLSyncConnections.ps1` v2.2: `-PreDeploy` additionally checks (still only `SELECT` statements, no DDL) **schema drift**: source columns of the configured tables that are missing in existing target or staging tables (`STG_<Table>`). Missing ID column or missing timestamp column of an incremental table in the target → `FEHLER`, missing staging column → `FEHLER` (unless `RecreateStagingTable: true`), any other missing target column → `WARNUNG` (known issue K6: the column is silently not synchronized). Automatically adding missing columns remains open
+- `-PreDeploy` warns about plaintext passwords in every `config*.json` (`Firebird.Password`, `MSSQL.Password`; key names only, never values) and about config backups (`<config>.<yyyyMMdd_HHmmss>.bak`) in the script folder
+- `Manage_Config_Tables.ps1` v2.2: new parameter `-KeepBackups` (default 5, 1–1000); after saving, older backups of this config are deleted
+- New module functions `Find-SQLSyncSchemaDrift`, `Find-SQLSyncPlaintextPassword`, `Get-SQLSyncConfigBackup` and `Remove-SQLSyncConfigBackup` (supports `-WhatIf`)
+- `Sync_Firebird_MSSQL_AutoSchema.ps1` unchanged (2.18); 192 Pester tests
 
 ### v2.18 (2026-10-09) - Incremental Overlap Window
 - `Sync_Firebird_MSSQL_AutoSchema.ps1` v2.18: the incremental extract reads from the watermark (`MAX(timestamp)` of the target table) **minus an overlap window**, inclusive (`>= @LastDate`; up to v2.16 strictly `> MAX(ts)`). Records with a timestamp ≤ watermark that were committed only after the previous run are now picked up, as long as the commit delay is shorter than the window (known issue K3). Longer delays are still only caught by the weekly full run (`ForceFullSync`)

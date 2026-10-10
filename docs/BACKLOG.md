@@ -39,7 +39,7 @@ Wenn ein Backlog-Punkt für ein Inkrement vorgesehen wird → Verschiebung von
 - `System.Data.SqlClient` → `Microsoft.Data.SqlClient` — Microsoft hat `System.Data.SqlClient` abgekündigt; wird teurer, sobald eine PowerShell-Version das Paket nicht mehr mitliefert
 - Firebird-Treiber-Version 10.3.4 fest im Code inkl. Hash — Updates erfordern Codeänderung; Ablauf in `security/DEPENDENCY_AUDIT.md`
 - PSScriptAnalyzer-Warnungen (Stand I10b, 1.25.0; blockieren die CI nicht): 156 `PSAvoidUsingWriteHost` (Konsolen-Ausgabe der Einstiegsskripte, überwiegend gewollt), 20 `PSAvoidUsingEmptyCatchBlock` (u. a. `Close()`/`Dispose()` im `finally`), 12 `PSUseBOMForUnicodeEncodedFile` (Umlaute in UTF-8 ohne BOM; relevant nur für Windows PowerShell 5.1), 6 `PSUseShouldProcessForStateChangingFunctions`, 5 `PSReviewUnusedParameter` (Tests), 3 `PSUseDeclaredVarsMoreThanAssignments`, 3 `PSUseSingularNouns`, 2 `PSAvoidUsingPlainTextForPassword` (`New-*ConnectionString`) — gezielt abbauen, wenn die Datei ohnehin geändert wird
-- Bereinigung alter `config.json.*.bak`-Dateien fehlt — Backups (ggf. mit Passwörtern) sammeln sich unbegrenzt an — eingeplant in I10a
+- `sp_Merge_Generic` soll bei fehlender ID-Spalte einen Fehler werfen (`THROW`) statt `PRINT` + `RETURN` (`KNOWN_ISSUES.md` K10) — Änderung an `sql_server_setup.sql`, wird vom Pre-Flight automatisch ausgerollt (`RecreateStoredProcedure`/Parameterprüfung beachten)
 
 ---
 

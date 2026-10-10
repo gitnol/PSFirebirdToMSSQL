@@ -132,7 +132,7 @@ Trifft nicht zu – das Projekt verbindet sich nicht per SSH/SCP.
 
 | Lücke | Fundort | Maßnahme |
 |---|---|---|
-| Klartext-Passwort-Fallback aus Konfigurationsdatei (und deren `*.bak`-Kopien) | `Resolve-FirebirdCredentials`, `Resolve-MSSQLCredentials`, `Manage_Config_Tables.ps1` | Betrieb: Passwortfelder leer lassen; Backlog: Fallback per Schalter deaktivierbar machen (S3) |
+| Klartext-Passwort-Fallback aus Konfigurationsdatei (und deren `*.bak`-Kopien) | `Resolve-FirebirdCredentials`, `Resolve-MSSQLCredentials`, `Manage_Config_Tables.ps1` | Betrieb: Passwortfelder leer lassen; seit I10a meldet `Test-SQLSyncConnections.ps1 -PreDeploy` gesetzte Passwortfelder und vorhandene Backups als `WARNUNG`, `Manage_Config_Tables.ps1 -KeepBackups` begrenzt die Backups (Default 5); Backlog: Fallback per Schalter deaktivierbar machen (S3) |
 | `SYSDBA` als Default-Benutzer, wenn `Firebird.User` fehlt | `Resolve-FirebirdCredentials` | Dediziertes Lesekonto verwenden (nur `SELECT` auf die konfigurierten Tabellen, keine DDL, kein `CREATE FUNCTION`). Begründung: CVE-2026-40342 (CVSS 9.9, Firebird-Server < 5.0.4 / < 4.0.7 / < 3.0.14) – mit `CREATE FUNCTION` wird ein Leck der Sync-Credentials zur Codeausführung auf dem ERP-Datenbankserver (`THREAT_MODEL.md` Bedrohung 5 und 6). Anlage: `operations/SETUP.md` |
 | Task läuft per Default als interaktiver Benutzer mit gespeichertem Windows-Passwort | `Setup-ScheduledTasks.ps1` | Option vorhanden: `-RunAsUser` (Dienstkonto) bzw. `-GmsaAccount`; Umstellung ist Betriebsentscheidung |
 | Kein `Encrypt=True` im MSSQL-Connection-String; Firebird-Wire-Encryption nicht explizit gesetzt | `New-MSSQLConnectionString`, `New-FirebirdConnectionString` | Server-seitig erzwingen; Backlog: konfigurierbar machen |

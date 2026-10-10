@@ -16,8 +16,12 @@
     Optional. Zu bearbeitende Konfigurationsdatei (Default: config.json im Skriptordner);
     relativ zum Skriptordner oder absolut.
 
+.PARAMETER KeepBackups
+    Optional. Anzahl der Backups (<Konfig>.<yyyyMMdd_HHmmss>.bak) dieser Konfig, die nach dem Speichern
+    erhalten bleiben; ältere werden gelöscht (Default 5, 1..1000).
+
 .NOTES
-    Version: 2.1 (-ConfigFile, Schema-Prüfung vor dem Bearbeiten)
+    Version: 2.2 (Backup-Rotation -KeepBackups)
 
 .LINK
     https://github.com/gitnol/PSFirebirdToMSSQL
@@ -26,7 +30,11 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [string]$ConfigFile
+    [string]$ConfigFile,
+
+    # Anzahl der Backups dieser Konfig, die nach dem Speichern erhalten bleiben (ältere werden gelöscht)
+    [ValidateRange(1, 1000)]
+    [int]$KeepBackups = 5
 )
 
 # -----------------------------------------------------------------------------
@@ -300,6 +308,8 @@ if (Test-Path $BackupPath) {
     Write-Host "ERFOLG: config.json aktualisiert." -ForegroundColor Green
     Write-Host "Anzahl Tabellen jetzt: $($FinalTableList.Count)" -ForegroundColor Green
     Write-Host "Backup erstellt: $BackupPath" -ForegroundColor Gray
+    $Removed = @(Remove-SQLSyncConfigBackup -ConfigPath $ConfigPath -Keep $KeepBackups)
+    if ($Removed.Count -gt 0) { Write-Host "Ältere Backups gelöscht: $($Removed.Count) (behalten: $KeepBackups)" -ForegroundColor Gray }
 }
 else {
     Write-Error "Backup fehlgeschlagen. Abbruch."
