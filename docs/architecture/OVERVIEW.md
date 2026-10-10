@@ -100,15 +100,19 @@ Details zur Fachlogik: `docs/features/firebird-mssql-sync.md`.
 Sync_Firebird_MSSQL_AutoSchema.ps1 → Orchestriert einen Lauf: Pre-Flight, parallele Tabellen-Synchronisation, Zusammenfassung, Log-Rotation
 SQLSyncCommon.psm1                 → Gemeinsame Infrastruktur: Konfig laden/validieren, Credentials, Connection Strings, Treiber, Typmapping;
                                      seit I8 auch der Incremental-Extrakt (Get-SQLSyncIncrementalWatermark,
-                                     Get-SQLSyncIncrementalLowerBound, Get-SQLSyncExtractQuery)
+                                     Get-SQLSyncIncrementalLowerBound, Get-SQLSyncExtractQuery); seit I10a
+                                     Rollout-Check-Prüfungen (Find-SQLSyncSchemaDrift, Find-SQLSyncPlaintextPassword)
+                                     und Konfig-Backups (Get-SQLSyncConfigBackup, Remove-SQLSyncConfigBackup)
 sql_server_setup.sql               → Generische MERGE-Prozedur dbo.sp_Merge_Generic (Upsert Staging → Ziel, kein DELETE)
 Setup_Credentials.ps1              → Legt die Credential-Manager-Einträge SQLSync_Firebird / SQLSync_MSSQL interaktiv an
 Setup-ScheduledTasks.ps1           → Registriert die Task-Scheduler-Jobs Daily Diff / Weekly Full
 Test-SQLSyncConnections.ps1        → Diagnose: Verbindungen, Versionen, Test-Abfrage, Existenz der Prozedur;
                                      mit -PreDeploy rein lesender Rollout-Check (Konfigs, Treiber-Hash,
-                                     Server-Advisories, SYSDBA, Altbestand DECIMAL; Exit 6 bei FEHLER)
+                                     Server-Advisories, SYSDBA, Altbestand DECIMAL, seit I10a Schema-Drift,
+                                     Klartext-Passwörter, Konfig-Backups; Exit 6 bei FEHLER)
 Get_Firebird_Schema.ps1            → Zeigt Spalten einer Firebird-Tabelle mit .NET- und SQL-Server-Typvorschlag
-Manage_Config_Tables.ps1           → Pflegt die Tabellenliste in config.json per Out-GridView (mit Backup)
+Manage_Config_Tables.ps1           → Pflegt die Tabellenliste in config.json per Out-GridView (mit Backup;
+                                     seit I10a bleiben nur die neuesten -KeepBackups Backups, Default 5)
 Example_Sync_Start.ps1             → Beispiel für zwei aufeinanderfolgende Läufe mit unterschiedlichen Konfigdateien
 ```
 

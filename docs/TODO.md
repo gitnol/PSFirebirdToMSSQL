@@ -22,20 +22,6 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ---
 
-## Mittlere Priorität
-
-### I10a: Rollout-Check-Erweiterung und Backup-Hygiene
-
-Neu zugeschnitten (KICKOFF 2a, Roadmap nach I10b): Prüf- und Backup-Teil der bisherigen I10a, gebündelt mit der
-Erkennungshälfte von K6 (Schema-Drift) — die fehlende Zeitstempelspalte ist ein Sonderfall davon. Modul-Aufräumen
-(`MSSQL.Port`, `Protect-SqlString`) → I10d.
-
-- [ ] `-PreDeploy`: Schema-Drift je konfigurierter Tabelle — Quellspalten, die in der vorhandenen Zieltabelle fehlen; fehlt die Zeitstempelspalte einer Incremental-Tabelle → `FEHLER` (Tabelle endet sonst mit Exit 10), andere fehlende Spalten → `WARNUNG` (K6); rein lesend, keine DDL
-- [ ] `-PreDeploy`: `WARNUNG` bei Klartext-Passwort in einer Konfig (`Firebird.Password`/`MSSQL.Password` gesetzt) und bei vorhandenen `config*.bak`
-- [ ] `Manage_Config_Tables.ps1`: Backups rotieren (nur die letzten N behalten) statt unbegrenzt anzulegen
-- **DoD:** Unit-Tests mit behavioralem Rot für Drift- und Klartext-Erkennung und Rotation; Integrationslauf `-PreDeploy` gegen die Testumgebung mit künstlich entfernter Zielspalte (nur Test-Datenbank); CI grün; gemeinsame DoD erfüllt
----
-
 ## Niedrige Priorität
 
 ### I10c: Doku-Konsolidierung
@@ -63,6 +49,7 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 ---
 ## Abgeschlossen
 
+- I10a Rollout-Check-Erweiterung und Backup-Hygiene: `-PreDeploy` erkennt Schema-Drift Quelle → Ziel/Staging (ID-/Zeitstempelspalte und Staging `FEHLER`, sonst `WARNUNG`; K6-Erkennung), warnt bei Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1 -KeepBackups` rotiert Backups — [ABGESCHLOSSEN 2026-10-10] (Commit siehe `STATE.md`)
 - I10b CI auf GitHub: `.github/workflows/ci.yml` (windows-latest; Push auf `main`, PRs, manuell) mit `tests/scriptanalyzer.ps1` (PSScriptAnalyzer 1.25.0, nur Severity `Error` blockiert) und `tests/pester.config.ps1`; Action per SHA gepinnt, `contents: read` — [ABGESCHLOSSEN 2026-10-09] (Commit f7423b3)
 - I8 Wasserzeichen mit Überlappungsfenster: `General.IncrementalOverlapMinutes` (Default 10), Extrakt ab `MAX(ts) − Überlappung` inklusive, Wasserzeichen/Untergrenze/Abfrage als Modulfunktionen; kein stiller Vollabzug mehr (fehlende/leere Zieltabelle mit Hinweis, MAX-Fehler → Retry/Fehler) — [ABGESCHLOSSEN 2026-10-09] (Commit ab1de66)
 - I11 Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (rein lesend) prüft Konfigs gegen Schema/Namensregeln, Treiber-Hash, Firebird-Version gegen CVEs, SYSDBA-Anmeldung und `decimal`-Altbestand; Exit 6 bei FEHLER — [ABGESCHLOSSEN 2026-10-09] (Commit 89e4565)

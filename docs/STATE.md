@@ -1,9 +1,9 @@
 # Aktueller Projektstatus – PSFirebirdToMSSQL
 
-Zuletzt aktualisiert: 2026-10-09
+Zuletzt aktualisiert: 2026-10-10
 **Initialisiert mit:** docs_template v26
-**Letztes abgeschlossenes Inkrement:** I10b – CI auf GitHub (2026-10-09)
-**Nächster Schritt:** I10a – Rollout-Check-Erweiterung und Backup-Hygiene
+**Letztes abgeschlossenes Inkrement:** I10a – Rollout-Check-Erweiterung und Backup-Hygiene (2026-10-10)
+**Nächster Schritt:** I10c – Doku-Konsolidierung
 **Nächste Reflexion:** nach I10c (drei weitere Inkremente: I10b, I10a, I10c; zuletzt 2026-10-09 nach I8), vor I10d (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
@@ -11,11 +11,10 @@ Zuletzt aktualisiert: 2026-10-09
 
 ## Nächster Schritt
 
-**I10a – Rollout-Check-Erweiterung und Backup-Hygiene.** `-PreDeploy` erkennt Schema-Drift Quelle → Ziel
-(fehlende Zeitstempelspalte = `FEHLER`, andere fehlende Spalten = `WARNUNG`, K6-Erkennung), warnt bei
-Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1` rotiert Backups. Danach I10c
-(Doku-Konsolidierung), Reflexion, I10d (Modul-Aufräumen: `MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen).
-Seit I10b prüft die CI jeden Push auf `main`.
+**I10c – Doku-Konsolidierung.** Exit-Code-Tabelle mit einziger Quelle `architecture/ERROR_HANDLING.md`, S-IDs in
+K-/I-IDs überführen, `.github/copilot-instructions.md` angleichen, `README_alternativ.md` zusammenführen oder
+entfernen. Danach Reflexion (fällig nach I10c), dann I10d (Modul-Aufräumen). Seit I10b prüft die CI jeden Push
+auf `main`; seit I10a erkennt `-PreDeploy` Schema-Drift (K6) und die stille Merge-Rückkehr ohne ID-Spalte (K10).
 Offene Template-Backport-Vorschläge (Freigabe ausstehend): siehe `CHANGELOG.md` „Reflexion nach I8".
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
@@ -26,7 +25,7 @@ gebraucht: Datenbank `STAGING_I2TEST` auf SQL-Testserver und Test-Task `SQLSync_
 
 Code-Stand: Sync-Skript v2.18 (Incremental mit Überlappungsfenster; Treiber-DLL per SHA-256 geprüft; Schema-Prüfung Fail-Fast; Typmapping mit Precision/Scale), `Setup-ScheduledTasks.ps1` parametrisiert (I9) (Exit-Codes 0/1/2/5/7/9/10/11; Identifier-Whitelist, durchgängig
 gequotet/parametrisiert), optionale Konfigschlüssel `General.FailOnSanityError`, `General.IncrementalOverlapMinutes`,
-`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (176,
+`MSSQL.CredentialTarget`, `Firebird.CredentialTarget`; Unit-Tests unter `tests/` (192,
 Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b).
 
 ---
@@ -46,6 +45,7 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 | I11 | Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (Konfigs, Treiber-Hash, Firebird-CVEs/SYSDBA, `decimal`-Altbestand), rein lesend | 2026-10-09 | 89e4565 |
 | I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
 | I10b | CI auf GitHub Actions: Pester + PSScriptAnalyzer (nur `Error` blockiert) bei Push auf `main`/PR, Action per SHA gepinnt | 2026-10-09 | f7423b3 |
+| I10a | Rollout-Check-Erweiterung: `-PreDeploy` mit Schema-Drift (K6/K10), Klartext-Passwort- und `.bak`-Warnung; Backup-Rotation in `Manage_Config_Tables.ps1` | 2026-10-10 | wird nachgetragen |
 
 ---
 
@@ -53,7 +53,6 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
-| I10a | Rollout-Check-Erweiterung (Schema-Drift inkl. Zeitstempelspalte, Klartext-Passwort, `.bak`) und Backup-Rotation | Mittel |
 | I10c | Doku-Konsolidierung (Exit-Code-Quelle, ID-Systeme, copilot-instructions, `README_alternativ.md`) | Niedrig |
 | I10d | Modul-Aufräumen (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder) | Niedrig |
 
@@ -68,4 +67,4 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 | Neue Exit-Codes 10/11 lassen Tasks „fehlschlagen", die bisher „erfolgreich" waren | Häufige Sanity-„FEHLER" bei laufenden Schreibzugriffen in Firebird (Zählung nach dem Merge) könnten Fehlalarme auslösen | Nach Deployment Task-Historie beobachten; bei Fehlalarmen `FailOnSanityError: false` im Daily-Profil | Betreiber | offen |
 | Altbestand: vor v2.14 angelegte Zieltabellen haben `DECIMAL(18,4)` und runden weiter (der Sync ändert keine bestehenden Tabellen) | Nachkommastellen > 4 im Ziel weiterhin gerundet | Nach Deployment betroffene Spalten prüfen und Zieltabellen anpassen bzw. neu aufbauen (`operations/RUNBOOK.md`) | Betreiber | offen |
 | Einstiegsskripte ohne Unit-Tests | SQL-Ablauf im Hauptskript ist nur per Integrationslauf prüfbar (Typmapping/Strategie seit I5, Wasserzeichen/Extrakt-Abfrage seit I8 im Modul getestet) | Integrationslauf gegen die Testumgebung; weitere Zerlegung in Modulfunktionen im Backlog | Maintainer | offen |
-| Klartext-Passwort-Fallback in `config.json` / `*.bak` | Credential-Leak bei Dateizugriff | Credential Manager nutzen (`Setup_Credentials.ps1`), Passwörter aus `config.json` entfernen; Klartext-Fallback im Code bleibt (Backlog) | Betreiber | offen |
+| Klartext-Passwort-Fallback in `config.json` / `*.bak` | Credential-Leak bei Dateizugriff | Credential Manager nutzen (`Setup_Credentials.ps1`), Passwörter aus `config.json` entfernen; seit I10a warnt `-PreDeploy` bei Klartext-Passwörtern und vorhandenen Backups, `Manage_Config_Tables.ps1` rotiert Backups (`-KeepBackups`); Klartext-Fallback im Code bleibt (Backlog) | Betreiber | offen |

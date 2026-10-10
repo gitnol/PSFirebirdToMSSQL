@@ -35,6 +35,8 @@ Commit-Messages oder in Doku verwenden.
 | `sp_Merge_Generic` | Generische Stored Procedure für das MERGE Staging → Ziel (4 Parameter) | `sql_server_setup.sql` | — |
 | Credential-Target | Name eines Eintrags im Windows Credential Manager; Defaults `SQLSync_Firebird`, `SQLSync_MSSQL`, konfigurierbar über `Firebird.CredentialTarget` / `MSSQL.CredentialTarget` und `Setup_Credentials.ps1 -FirebirdTarget` / `-MSSQLTarget` | `SQLSyncCommon.psm1`, `Setup_Credentials.ps1`, Konfigdatei | Benutzername |
 | Treiber | Firebird-.NET-Provider `FirebirdSql.Data.FirebirdClient` (10.3.4) | `Initialize-FirebirdDriver` | ODBC-Treiber |
+| Schema-Drift | Quellspalte einer konfigurierten Quelltabelle fehlt in der vorhandenen Zieltabelle oder Staging-Tabelle (der Sync ändert vorhandene Tabellen nicht; K6, S11). Erkannt von `Test-SQLSyncConnections.ps1 -PreDeploy` (Befundzeile „Schema-Drift“, seit I10a), nicht behoben | `Find-SQLSyncSchemaDrift`, `operations/RUNBOOK.md` | Altbestand `DECIMAL` (Spalte vorhanden, aber zu kleiner Typ) |
+| Konfig-Backup | Kopie `<Konfig>.<yyyyMMdd_HHmmss>.bak`, die `Manage_Config_Tables.ps1` vor dem Speichern anlegt; kann Klartext-Passwörter enthalten; seit I10a rotiert (`-KeepBackups`, Default 5) | `Manage_Config_Tables.ps1`, `Get-SQLSyncConfigBackup`, `Remove-SQLSyncConfigBackup` | Log-Rotation (`DeleteLogOlderThanDays`) |
 
 ---
 

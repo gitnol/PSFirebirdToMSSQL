@@ -108,8 +108,11 @@ nach einem Firebird- oder SQL-Server-Update, nach Änderungen an Konfigs oder
 Rechten und in festen Abständen (etwa monatlich). Sie meldet unter anderem
 bekannte Server-Advisories für die laufende Firebird-Version (Liste im Code,
 `security/DEPENDENCY_AUDIT.md`), eine veränderte
-Treiber-DLL, die Anmeldung als `SYSDBA` und Zieltabellen, die Dezimalwerte
-kürzen. Exit 0 = kein `FEHLER` (`WARNUNG`en möglich), 1 = Verbindungstest
+Treiber-DLL, die Anmeldung als `SYSDBA`, Zieltabellen, die Dezimalwerte
+kürzen, und seit v2.19 Schema-Drift (Quellspalten, die in vorhandenen Ziel- oder
+Staging-Tabellen fehlen), Klartext-Passwörter in Konfigs und Konfig-Backups.
+Gerade die Schema-Drift-Prüfung lohnt sich nach Strukturänderungen in Firebird,
+weil eine im Ziel fehlende Nicht-Schlüsselspalte im Sync-Log nicht auffällt (K6). Exit 0 = kein `FEHLER` (`WARNUNG`en möglich), 1 = Verbindungstest
 fehlgeschlagen, 6 = mindestens ein `FEHLER`; Details und Bewertung:
 `operations/DEPLOYMENT.md`, „Vor-Deployment-Prüfung“. Nicht als Scheduled Task
 eingerichtet; die Ausgabe ist für die Konsole gedacht.

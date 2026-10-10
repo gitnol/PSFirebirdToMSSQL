@@ -139,7 +139,19 @@ Wasserzeichen-Datensatz als „Kandidat unter dem Wasserzeichen" gelöscht worde
 SQL selbst formulieren (Unterabfrage) oder den Parameter explizit als `SqlDbType.DateTime2` anlegen.
 
 ---
-## Pflege
+## L10: `-WhatIf`-Tests diskriminieren nicht, wenn die Funktion nur Cmdlets aufruft
+- Inkrement: I10a
+- Scope: generisch-stack
+- Backport-Ziel: `stacks/powershell-automation/` Testing-Konventionen (Mutationsprüfung, ergänzt L3/L8)
+- Status: offen
+
+Mutant „`if ($PSCmdlet.ShouldProcess(...))` durch `if ($true)` ersetzt" blieb grün: `Remove-Item` erbt `-WhatIf`
+über `$WhatIfPreference` aus der aufrufenden Funktion und löscht trotzdem nichts — der Mutant ist äquivalent,
+der Test beweist nur das Zusammenspiel, nicht die eigene `ShouldProcess`-Abfrage. Solche Mutanten im
+Iterations-Log als „äquivalent" ausweisen statt den Test zu verbiegen; wer die eigene Abfrage absichern muss
+(z. B. weil .NET-Methoden statt Cmdlets löschen), prüft per `Mock` auf `ShouldProcess`-Verhalten.
+
+---## Pflege
 
 - Neuer „Lessons Learned"-Block im `CHANGELOG.md` → Eintrag `## L<N>:` hier anlegen.
 - Mehrere Patterns aus einem Inkrement → mehrere `## L<N>:`-Einträge.

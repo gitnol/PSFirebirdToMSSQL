@@ -1217,6 +1217,142 @@ function Get-SQLSyncExtractQuery {
 }
 
 #endregion
+
+#region Rollout-Check-Erweiterung (I10a)
+
+<#
+.SYNOPSIS
+    Findet Quellspalten, die in vorhandenen Ziel- bzw. Staging-Tabellen fehlen (Schema-Drift, K6).
+
+.DESCRIPTION
+    Der Sync ändert vorhandene Tabellen nicht. sp_Merge_Generic übernimmt nur Spalten, die in der Zieltabelle
+    existieren, und kehrt ohne Fehler zurück, wenn dort die ID-Spalte fehlt; SqlBulkCopy ordnet jede Quellspalte
+    einer gleichnamigen Staging-Spalte zu. Daraus folgt die Einstufung:
+    - Zieltabelle ohne ID-Spalte → FEHLER (Merge kehrt still zurück, Tabelle meldet trotzdem Erfolg)
+    - Zieltabelle ohne Zeitstempelspalte einer Incremental-Tabelle (ohne ForceFullSync) → FEHLER (Exit 10)
+    - Zieltabelle ohne andere Quellspalte → WARNUNG (Spalte wird nicht übernommen)
+    - Staging-Tabelle STG_<Tabelle> ohne Quellspalte → FEHLER (BulkCopy scheitert), außer RecreateStagingTable
+    Nicht vorhandene Tabellen werden übersprungen (der Sync legt sie beim ersten Lauf an).
+
+.PARAMETER SourceColumns
+    Objekte mit Table (Firebird-Name) und Column.
+.PARAMETER TargetColumns
+    Objekte mit Table (SQL-Server-Name, Ziel oder STG_) und Column.
+.PARAMETER Config
+    Ergebnis von Get-SQLSyncConfig (IdColumn, TimestampColumns, TableOverrides, MSSQLPrefix, MSSQLSuffix,
+    ForceFullSync, RecreateStagingTable).
+
+.OUTPUTS
+    PSCustomObject je fehlender Spalte (Table, Target, Column, Status, Reason).
+#>
+function Find-SQLSyncSchemaDrift {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$SourceColumns = @(),
+        [AllowEmptyCollection()][object[]]$TargetColumns = @(),
+        [Parameter(Mandatory)][hashtable]$Config
+    )
+
+    $TargetIndex = @{}
+    foreach ($c in $TargetColumns) {
+        $Key = "$($c.Table)".ToUpperInvariant()
+        if (-not $TargetIndex.ContainsKey($Key)) { $TargetIndex[$Key] = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase) }
+        [void]$TargetIndex[$Key].Add("$($c.Column)")
+    }
+
+    foreach ($Group in ($SourceColumns | Group-Object -Property Table)) {
+        $Table = $Group.Name
+        $Columns = @($Group.Group | ForEach-Object { "$($_.Column)" })
+        $ColumnConfig = Get-TableColumnConfig -TableName $Table -Config $Config -ActualColumns $Columns
+        $Incremental = $ColumnConfig.SyncStrategy -eq "Incremental" -and -not $Config.ForceFullSync
+
+        $TargetName = "$($Config.MSSQLPrefix)$Table$($Config.MSSQLSuffix)"
+        $Existing = $TargetIndex[$TargetName.ToUpperInvariant()]
+        if ($Existing) {
+            foreach ($Col in $Columns | Where-Object { -not $Existing.Contains($_) }) {
+                $Status, $Reason = if ($ColumnConfig.HasId -and $Col -ieq $ColumnConfig.IdColumn) {
+                    "FEHLER", "ID-Spalte fehlt im Ziel – sp_Merge_Generic kehrt ohne Fehler zurück, nichts wird übernommen"
+                }
+                elseif ($Incremental -and $Col -ieq $ColumnConfig.TimestampColumn) {
+                    "FEHLER", "Zeitstempelspalte fehlt im Ziel – Incremental endet mit Status Fehler (Exit 10)"
+                }
+                else { "WARNUNG", "Spalte fehlt im Ziel und wird nicht übernommen (K6)" }
+                [PSCustomObject]@{ Table = $Table; Target = $TargetName; Column = $Col; Status = $Status; Reason = $Reason }
+            }
+        }
+
+        $StagingName = "STG_$Table"
+        $Staging = $TargetIndex[$StagingName.ToUpperInvariant()]
+        if ($Staging -and -not $Config.RecreateStagingTable) {
+            foreach ($Col in $Columns | Where-Object { -not $Staging.Contains($_) }) {
+                [PSCustomObject]@{ Table = $Table; Target = $StagingName; Column = $Col; Status = "FEHLER"; Reason = "Spalte fehlt in der Staging-Tabelle – BulkCopy scheitert; einmalig RecreateStagingTable: true" }
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Nennt die Passwortfelder, die in einer Konfiguration im Klartext gesetzt sind (nur Schlüsselnamen, nie Werte).
+#>
+function Find-SQLSyncPlaintextPassword {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][object]$RawConfig)
+
+    foreach ($Section in 'Firebird', 'MSSQL') {
+        $Node = $RawConfig.$Section
+        if ($Node -and $Node.PSObject.Properties.Match('Password').Count -gt 0 -and -not [string]::IsNullOrEmpty("$($Node.Password)")) {
+            "$Section.Password"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Liefert Konfig-Backups (<Konfig>.<yyyyMMdd_HHmmss>.bak) eines Ordners, neueste zuerst.
+
+.PARAMETER ConfigName
+    Optional: nur Backups dieser Konfigdatei (z. B. "config.json").
+#>
+function Get-SQLSyncConfigBackup {
+    [CmdletBinding()]
+    [OutputType([System.IO.FileInfo])]
+    param(
+        [Parameter(Mandatory)][string]$Directory,
+        [string]$ConfigName
+    )
+
+    $Pattern = '^(?<Config>.+\.json)\.(?<Stamp>\d{8}_\d{6})\.bak$'
+    Get-ChildItem -Path $Directory -Filter "*.bak" -File |
+        Where-Object { $_.Name -match $Pattern -and (-not $ConfigName -or $Matches.Config -ieq $ConfigName) } |
+        Sort-Object -Property @{ Expression = { ([regex]::Match($_.Name, $Pattern)).Groups['Stamp'].Value }; Descending = $true }, Name
+}
+
+<#
+.SYNOPSIS
+    Löscht ältere Backups einer Konfigdatei und behält die neuesten -Keep Stück. Unterstützt -WhatIf.
+
+.OUTPUTS
+    Die gelöschten (bzw. mit -WhatIf zu löschenden) Dateien.
+#>
+function Remove-SQLSyncConfigBackup {
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([System.IO.FileInfo])]
+    param(
+        [Parameter(Mandatory)][string]$ConfigPath,
+        [ValidateRange(1, 1000)][int]$Keep = 5
+    )
+
+    $FullPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+    $Old = @(Get-SQLSyncConfigBackup -Directory (Split-Path $FullPath -Parent) -ConfigName (Split-Path $FullPath -Leaf) | Select-Object -Skip $Keep)
+    foreach ($File in $Old) {
+        if ($PSCmdlet.ShouldProcess($File.FullName, "Konfig-Backup löschen")) { Remove-Item -LiteralPath $File.FullName -Force }
+        $File
+    }
+}
+
+#endregion
 # Exportiere alle Public Functions
 Export-ModuleMember -Function @(
     # Credentials
@@ -1255,4 +1391,8 @@ Export-ModuleMember -Function @(
     'Get-SQLSyncIncrementalLowerBound'
     'Get-SQLSyncIncrementalWatermark'
     'Get-SQLSyncExtractQuery'
+    'Find-SQLSyncSchemaDrift'
+    'Find-SQLSyncPlaintextPassword'
+    'Get-SQLSyncConfigBackup'
+    'Remove-SQLSyncConfigBackup'
 )

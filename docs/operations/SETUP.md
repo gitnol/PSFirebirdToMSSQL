@@ -267,7 +267,9 @@ Sie prüft alle `config*.json` im Ordner gegen Schema und Namensregeln, die
 Treiber-DLL gegen die erlaubten SHA-256, die Firebird-Serverversion gegen
 bekannte Server-Advisories, ob der Sync als `SYSDBA` angemeldet ist (Empfehlung:
 „Firebird-Lesekonto anlegen“) und ob
-bestehende Zieltabellen Dezimalwerte kürzen würden. Ausgabe als Tabelle
+bestehende Zieltabellen Dezimalwerte kürzen würden; seit v2.19 außerdem
+Schema-Drift in vorhandenen Ziel-/Staging-Tabellen, Klartext-Passwörter in den
+Konfigs und Konfig-Backups im Skriptordner. Ausgabe als Tabelle
 Status / Prüfung / Detail; Exit 6 bei mindestens einem `FEHLER`, `WARNUNG`en
 lassen Exit 0 zu. Details: `operations/DEPLOYMENT.md`, „Vor-Deployment-Prüfung“.
 
@@ -287,7 +289,9 @@ entfernt; vorher wird `<Konfigdatei>.<yyyyMMdd_HHmmss>.bak` angelegt. Ohne
 `-ConfigFile` wird `config.json` bearbeitet. Vor dem GridView prüft das Skript
 die Konfig (Schema + Namensregeln, Verstoß → Exit 2, kein Backup); eine Auswahl,
 die alle Tabellen entfernen würde, wird mit Exit 4 abgelehnt. Die `.bak`-Dateien
-enthalten ggf. dieselben Fallback-Passwörter wie die Konfig – aufräumen.
+enthalten ggf. dieselben Fallback-Passwörter wie die Konfig – aufräumen. Seit
+v2.2 (I10a) bleiben nach dem Speichern nur die neuesten `-KeepBackups` Backups
+dieser Konfig erhalten (Default 5, z. B. `.\Manage_Config_Tables.ps1 -KeepBackups 3`).
 
 Spaltentypen einer Tabelle vorab prüfen:
 

@@ -1,6 +1,6 @@
 # Threat Model & Mitigationen – PSFirebirdToMSSQL
 
-Stand: 2026-10-09 (I7, Rollout-Check `-PreDeploy`; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
+Stand: 2026-10-10 (I10a, Rollout-Check-Erweiterung; I7, Rollout-Check `-PreDeploy`; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,
 `sql_server_setup.sql`, `Setup_Credentials.ps1`, `Setup-ScheduledTasks.ps1`,
 `Manage_Config_Tables.ps1`). Schwachstellen-IDs S1–S13 und Inkrement-IDs I2–I11 entsprechen
@@ -93,7 +93,8 @@ Injection-Frage (Bedrohung 5).
   `Firebird.Password` bzw. `MSSQL.Password` aus der Konfigurationsdatei zurück, wenn kein Eintrag
   im Credential Manager existiert. Das Passwort liegt dann im Klartext auf der Platte.
 - `Manage_Config_Tables.ps1` legt bei jeder Änderung `config.json.<yyyyMMdd_HHmmss>.bak` an – ein
-  enthaltenes Klartext-Passwort wird damit vervielfältigt und nie aufgeräumt.
+  enthaltenes Klartext-Passwort wird damit vervielfältigt (bis v2.18 nie aufgeräumt; seit I10a
+  Rotation, siehe unten).
 - `config.sample.json` (Sektion `MSSQL`) enthält realistisch wirkende Beispielzugangsdaten und einen
   internen Servernamen im öffentlichen Repository; `Setup-ScheduledTasks.ps1` enthält interne Pfade
   und DB-Kürzel. Werte werden hier bewusst nicht zitiert.
@@ -117,10 +118,17 @@ Injection-Frage (Bedrohung 5).
 
 - `config.sample.json` enthält nur Platzhalterwerte; `Setup-ScheduledTasks.ps1` enthält keine
   internen Pfade oder Konfignamen mehr (Parameter mit generischen Defaults, I9).
+- Seit I10a (v2.19): `Test-SQLSyncConnections.ps1 -PreDeploy` meldet je `config*.json` im
+  Skriptordner gesetzte Passwortfelder als `WARNUNG` (`Find-SQLSyncPlaintextPassword`, nur
+  Schlüsselnamen wie `Firebird.Password`, nie Werte) und vorhandene Konfig-Backups
+  `<Konfig>.<yyyyMMdd_HHmmss>.bak` als `WARNUNG` mit Anzahl und Dateinamen
+  (`Get-SQLSyncConfigBackup`). `Manage_Config_Tables.ps1` behält nach dem Speichern nur die neuesten
+  `-KeepBackups` Backups der Konfig (Default 5; `Remove-SQLSyncConfigBackup`, unit-getestet). Die
+  Warnungen ändern den Exit-Code nicht; der Fallback selbst bleibt aktiv.
 
 **Offene Maßnahme:** Backlog: Klartext-Fallback
-standardmäßig abschalten (Opt-in-Schalter), `.bak`-Rotation, `Encrypt=True` für MSSQL konfigurierbar
-machen. Betrieb: siehe `docs/operations/SECRETS_MANAGEMENT.md`.
+standardmäßig abschalten (Opt-in-Schalter), `Encrypt=True` für MSSQL konfigurierbar
+machen (`.bak`-Rotation seit I10a umgesetzt). Betrieb: siehe `docs/operations/SECRETS_MANAGEMENT.md`.
 
 **Restrisiko:** Mittel – solange der Fallback existiert und die Beispielkonfiguration
 realistische Werte zeigt, hängt der Schutz an Betriebsdisziplin.
@@ -186,7 +194,7 @@ beides setzt bereits weitgehende lokale Rechte voraus.
 
 ---
 
-## 4. Unbemerkte Fehlschläge und stiller Datenverlust (S1, S5, S6)
+## 4. Unbemerkte Fehlschläge und stiller Datenverlust (S1, S5, S6, S11)
 
 **Gefahr:** Integritätsbedrohung – Zieldaten werden falsch oder unvollständig, ohne dass es
 jemand bemerkt:
@@ -203,6 +211,11 @@ jemand bemerkt:
   Full-Lauf übersprungen. Fiel die `MAX`-Abfrage aus, wurde still `1900-01-01` verwendet
   (Voll-Extrakt). Seit v2.18 (I8) weitgehend mitigiert, siehe unten.
 - Löschungen werden standardmäßig nicht repliziert (S7, by design; `CleanupOrphans` optional).
+- **S11 (Schema-Drift):** Der Sync ändert vorhandene Ziel- und Staging-Tabellen nicht. Fehlt im Ziel
+  eine Quellspalte, übernimmt `sp_Merge_Generic` sie still nicht (Status `Erfolg`, Exit 0, K6). Fehlt
+  im Ziel die ID-Spalte, endet `sp_Merge_Generic` mit `PRINT` + `RETURN` ohne Fehler – die Tabelle
+  meldet `Erfolg`, gemergt wird nichts (aus `sql_server_setup.sql` abgeleitet, nicht Ende-zu-Ende
+  getestet). Fehlende Zeitstempel- oder Staging-Spalten führen dagegen zum Tabellenfehler (Exit 10).
 
 **Aktuelle Mitigation (im Code vorhanden):**
 - Sanity Check (`RunSanityCheck`, Default an) vergleicht `COUNT` Firebird vs. Ziel und markiert
@@ -236,9 +249,19 @@ jemand bemerkt:
   die Tabelle nach den Retries mit `Fehler` (Exit 10) statt still voll zu laden. Unit-Tests
   vorhanden; Integrationslauf am 2026-10-09: ein im Ziel gelöschter Satz knapp unter dem
   Wasserzeichen wurde mit v2.18 wiederhergestellt (Sanity `OK`), mit v2.16 nicht (Sanity `FEHLER`).
+- Erkennung von S11 seit I10a (v2.19): `Test-SQLSyncConnections.ps1 -PreDeploy` vergleicht rein
+  lesend die Spalten der konfigurierten Tabellen (Firebird-Metadaten) mit vorhandenen Ziel- und
+  Staging-Tabellen (`Find-SQLSyncSchemaDrift`). Fehlende ID-Spalte und fehlende Zeitstempelspalte
+  einer Incremental-Tabelle im Ziel sowie fehlende Staging-Spalten → `FEHLER` (Exit 6), andere
+  fehlende Zielspalten → `WARNUNG`. Damit wird insbesondere der stille ID-Fall vor dem Deployment
+  sichtbar. Unit-Tests vorhanden; Integrationslauf am 2026-10-10 in der Testumgebung: künstlich
+  entfernte Ziel- und Staging-Spalten einer Testtabelle erkannt, Gegenproben mit dem echten Sync
+  bestätigten die Einstufung (Zeitstempel bzw. Staging → Exit 10, andere Zielspalte → Exit 0 mit
+  still fehlender Spalte). Die Prüfung ändert nichts; Korrektur per RUNBOOK.
 
 **Offene Maßnahme:** (I2 abgenommen 2026-10-08: echter Lauf Exit 10, Aufgabenplanung `0xA`.) Migration von Zieltabellen aus v2.13 oder
-älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe). Backlog: strukturiertes
+älter je Installation (S5-Altbestand; Erkennung per `-PreDeploy`, Korrektur bleibt Betriebsaufgabe). Automatische Ergänzung
+fehlender Spalten (S11/K6) offen; bis dahin Erkennung per `-PreDeploy` und Korrektur per RUNBOOK. Backlog: strukturiertes
 Run-Ergebnis (JSON/CSV) und Alarmierung auf `LastTaskResult`.
 
 **Restrisiko:** Mittel – Tabellen- und Sanity-Fehler sind über den Exit-Code erkennbar (Abnahme
@@ -371,7 +394,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 |---|---|---|---|
 | S1 | Sync endet mit Exit 0 trotz Tabellenfehlern; SP-Batch-Fehler nur Warnung | K1 | I2 (erledigt, abgenommen 2026-10-08) |
 | S2 | SQL-Identifier ungeprüft in SQL interpoliert | — | I4 (erledigt 2026-10-08) |
-| S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); Klartext-Fallback und `*.bak` offen (`BACKLOG.md`) |
+| S3 | Klartext-Passwort-Fallback, `*.bak`, interne Namen/Beispielwerte im Repo | — | I9 (interne Namen/Beispielwerte erledigt 2026-10-08); I10a (`*.bak`-Rotation, Erkennung von Klartext-Passwörtern und Backups per `-PreDeploy`, 2026-10-10); Klartext-Fallback selbst offen (`BACKLOG.md`) |
 | S4 | Vorhandene/konfigurierte Treiber-DLL ohne Hash-Prüfung | — | I7 (erledigt 2026-10-09) |
 | S5 | `DECIMAL(18,4)` fest → Präzisionsverlust; Mapping im Sync-Skript ohne `Guid` | K2 | I5 (erledigt; Altbestand: Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy`, Korrektur siehe RUNBOOK) |
 | S6 | Wasserzeichen strikt `> MAX(ts)` | K3 | I8 (erledigt 2026-10-09: Überlappungsfenster; Rest: Verzögerungen länger als das Fenster → Weekly Full) |
@@ -379,7 +402,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S8 | Doppelte Logik (Typmapping, Strategie, Configpfad) | K8 | I5/I6 (erledigt: Typmapping/Strategie I5 2026-10-08, Configpfad `Resolve-SQLSyncConfigPath` I6 2026-10-09) |
 | S9 | `config.schema.json` wird nie geprüft | K7 | I6 (erledigt 2026-10-09; Fail-Fast in allen vier Skripten) |
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
-| S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
+| S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | I10a (Erkennung per `Test-SQLSyncConnections.ps1 -PreDeploy`, 2026-10-10); automatische Ergänzung offen (`BACKLOG.md`) |
 | S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7, K9 | I10d (Port), I10c (Doku) |
 | S13 | Tasks als interaktiver Benutzer mit gespeichertem Passwort, breite DB-Rechte | — | I9 (Option Dienstkonto/gMSA vorhanden 2026-10-08; Umstellung und DB-Rechte sind Betrieb) |
 

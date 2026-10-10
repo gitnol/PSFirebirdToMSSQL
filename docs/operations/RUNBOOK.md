@@ -20,7 +20,8 @@ Ablauf im Detail: `features/firebird-mssql-sync.md`.
 # Verbindungen, Treiber, Credentials und sp_Merge_Generic prüfen
 .\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json
 
-# Vor-Deployment-Prüfung, rein lesend: alle Konfigs, Treiber-Hash, Server-CVEs, SYSDBA, Altbestand DECIMAL
+# Vor-Deployment-Prüfung, rein lesend: alle Konfigs, Treiber-Hash, Server-CVEs, SYSDBA, Altbestand DECIMAL,
+# Schema-Drift, Klartext-Passwörter, Konfig-Backups
 # (Exit 0 = kein FEHLER, 1 = Verbindung fehlgeschlagen, 6 = mindestens ein FEHLER)
 .\Test-SQLSyncConnections.ps1 -ConfigFile .\config.json -PreDeploy
 
@@ -28,9 +29,10 @@ Ablauf im Detail: `features/firebird-mssql-sync.md`.
 .\Get_Firebird_Schema.ps1 -TableName BKUNDE
 .\Get_Firebird_Schema.ps1 -TableName BKUNDE -ConfigFile .\config_weekly_full.json
 
-# Tabellen in der Konfig hinzufügen/entfernen (Out-GridView, legt .bak an; Default config.json)
+# Tabellen in der Konfig hinzufügen/entfernen (Out-GridView, legt .bak an und behält die neuesten
+# -KeepBackups Backups dieser Konfig, Default 5; Default config.json)
 .\Manage_Config_Tables.ps1
-.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json
+.\Manage_Config_Tables.ps1 -ConfigFile .\config_weekly_full.json -KeepBackups 3
 
 # Konfig vor einem Update/nach Handänderung gegen das Schema prüfen (True = gültig)
 Test-Json -Json (Get-Content .\config.json -Raw) -Schema (Get-Content .\config.schema.json -Raw)
@@ -74,7 +76,7 @@ reduzieren (`$cfg.Tables = @('BKUNDE')`), um nur diese zu bearbeiten.
 | Nach Änderung an `Tables` | Testlauf manuell, neue Tabellen erscheinen mit Strategie und Sanity in der Zusammenfassung |
 | Nach Code-Update | `operations/DEPLOYMENT.md` – Post-Deploy-Verifikation |
 | Bei Passwortwechsel | `Setup_Credentials.ps1` unter dem Task-Konto erneut ausführen; bei Wechsel des Windows-Passworts des Task-Kontos `Setup-ScheduledTasks.ps1` mit denselben Parametern erneut ausführen (nicht nötig bei gMSA) |
-| Monatlich | `Logs\` Größe prüfen (Rotation über `DeleteLogOlderThanDays`, Default 30 Tage); alte `config.json.*.bak` löschen |
+| Monatlich | `Logs\` Größe prüfen (Rotation über `DeleteLogOlderThanDays`, Default 30 Tage); alte `config*.json.*.bak` löschen, sofern nicht mehr gebraucht (`Manage_Config_Tables.ps1` behält seit v2.19 ohnehin nur die neuesten 5 je Konfig; `-PreDeploy` meldet vorhandene Backups als `WARNUNG` „Konfig-Backups“) |
 
 ---
 
@@ -318,13 +320,62 @@ automatisch erweitert (S11).
 
 3. Zieltabelle anpassen – eine der beiden Varianten:
    - Spalte manuell per `ALTER TABLE <Prefix><Tabelle><Suffix> ADD <Spalte> <Typ>`
-     in SSMS ergänzen (Typ wie in der neuen `STG_<Tabelle>`), dann normaler Lauf.
+     in SSMS ergänzen (Typ wie in der neuen `STG_<Tabelle>`), dann **einmal mit `ForceFullSync: true`**
+     laufen lassen. Ein normaler Lauf füllt die neue Spalte in unveränderten Altzeilen nicht (siehe Hinweis
+     unter „Befund ‚Schema-Drift‘“).
    - Zieltabelle löschen (`DROP TABLE`), nächster Lauf legt sie aus Staging neu an
      und lädt voll. Nur, wenn niemand auf der Tabelle Abhängigkeiten (Views,
      Rechte) hat.
 
 Das Job-Profil Weekly Full (Default `config_weekly_full.json`)
 baut Staging wöchentlich neu, erweitert aber die Zieltabelle ebenfalls nicht.
+
+### Befund „Schema-Drift“ aus `-PreDeploy` beheben (seit v2.19)
+
+`Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` vergleicht die Spalten der
+konfigurierten Firebird-Tabellen mit den **vorhandenen** Ziel- (`<Prefix><Tabelle><Suffix>`) und
+Staging-Tabellen (`STG_<Tabelle>`). Nicht vorhandene Tabellen werden übersprungen (der Erstlauf legt
+sie an). Die Prüfung ändert nichts; sie bewertet mit den Einstellungen des übergebenen Profils
+(`ForceFullSync`, `RecreateStagingTable`, `TableOverrides`). Detail jeder Zeile:
+`<Ziel>.<Spalte>: <Grund> – siehe docs/operations/RUNBOOK.md`.
+
+| Befund | Wirkung im Sync | Abhilfe |
+|---|---|---|
+| `FEHLER` „ID-Spalte fehlt im Ziel – sp_Merge_Generic kehrt ohne Fehler zurück, nichts wird übernommen“ | `sp_Merge_Generic` endet mit `PRINT` + `RETURN`, die Tabelle meldet trotzdem `Erfolg`; das Ziel bleibt unverändert (aus `sql_server_setup.sql` abgeleitet, nicht Ende-zu-Ende getestet) | Zieltabelle neu aufbauen: `DROP TABLE`, nächster Lauf legt sie als Erstlauf aus Staging neu an und lädt voll |
+| `FEHLER` „Zeitstempelspalte fehlt im Ziel – Incremental endet mit Status Fehler (Exit 10)“ | Wasserzeichen-Abfrage scheitert in jedem Versuch (`Ungültiger Spaltenname` bzw. `Invalid column name`), Status `Fehler`, Exit `10` | wie „Zeitstempelspalte fehlt in der Zieltabelle“ oben: Spalte per `ALTER TABLE … ADD` ergänzen oder Zieltabelle neu aufbauen. Bei `ForceFullSync: true` im Profil nur `WARNUNG` |
+| `WARNUNG` „Spalte fehlt im Ziel und wird nicht übernommen (K6)“ | Status `Erfolg`, Exit `0`; die Spalte fehlt still im Ziel | Spalte per `ALTER TABLE <Prefix><Tabelle><Suffix> ADD <Spalte> <Typ>` ergänzen (Typ wie in `STG_<Tabelle>` bzw. `Get_Firebird_Schema.ps1`) oder Zieltabelle neu aufbauen (`DROP TABLE` + Erstlauf) |
+| `FEHLER` „Spalte fehlt in der Staging-Tabelle – BulkCopy scheitert; einmalig RecreateStagingTable: true“ | `SqlBulkCopy` bricht ab (`The given ColumnMapping does not match up with any column in the source or destination.`), Status `Fehler`, Exit `10` | Einmal-Konfig mit `General.RecreateStagingTable: true` laufen lassen (baut `STG_<Tabelle>` aus der Quelle neu); `-PreDeploy` mit diesem Profil meldet keine Staging-Drift |
+
+Hinweis zur Variante `ALTER TABLE … ADD`: `sp_Merge_Generic` aktualisiert vorhandene Zeilen nur,
+wenn sich ihr Zeitstempel geändert hat oder der Ziel-Zeitstempel `NULL` ist (`sql_server_setup.sql`).
+Bei einer neuen Nicht-Zeitstempelspalte bleiben unveränderte Altzeilen nach normalen Läufen daher `NULL`.
+Abhilfe: einmal mit `ForceFullSync: true` laufen lassen — der Sync leert dann die Zieltabelle (`TRUNCATE`) und
+lädt alle Zeilen neu; oder die Zieltabelle neu aufbauen (`DROP TABLE` + Erstlauf; nur, wenn niemand
+Abhängigkeiten wie Views oder Rechte auf ihr hat). Gemessen 2026-10-10 in der Test-Datenbank: nach
+`ALTER TABLE … ADD` füllte ein normaler Lauf 0 von 33 Altzeilen, ein `ForceFullSync`-Lauf 33 von 33.
+
+Danach erneut `-PreDeploy` ausführen: erwartet `OK  Schema-Drift  keine Quellspalte fehlt in
+vorhandenen Ziel-/Staging-Tabellen (N Spalten geprüft)`. Die automatische Ergänzung fehlender Spalten
+durch den Sync ist nicht umgesetzt (K6).
+
+### Klartext-Passwort oder Konfig-Backups gemeldet (`-PreDeploy`, seit v2.19)
+
+- `WARNUNG` „Klartext-Passwort in Firebird.Password, MSSQL.Password – …“ (genannt werden nur die
+  gesetzten Schlüssel, nie Werte): Passwort per `Setup_Credentials.ps1` unter dem Task-Konto im
+  Credential Manager hinterlegen, das Feld aus der genannten `config*.json` entfernen, Lauf prüfen
+  (`operations/SECRETS_MANAGEMENT.md`).
+- `WARNUNG` „Konfig-Backups“ mit Anzahl und bis zu drei Dateinamen: Backups
+  `<Konfig>.<yyyyMMdd_HHmmss>.bak` im Skriptordner können Klartext-Passwörter aus früheren Ständen
+  enthalten. Ansehen, nicht mehr benötigte löschen; enthielt eine Konfig je ein Passwort, alle ihre
+  Backups löschen und das Passwort rotieren (`operations/SECRETS_MANAGEMENT.md`). Laufende Rotation:
+  `Manage_Config_Tables.ps1 -KeepBackups <N>` (Default 5) bzw. im Modul
+  `Remove-SQLSyncConfigBackup -ConfigPath <Konfig> -Keep <N> -WhatIf` (Vorschau, ohne `-WhatIf` löschen).
+
+```powershell
+Import-Module .\SQLSyncCommon.psm1
+Get-SQLSyncConfigBackup -Directory . | Select-Object Name, LastWriteTime   # neueste zuerst
+Remove-SQLSyncConfigBackup -ConfigPath .\config.json -Keep 2 -WhatIf
+```
 
 ### Nachkommastellen im Ziel gerundet
 

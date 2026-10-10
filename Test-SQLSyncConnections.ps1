@@ -30,7 +30,7 @@
     .\Test-SQLSyncConnections.ps1 -ConfigFile "config_prod.json" -PreDeploy
 
 .NOTES
-    Version: 2.1 (-PreDeploy)
+    Version: 2.2 (-PreDeploy mit Schema-Drift, Klartext-Passwort- und Backup-Prüfung)
     Exit-Codes: 0 = OK (mit -PreDeploy: keine FEHLER, WARNUNGEN möglich), 1 = Verbindungstest
     fehlgeschlagen bzw. Modul/Konfig fehlt, 2 = Konfiguration, 3 = Credentials, 4 = Treiber,
     6 = -PreDeploy hat mindestens einen FEHLER gefunden.
@@ -119,11 +119,17 @@ if ($PreDeploy) {
         Where-Object { $_.Name -notin @("config.schema.json", "config.sample.json") }
     foreach ($f in $ConfigFiles) {
         try {
-            $null = Get-SQLSyncConfig -ConfigPath $f.FullName -SchemaPath $SchemaFile -WarningAction SilentlyContinue
+            $Checked = Get-SQLSyncConfig -ConfigPath $f.FullName -SchemaPath $SchemaFile -WarningAction SilentlyContinue
             Add-Finding "Konfig $($f.Name)" "OK" "Schema und Namensregeln erfüllt"
+            # Nur Schlüsselnamen ausgeben, nie Werte
+            $Plain = @(Find-SQLSyncPlaintextPassword -RawConfig $Checked.RawConfig)
+            if ($Plain.Count -gt 0) { Add-Finding "Konfig $($f.Name)" "WARNUNG" "Klartext-Passwort in $($Plain -join ', ') – Credential Manager nutzen (Setup_Credentials.ps1) und Feld entfernen" }
         }
         catch { Add-Finding "Konfig $($f.Name)" "FEHLER" $_.Exception.Message }
     }
+    $Backups = @(Get-SQLSyncConfigBackup -Directory $ScriptDir)
+    if ($Backups.Count -gt 0) { Add-Finding "Konfig-Backups" "WARNUNG" "$($Backups.Count) Backup(s) im Skriptordner (können Klartext-Passwörter enthalten): $(($Backups | Select-Object -First 3).Name -join ', ')$(if ($Backups.Count -gt 3) { ', …' }) – prüfen und löschen; Rotation über Manage_Config_Tables.ps1 -KeepBackups" }
+    else { Add-Finding "Konfig-Backups" "OK" "keine Konfig-Backups im Skriptordner" }
     if (-not (Test-Path $SchemaFile)) { Add-Finding "Schema-Datei" "WARNUNG" "config.schema.json fehlt – Konfigs werden beim Sync nicht gegen das Schema geprüft" }
 
     $Driver = Test-FirebirdDriverIntegrity -DllPath $Config.DllPath -ScriptDir $ScriptDir -ExpectedSha256 $Config.DllSha256
@@ -219,6 +225,14 @@ try {
             'FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE ' +
             'WHERE f.RDB$FIELD_SCALE < 0 AND TRIM(rf.RDB$RELATION_NAME) IN ({0})') -f ($Names -join ", ")
         $SourceDecimals = @()
+        $ColCmd = $FbConn.CreateCommand()
+        foreach ($p in $NumCmd.Parameters) { [void]$ColCmd.Parameters.Add($p.ParameterName, $p.Value) }
+        $ColCmd.CommandText = ('SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME) FROM RDB$RELATION_FIELDS rf ' +
+            'WHERE TRIM(rf.RDB$RELATION_NAME) IN ({0})') -f ($Names -join ", ")
+        $SourceColumns = @()
+        $Reader = $ColCmd.ExecuteReader()
+        while ($Reader.Read()) { $SourceColumns += [PSCustomObject]@{ Table = $Reader.GetString(0); Column = $Reader.GetString(1) } }
+        $Reader.Close()
         $Reader = $NumCmd.ExecuteReader()
         while ($Reader.Read()) {
             $Prec = if ($Reader.IsDBNull(2)) { 18 } else { [int]$Reader.GetValue(2) }
@@ -304,6 +318,17 @@ try {
         foreach ($Table in $Config.Tables) { $Names += "@t$i"; [void]$DecCmd.Parameters.AddWithValue("@t$i", "$Prefix$Table$Suffix"); $i++ }
         $DecCmd.CommandText = "SELECT TABLE_NAME, COLUMN_NAME, NUMERIC_PRECISION, NUMERIC_SCALE FROM INFORMATION_SCHEMA.COLUMNS WHERE DATA_TYPE IN ('decimal', 'numeric') AND TABLE_NAME IN ($($Names -join ', '))"
         $TargetDecimals = @()
+        # Spalten der Ziel- und Staging-Tabellen für die Schema-Drift-Prüfung
+        $ColCmd = $SqlConn.CreateCommand()
+        $ColNames = @(); $i = 0
+        foreach ($Table in $Config.Tables) {
+            foreach ($Name in "$Prefix$Table$Suffix", "STG_$Table") { $ColNames += "@c$i"; [void]$ColCmd.Parameters.AddWithValue("@c$i", $Name); $i++ }
+        }
+        $ColCmd.CommandText = "SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ($($ColNames -join ', '))"
+        $TargetColumns = @()
+        $Reader = $ColCmd.ExecuteReader()
+        while ($Reader.Read()) { $TargetColumns += [PSCustomObject]@{ Table = $Reader.GetString(0); Column = $Reader.GetString(1) } }
+        $Reader.Close()
         $Reader = $DecCmd.ExecuteReader()
         while ($Reader.Read()) {
             $TargetDecimals += [PSCustomObject]@{ Table = $Reader.GetString(0); Column = $Reader.GetString(1); Precision = [int]$Reader.GetValue(2); Scale = [int]$Reader.GetValue(3) }
@@ -343,6 +368,9 @@ if ($FbSuccess -and $SqlSuccess) {
         foreach ($tr in $Truncations) {
             Add-Finding "Altbestand DECIMAL" "WARNUNG" "$($tr.Target).$($tr.Column): Ziel $($tr.TargetType) < Quelle $($tr.Source) – Korrektur siehe docs/operations/RUNBOOK.md"
         }
+        $Drift = @(Find-SQLSyncSchemaDrift -SourceColumns $SourceColumns -TargetColumns $TargetColumns -Config $Config)
+        if ($Drift.Count -eq 0) { Add-Finding "Schema-Drift" "OK" "keine Quellspalte fehlt in vorhandenen Ziel-/Staging-Tabellen ($(@($SourceColumns).Count) Spalten geprüft)" }
+        foreach ($dr in $Drift) { Add-Finding "Schema-Drift" $dr.Status "$($dr.Target).$($dr.Column): $($dr.Reason) – siehe docs/operations/RUNBOOK.md" }
         Write-Findings
         if ($Findings | Where-Object Status -eq "FEHLER") {
             Write-Host "`n  Vor-Deployment-Prüfung: FEHLER gefunden (Exit 6)`n" -ForegroundColor Red

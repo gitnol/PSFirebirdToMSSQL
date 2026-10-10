@@ -101,14 +101,22 @@ Log-Rotation und `Stop-Transcript` laufen vor dem `exit`. Ein End-to-End-Lauf ge
 | Konfiguration nicht parsebar / ungültig (inkl. Schema-Verstoß, Namensprüfung) | `2` |
 | Keine Credentials | `3` |
 | Treiber nicht ladbar (inkl. SHA-256-Abweichung) | `4` |
-| Nur `-PreDeploy`: mindestens ein `FEHLER` (weitere `config*.json` im Ordner verletzt Schema/Namensregeln, Treiber-DLL mit nicht erlaubtem SHA-256) | `6` |
+| Nur `-PreDeploy`: mindestens ein `FEHLER` (weitere `config*.json` im Ordner verletzt Schema/Namensregeln, Treiber-DLL mit nicht erlaubtem SHA-256, seit I10a Schema-Drift: ID-Spalte bzw. Zeitstempelspalte einer Incremental-Tabelle fehlt in der vorhandenen Zieltabelle oder eine Quellspalte fehlt in der vorhandenen Staging-Tabelle) | `6` |
 
 `-PreDeploy` sammelt Befunde als `OK` / `WARNUNG` / `FEHLER` und gibt sie am Ende als Tabelle
 Status / Prüfung / Detail aus. Eine nicht erlaubte Treiber-DLL (`Test-FirebirdDriverIntegrity`, lädt
 nicht) beendet die Prüfung sofort mit Ausgabe und Exit `6`, bevor `Initialize-FirebirdDriver` sie
 ablehnen würde (dort Exit `4`). `WARNUNG`en (fehlende Schema-Datei oder DLL, Server-Advisory,
-`SYSDBA`, Altbestand `DECIMAL`) ändern den Exit-Code nicht. Schlägt ein Verbindungstest fehl, gilt
-Exit `1` vor `6`.
+`SYSDBA`, Altbestand `DECIMAL`, seit I10a Schema-Drift einer anderen Zielspalte bzw. der Zeitstempelspalte
+bei `ForceFullSync: true`, Klartext-Passwort in einer `config*.json`, Konfig-Backups im Skriptordner)
+ändern den Exit-Code nicht. Schlägt ein Verbindungstest fehl, gilt Exit `1` vor `6`.
+
+Die Schema-Drift-Einstufung folgt dem Fehlerbild im Sync (`Find-SQLSyncSchemaDrift`): fehlende
+Zeitstempelspalte → Tabellenfehler, Exit `10`; fehlende Staging-Spalte → `SqlBulkCopy` scheitert
+(`The given ColumnMapping does not match up with any column in the source or destination.`), Exit `10`;
+fehlende ID-Spalte → `sp_Merge_Generic` endet mit `PRINT` + `RETURN` ohne Fehler, die Tabelle meldet
+`Erfolg`, gemergt wird nichts (aus `sql_server_setup.sql` abgeleitet, nicht Ende-zu-Ende getestet);
+andere fehlende Zielspalte → Status `Erfolg`, Exit `0`, die Spalte fehlt still im Ziel (K6).
 
 ### `Get_Firebird_Schema.ps1`
 

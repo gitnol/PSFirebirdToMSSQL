@@ -3,11 +3,11 @@
 Stack: PowerShell 7+ gegen **echte** Firebird- und SQL-Server-Testinstanzen
 (Firebird 2.5+/3.x, Port 3050; SQL Server 2017+).
 
-> **Stand 2026-10-09:** Es gibt **keine automatisierten Integrationstests** und keine CI.
+> **Stand 2026-10-10:** Es gibt **keine automatisierten Integrationstests**; die CI (seit I10b) führt nur Unit-Tests und PSScriptAnalyzer aus.
 > Einziger vorhandener Integrations-/Smoke-Test ist das Diagnoseskript
 > `Test-SQLSyncConnections.ps1`, mit `-PreDeploy` als umfassender, rein lesender Lauf
 > (Abschnitt 2.1). Der Pester-5-Harness für Unit-Tests ist seit I3 vorhanden
-> (`tests/Unit/`, 176 Tests, Pester 5.7.1 gepinnt in
+> (`tests/Unit/`, 192 Tests, Pester 5.7.1 gepinnt in
 > `tests/RequiredModules.psd1`, siehe `UNIT_TESTS.md`), deckt aber nur `SQLSyncCommon.psm1`
 > ohne echte Instanzen ab. Die Struktur unten ist der Zielzustand; Integrations-Tests bauen auf
 > diesem Harness auf.
@@ -96,8 +96,9 @@ It 'Vor-Deployment-Prüfung ohne FEHLER' {
 `SELECT`s (Firebird: `RDB$RELATION_FIELDS`/`RDB$FIELDS`, SQL Server: `INFORMATION_SCHEMA.COLUMNS`),
 keine DDL/DML, die Treiber-DLL wird für die Hash-Prüfung nicht geladen. Zusätzlich zum Smoke-Test
 prüft er alle `config*.json` im Skriptordner gegen Schema und Namensregeln, die Treiber-DLL, die
-Firebird-Serverversion gegen bekannte Server-Advisories, die Anmeldung als `SYSDBA` und Zielspalten,
-die Dezimalwerte der Quelle kürzen (Altbestand). Ausgabe als Tabelle Status / Prüfung / Detail;
+Firebird-Serverversion gegen bekannte Server-Advisories, die Anmeldung als `SYSDBA`, Zielspalten,
+die Dezimalwerte der Quelle kürzen (Altbestand), und seit I10a Schema-Drift (Abschnitt 2.2),
+Klartext-Passwörter in den Konfigs und Konfig-Backups im Skriptordner. Ausgabe als Tabelle Status / Prüfung / Detail;
 Exit 0 = kein `FEHLER`, 1 = Verbindungstest fehlgeschlagen, 6 = mindestens ein `FEHLER`.
 
 Manuell belegt am 2026-10-09 gegen die Testumgebung (Firebird-Testserver → SQL-Testserver):
@@ -114,6 +115,32 @@ Manuell belegt am 2026-10-09 gegen die Testumgebung (Firebird-Testserver → SQL
 
 Die DDL in den letzten beiden Zeilen (Spalte verkleinern bzw. korrigieren) wurde manuell in der
 Test-Ziel-DB ausgeführt, nicht von `-PreDeploy`.
+
+### 2.2 Schema-Drift / K6 (I10a, manuell)
+
+Prüft, dass `-PreDeploy` Quellspalten erkennt, die in vorhandenen Ziel- oder Staging-Tabellen
+fehlen, und dass die Einstufung (`FEHLER` / `WARNUNG`) dem tatsächlichen Verhalten des Syncs
+entspricht. Ablauf in der Test-Ziel-DB: bei einer Incremental-Testtabelle in der Zieltabelle die
+Zeitstempelspalte und eine weitere Spalte entfernen (`ALTER TABLE … DROP COLUMN`), in der
+Staging-Tabelle eine Spalte entfernen; dann `-PreDeploy` und Gegenproben mit dem echten Sync.
+
+Manuell belegt am 2026-10-10 gegen die Testumgebung (Firebird-Testserver → SQL-Testserver,
+Test-Datenbank):
+
+| Szenario | Ergebnis |
+|---|---|
+| Basislauf ohne Drift | `OK  Schema-Drift  keine Quellspalte fehlt …` (76 Spalten geprüft) |
+| Zieltabelle ohne Zeitstempelspalte und ohne eine weitere Spalte, Staging ohne eine Spalte | `-PreDeploy`: `FEHLER` (Zeitstempelspalte), `WARNUNG` (andere Zielspalte), `FEHLER` (Staging-Spalte); Exit 6 |
+| Gegenprobe Sync: nur Zeitstempelspalte fehlt im Ziel | 4 Versuche mit `Ungültiger Spaltenname`, Status `Fehler`, Exit 10 |
+| Gegenprobe Sync: nur Staging-Spalte fehlt | BulkCopy `The given ColumnMapping does not match up with any column in the source or destination.`, Exit 10 |
+| Gegenprobe Sync: nur Nicht-Schlüsselspalte fehlt im Ziel | Status `Erfolg`, Exit 0; die Spalte fehlt still im Ziel (K6) |
+| Tabellen gelöscht und per Erstlauf neu aufgebaut | `-PreDeploy` wieder `OK` |
+
+Die DDL (Spalten entfernen, Tabellen löschen) wurde manuell in der Test-Ziel-DB ausgeführt, nicht
+von `-PreDeploy`. Nicht im Integrationslauf nachgestellt: fehlende ID-Spalte im Ziel (`FEHLER`; das
+stille `RETURN` von `sp_Merge_Generic` ist aus `sql_server_setup.sql` abgeleitet und per Unit-Test
+der Einstufung belegt) und die Ausnahmen `ForceFullSync` / `RecreateStagingTable` (Unit-Tests,
+`UNIT_TESTS.md`). Die Prüfungen auf Klartext-Passwörter und Konfig-Backups sind unit-getestet.
 
 ---
 
@@ -321,5 +348,5 @@ Invoke-Pester -Container $c -Output Detailed
 | Schreibende Tests ohne `-EnableWriteTests` | Default nicht-destruktiv | Opt-in-Switch |
 | `Setup-ScheduledTasks.ps1` – echte Registrierung (Task Scheduler, Admin-Prüfung zur Laufzeit) | OS-spezifisch, Admin, fragt Windows-Passwort ab | `-WhatIf`-Pfad per Unit-Test (`UNIT_TESTS.md` 4.3); Registrierung als manueller Smoke-Test nach Deployment (`operations/TASK_SCHEDULER.md`), noch nicht durchgeführt |
 | `Setup_Credentials.ps1` (interaktiv, `CredWrite`) | Interaktiv, schreibt in den Credential Manager | Manuell beim Einrichten des Testrechners |
-| `Manage_Config_Tables.ps1` (Out-GridView) | GUI (Auswahl, Sperre gegen das Entfernen der letzten Tabelle, Exit 4) | Manuell; die Startprüfung (Exit 2 vor GridView und Backup) ist manuell belegt |
+| `Manage_Config_Tables.ps1` (Out-GridView) | GUI (Auswahl, Sperre gegen das Entfernen der letzten Tabelle, Exit 4, Backup-Rotation `-KeepBackups`) | Manuell; die Startprüfung (Exit 2 vor GridView und Backup) ist manuell belegt; die Backup-Rotation (seit I10a) nur per Unit-Test von `Remove-SQLSyncConfigBackup` |
 | Treiber-Download von NuGet | Netz + Admin, einmalig | Manuell beim Einrichten; Hash-Logik per Unit-Test mit Mocks |

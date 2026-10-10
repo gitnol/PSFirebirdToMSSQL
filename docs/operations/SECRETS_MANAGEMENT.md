@@ -51,6 +51,28 @@ CLI-Parameter für Secrets. **Betriebsregel:** Passwortfelder in Konfigurationsd
 bzw. entfernen; Stufe 3 gilt als Fehlkonfiguration. Ziel (Backlog): Fallback nur per explizitem
 Schalter zulassen.
 
+**Erkennung (seit v2.19 / I10a):** `Test-SQLSyncConnections.ps1 -PreDeploy` meldet je `config*.json`
+im Skriptordner mit gesetztem Passwortfeld eine `WARNUNG` „Klartext-Passwort in Firebird.Password,
+MSSQL.Password – Credential Manager nutzen (Setup_Credentials.ps1) und Feld entfernen“
+(`Find-SQLSyncPlaintextPassword`; ausgegeben werden nur die Schlüsselnamen, nie Werte). Die Warnung
+ändert den Exit-Code nicht.
+
+---
+
+## Konfig-Backups (`*.bak`)
+
+`Manage_Config_Tables.ps1` kopiert die Konfig vor jedem Speichern nach
+`<Konfig>.<yyyyMMdd_HHmmss>.bak` – mit einem eventuell enthaltenen Passwort. Seit v2.19 (I10a):
+
+- **Rotation:** Nach dem Speichern bleiben nur die neuesten `-KeepBackups` Backups dieser Konfig
+  erhalten (Default 5, 1–1000), ältere werden gelöscht (`Remove-SQLSyncConfigBackup`; im Modul mit
+  `-WhatIf` als Vorschau).
+- **Erkennung:** `-PreDeploy` meldet vorhandene Backups im Skriptordner als `WARNUNG` „Konfig-Backups“
+  mit Anzahl und bis zu drei Dateinamen (`Get-SQLSyncConfigBackup`).
+- Enthielt eine Konfig je ein Klartext-Passwort, reicht das Entfernen des Felds nicht: alle Backups
+  dieser Konfig löschen und das Passwort rotieren (siehe unten). Vorgehen:
+  `operations/RUNBOOK.md`, „Klartext-Passwort oder Konfig-Backups gemeldet“.
+
 ---
 
 ## Rotation
@@ -95,7 +117,7 @@ Details: `docs/operations/TASK_SCHEDULER.md`.
 ## Was niemals committet werden darf
 
 - `config*.json` außer `config.sample.json` / `config.schema.json` (`.gitignore`: `/config*`)
-- `config.json.<Zeitstempel>.bak` (`.gitignore`: `*.bak`)
+- `<Konfig>.<Zeitstempel>.bak`, z. B. `config.json.<Zeitstempel>.bak` (`.gitignore`: `*.bak`)
 - `Logs/`, `*.log`
 - `*.secret`, `*.key`, `*.pem`, `*.pfx`, `*.clixml`, `.env`
 - Echte Server-, Datenbank-, Benutzernamen oder Passwörter in `config.sample.json`, Skripten oder

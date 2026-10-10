@@ -112,7 +112,9 @@ aufgebaut wird. `<Feld>` in der Meldung nennt das betroffene Konfigurationsfeld 
 - `Firebird.Password` / `MSSQL.Password` in der JSON-Datei sind ein **unsicherer Fallback**; bei Nutzung erscheint die
   Warnung `config.json (WARNUNG: unsicher!)`.
 - `config*` (außer `config.sample.json`, `config.schema.json`) und `*.bak` sind per `.gitignore` ausgeschlossen;
-  `Manage_Config_Tables.ps1` kopiert beim Backup auch ein eventuell enthaltenes Passwort mit.
+  `Manage_Config_Tables.ps1` kopiert beim Backup auch ein eventuell enthaltenes Passwort mit; seit I10a (v2.2)
+  behält es nur die neuesten `-KeepBackups` Backups (Default 5). `Test-SQLSyncConnections.ps1 -PreDeploy` warnt vor
+  Klartext-Passwortfeldern in jeder `config*.json` und vor Konfig-Backups im Skriptordner.
 - Details: `docs/operations/SECRETS_MANAGEMENT.md`, `docs/architecture/CREDENTIAL_STRATEGY.md`.
 
 ---

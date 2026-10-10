@@ -89,8 +89,10 @@ Konfigurationsdatei) liegt beim Betreiber.
   `RecreateStagingTable`); enthalten danach den letzten Extrakt bis zum nächsten Lauf.
 - **Logs:** Rotation am Ende jedes Laufs: `Sync_*.log` älter als `General.DeleteLogOlderThanDays`
   (Default 30, `0` = keine Rotation) werden gelöscht.
-- **`*.bak`-Backups:** keine automatische Rotation – akkumulieren unbegrenzt. Verantwortlich für
-  Aufräumen: Betreiber des Sync-Hosts (manuell).
+- **`*.bak`-Backups:** seit I10a (`Manage_Config_Tables.ps1` v2.2) behält das Skript nach dem
+  Speichern nur die neuesten `-KeepBackups` Backups je Konfig (Default 5); bis dahin akkumulierten sie
+  unbegrenzt. `Test-SQLSyncConnections.ps1 -PreDeploy` meldet vorhandene Backups als `WARNUNG`.
+  Verantwortlich für das Aufräumen der verbleibenden Backups: Betreiber des Sync-Hosts (manuell).
 - **Datensicherung der Ziel-DB:** Pre-Flight legt eine neue DB mit `RECOVERY SIMPLE` an; Backup und
   Aufbewahrungsfristen der Ziel-DB regelt der DB-Betrieb, nicht dieses Projekt.
 
