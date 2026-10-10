@@ -22,6 +22,19 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ---
 
+## Mittlere Priorität
+
+### I12: Stille Erfolgsmeldungen im Merge und Orphan-Cleanup beseitigen
+
+Gebündelt (Reflexion nach I10c, KICKOFF 2a/REFLECTION 2b): K10 und K5 haben dieselbe Ursache — ein Fehler endet
+mit Status „Erfolg". Erster Schnitt am Orphan-Cleanup analog I8 (Logik als Modulfunktion, dadurch testbar).
+
+- [ ] K10: `sp_Merge_Generic` wirft bei fehlender ID-Spalte (`THROW`) statt `PRINT` + `RETURN`; Pre-Flight rollt die Prozedur aus (Parameterprüfung/`RecreateStoredProcedure` beachten)
+- [ ] K5: Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle mit dem Typ der Zielspalte an statt fest `BIGINT`; ein Cleanup-Fehler erscheint im Status/Sanity statt nur in `Info`
+- [ ] Orphan-Cleanup-Ablauf (Temp-Tabelle, Batch-Transfer, `DELETE`) als Modulfunktion aus dem Hauptskript ziehen
+- **DoD:** Unit-Tests mit behavioralem Rot (Typableitung, Fehlerstatus); Integration in der Test-Datenbank: Tabelle mit nicht-numerischer ID und `CleanupOrphans: true`, Zieltabelle ohne ID-Spalte → Status `Fehler`; CI grün; gemeinsame DoD erfüllt
+
+---
 ## Niedrige Priorität
 
 ### I10d: Modul-Aufräumen
@@ -33,17 +46,6 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 - [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer); über `Write-SyncStatus`/`Close-DatabaseConnection` (von keinem Skript genutzt) entscheiden
 - [ ] Warnungen an `New-FirebirdConnectionString`/`New-MSSQLConnectionString` abbauen oder begründet unterdrücken (`PSAvoidUsingPlainTextForPassword`, `PSUseShouldProcessForStateChangingFunctions`)
 - **DoD:** Unit-Test mit behavioralem Rot für den Port; exportierte Funktionsnamen unverändert (außer entfernte); CI grün; gemeinsame DoD erfüllt
-
----
-### I12: Stille Erfolgsmeldungen im Merge und Orphan-Cleanup beseitigen
-
-Gebündelt (Reflexion nach I10c, KICKOFF 2a/REFLECTION 2b): K10 und K5 haben dieselbe Ursache — ein Fehler endet
-mit Status „Erfolg". Erster Schnitt am Orphan-Cleanup analog I8 (Logik als Modulfunktion, dadurch testbar).
-
-- [ ] K10: `sp_Merge_Generic` wirft bei fehlender ID-Spalte (`THROW`) statt `PRINT` + `RETURN`; Pre-Flight rollt die Prozedur aus (Parameterprüfung/`RecreateStoredProcedure` beachten)
-- [ ] K5: Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle mit dem Typ der Zielspalte an statt fest `BIGINT`; ein Cleanup-Fehler erscheint im Status/Sanity statt nur in `Info`
-- [ ] Orphan-Cleanup-Ablauf (Temp-Tabelle, Batch-Transfer, `DELETE`) als Modulfunktion aus dem Hauptskript ziehen
-- **DoD:** Unit-Tests mit behavioralem Rot (Typableitung, Fehlerstatus); Integration in der Test-Datenbank: Tabelle mit nicht-numerischer ID und `CleanupOrphans: true`, Zieltabelle ohne ID-Spalte → Status `Fehler`; CI grün; gemeinsame DoD erfüllt
 
 ---
 ## Abgeschlossen
