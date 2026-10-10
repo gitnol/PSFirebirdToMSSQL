@@ -380,7 +380,7 @@ gefundenen Schwachstellen verwendet. Zuordnung:
 | S9 | `config.schema.json` wird nie geprüft | K7 | I6 (erledigt 2026-10-09; Fail-Fast in allen vier Skripten) |
 | S10 | Keine automatisierten Tests | — | I3 (erledigt 2026-10-08) |
 | S11 | Schema-Drift (neue Spalten) nicht behandelt | K6 | `BACKLOG.md` |
-| S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7, K9 | I10a (Port), I10c (Doku) |
+| S12 | Doku-/Repo-Drift, ungenutztes `MSSQL.Port` | K7, K9 | I10d (Port), I10c (Doku) |
 | S13 | Tasks als interaktiver Benutzer mit gespeichertem Passwort, breite DB-Rechte | — | I9 (Option Dienstkonto/gMSA vorhanden 2026-10-08; Umstellung und DB-Rechte sind Betrieb) |
 
 Hinweis: `S1`–`S3` in `docs/REFLECTION.md` bezeichnen dagegen die

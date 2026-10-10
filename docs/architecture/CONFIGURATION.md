@@ -97,7 +97,7 @@ aufgebaut wird. `<Feld>` in der Meldung nennt das betroffene Konfigurationsfeld 
 
 **Nicht geprüft** (bekannte Lücken):
 
-- `MSSQL.Port` ist im Schema erlaubt, wird vom Code aber nicht ausgewertet (Inkrement I10a).
+- `MSSQL.Port` ist im Schema erlaubt, wird vom Code aber nicht ausgewertet (Inkrement I10d).
 - Ohne Schema-Datei (nur Warnung) entfallen Typ-, Pflichtfeld- und Schlüsselprüfung; fehlende Pflichtfelder fallen
   dann erst beim Verbindungsaufbau bzw. im Pre-Flight auf.
 - Die Hashtable ist **nicht** schreibgeschützt; das Sync-Skript kopiert die Werte jedoch nur in lokale Variablen und
@@ -179,7 +179,7 @@ Quelle ist für alle Schlüssel die JSON-Datei (FILE); `-ConfigFile` wählt nur 
 | `CredentialTarget` | string | `"SQLSync_MSSQL"` | FILE | Name des Credential-Manager-Eintrags, den `Resolve-MSSQLCredentials` liest (nur SQL-Auth); anlegen mit `Setup_Credentials.ps1 -MSSQLTarget …`. Für mehrere SQL Server mit gleichem Login, aber unterschiedlichen Passwörtern, z. B. `SQLSync_MSSQL_sqltest`. Schema: `minLength 1` |
 | `Prefix` | string | `""` | FILE | Präfix des Zieltabellennamens (`<Prefix><Tabelle><Suffix>`); Staging bleibt `STG_<Tabelle>`. Code: Namensregeln (s. o.), Gesamtname ≤ 128 Zeichen; Schema: `^[A-Za-z0-9_$]*$` |
 | `Suffix` | string | `""` | FILE | Suffix des Zieltabellennamens. Code: Namensregeln (s. o.); Schema: `^[A-Za-z0-9_$]*$` |
-| `Port` | int | (Schema: `1433`) | — | Steht in Sample und Schema, wird vom Code **nicht** ausgewertet (Port ggf. als `host,port` in `Server` angeben; Inkrement I10a) |
+| `Port` | int | (Schema: `1433`) | — | Steht in Sample und Schema, wird vom Code **nicht** ausgewertet (Port ggf. als `host,port` in `Server` angeben; Inkrement I10d) |
 
 ### Wurzelebene
 

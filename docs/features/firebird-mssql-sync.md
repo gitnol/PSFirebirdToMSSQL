@@ -271,7 +271,7 @@ Details, Reproduktion und Workarounds: `docs/KNOWN_ISSUES.md`; Planung:
 | `RowsLoaded` ist bei Incremental auch ohne Quelländerung oft > 0 | Überlappungsfenster liest Zeilen erneut (I8) | by design; MERGE idempotent, keine Duplikate |
 | Löschungen nicht repliziert; Orphan-Cleanup nur für numerische IDs | by design / `BIGINT`-Temp-Tabelle (S7) | Akzeptiert / Backlog |
 | Neue Firebird-Spalten erreichen das Ziel nicht automatisch; `sp_Merge_Generic` nutzt die Spalten der **Zieltabelle** | keine Schema-Drift-Erkennung (S11) | Backlog |
-| `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10a |
+| `MSSQL.Port` wird ignoriert | nicht implementiert (S12) | geplant in I10d |
 | Einstiegsskripte ohne automatisierte Tests | nur `SQLSyncCommon.psm1` ist unit-getestet; der Ablauf der Skripte braucht DB-Zugriff | Integrationstests offen; Typmapping und Strategiewahl (seit I5) sowie Configpfad-Auflösung und Schema-Prüfung (seit I6) und der Incremental-Extrakt (seit I8) liegen im Modul (unit-getestet) |
 | `sp_Merge_Generic` meldet fehlende Tabellen/ID-Spalte nur per `PRINT` und kehrt ohne Fehler zurück | Prozedurdesign | offen |
 

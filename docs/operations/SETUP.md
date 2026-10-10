@@ -154,7 +154,7 @@ außerhalb der Grenzen lassen jedes Skript mit Exit 2 abbrechen.
 - **Passwörter NICHT in `config.json` eintragen**, sondern Schritt 5 nutzen.
   Die Felder `Password` in `config.sample.json` sind nur ein unsicherer Fallback
   (Warnung im Log) – in der eigenen `config.json` entfernen oder leer lassen.
-- `MSSQL.Port` aus der Vorlage wird vom Code ignoriert (Inkrement I10a); einen
+- `MSSQL.Port` aus der Vorlage wird vom Code ignoriert (Inkrement I10d); einen
   abweichenden Port im Feld `MSSQL.Server` angeben (`host,port`).
 - `config.json` und `config.json.*.bak` sind per `.gitignore` ausgeschlossen –
   niemals committen.

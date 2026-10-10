@@ -24,16 +24,16 @@ Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
 ## Mittlere Priorität
 
-### I10a: Konfig- und Modul-Hygiene
+### I10a: Rollout-Check-Erweiterung und Backup-Hygiene
 
-Neu zugeschnitten (KICKOFF 2a): Code-Teil der bisherigen Konsolidierung, gebündelt mit dem Klartext-Passwort-Risiko (`STATE.md`) und dem Backlog-Punkt „`.bak`-Bereinigung".
+Neu zugeschnitten (KICKOFF 2a, Roadmap nach I10b): Prüf- und Backup-Teil der bisherigen I10a, gebündelt mit der
+Erkennungshälfte von K6 (Schema-Drift) — die fehlende Zeitstempelspalte ist ein Sonderfall davon. Modul-Aufräumen
+(`MSSQL.Port`, `Protect-SqlString`) → I10d.
 
-- [ ] `MSSQL.Port` (K9): im Connection-String verwenden oder aus Sample/Schema entfernen
-- [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer); über `Write-SyncStatus`/`Close-DatabaseConnection` (von keinem Skript genutzt) entscheiden
-- [ ] `Test-SQLSyncConnections.ps1 -PreDeploy`: WARNUNG bei Klartext-Passwort in einer Konfig und bei vorhandenen `config*.bak`; WARNUNG für Zieltabellen, denen die Zeitstempelspalte der Quelle fehlt (enden seit v2.18 mit Exit 10 statt stillem Vollabzug; gebündelt in der Reflexion nach I8 — dieselbe Datei)
-- [ ] `Manage_Config_Tables.ps1`: Backups rotieren statt unbegrenzt anzulegen
-- **DoD:** Unit-Tests mit behavioralem Rot für Port und Klartext-Erkennung; CI grün; gemeinsame DoD erfüllt
-
+- [ ] `-PreDeploy`: Schema-Drift je konfigurierter Tabelle — Quellspalten, die in der vorhandenen Zieltabelle fehlen; fehlt die Zeitstempelspalte einer Incremental-Tabelle → `FEHLER` (Tabelle endet sonst mit Exit 10), andere fehlende Spalten → `WARNUNG` (K6); rein lesend, keine DDL
+- [ ] `-PreDeploy`: `WARNUNG` bei Klartext-Passwort in einer Konfig (`Firebird.Password`/`MSSQL.Password` gesetzt) und bei vorhandenen `config*.bak`
+- [ ] `Manage_Config_Tables.ps1`: Backups rotieren (nur die letzten N behalten) statt unbegrenzt anzulegen
+- **DoD:** Unit-Tests mit behavioralem Rot für Drift- und Klartext-Erkennung und Rotation; Integrationslauf `-PreDeploy` gegen die Testumgebung mit künstlich entfernter Zielspalte (nur Test-Datenbank); CI grün; gemeinsame DoD erfüllt
 ---
 
 ## Niedrige Priorität
@@ -50,6 +50,17 @@ Doku-Teil der bisherigen I10a; Umfang ergänzt um die Befundliste der Reflexion 
 
 ---
 
+### I10d: Modul-Aufräumen
+
+Code-Teil der bisherigen I10a; nach I10c, damit die Doku-Änderungen auf konsolidierte Stellen treffen.
+Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
+
+- [ ] `MSSQL.Port` (K9): in `New-MSSQLConnectionString` verwenden (`Server,Port`) oder aus Sample/Schema entfernen
+- [ ] Ungenutztes `Protect-SqlString` entfernen (seit I4 ohne Aufrufer); über `Write-SyncStatus`/`Close-DatabaseConnection` (von keinem Skript genutzt) entscheiden
+- [ ] Warnungen an `New-FirebirdConnectionString`/`New-MSSQLConnectionString` abbauen oder begründet unterdrücken (`PSAvoidUsingPlainTextForPassword`, `PSUseShouldProcessForStateChangingFunctions`)
+- **DoD:** Unit-Test mit behavioralem Rot für den Port; exportierte Funktionsnamen unverändert (außer entfernte); CI grün; gemeinsame DoD erfüllt
+
+---
 ## Abgeschlossen
 
 - I10b CI auf GitHub: `.github/workflows/ci.yml` (windows-latest; Push auf `main`, PRs, manuell) mit `tests/scriptanalyzer.ps1` (PSScriptAnalyzer 1.25.0, nur Severity `Error` blockiert) und `tests/pester.config.ps1`; Action per SHA gepinnt, `contents: read` — [ABGESCHLOSSEN 2026-10-09] (Commit f7423b3)
