@@ -3,19 +3,19 @@
 Zuletzt aktualisiert: 2026-10-10
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
-**Nächster Schritt:** Reflexion (fällig nach I10c, inkl. freigegebener Template-Backports), danach I10d – Modul-Aufräumen
-**Nächste Reflexion:** jetzt fällig (I10b, I10a, I10c abgeschlossen), vor I10d (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I10d – Modul-Aufräumen, danach I12 – Stille Erfolgsmeldungen
+**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I10d, I12, …; zuletzt 2026-10-10 nach I10c) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**Reflexion (fällig).** Nach `REFLECTION.md`; Template-Backports sind seit 2026-10-10 freigegeben (alle
-Vorschläge aus „Reflexion nach I8" plus L10) — einspielen, Tag nur nach bestandenem Pre-Tag-Gate. Danach
-**I10d – Modul-Aufräumen** (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder).
-Exit-Codes stehen seit I10c nur noch in `architecture/ERROR_HANDLING.md` (plus Nutzer-Tabellen der READMEs).
-Template-Backport-Vorschläge: siehe `CHANGELOG.md` „Reflexion nach I8" (freigegeben 2026-10-10).
+**I10d – Modul-Aufräumen.** `MSSQL.Port` (K9) im Connection-String verwenden oder entfernen, `Protect-SqlString`
+entfernen, Analyzer-Warnungen an `New-*ConnectionString` abbauen. Danach **I12** (K10/K5: Fehler, die als
+„Erfolg" enden). Kandidat danach: Umstieg auf `Microsoft.Data.SqlClient` — Entscheidung nach dem
+Security-Sweep am 2026-10-22.
+Template-Backports eingespielt (docs_template, v26 unreleased, Commit 19ba253; kein Tag, Eval-Gate S1–S3 ausstehend, nicht gepusht).
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
@@ -55,6 +55,7 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 | # | Beschreibung | Priorität |
 |---|-------------|-----------|
 | I10d | Modul-Aufräumen (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder) | Niedrig |
+| I12 | Stille Erfolgsmeldungen im Merge (K10) und Orphan-Cleanup (K5) beseitigen | Mittel |
 
 ---
 

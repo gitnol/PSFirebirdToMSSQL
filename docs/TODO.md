@@ -35,6 +35,17 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 - **DoD:** Unit-Test mit behavioralem Rot für den Port; exportierte Funktionsnamen unverändert (außer entfernte); CI grün; gemeinsame DoD erfüllt
 
 ---
+### I12: Stille Erfolgsmeldungen im Merge und Orphan-Cleanup beseitigen
+
+Gebündelt (Reflexion nach I10c, KICKOFF 2a/REFLECTION 2b): K10 und K5 haben dieselbe Ursache — ein Fehler endet
+mit Status „Erfolg". Erster Schnitt am Orphan-Cleanup analog I8 (Logik als Modulfunktion, dadurch testbar).
+
+- [ ] K10: `sp_Merge_Generic` wirft bei fehlender ID-Spalte (`THROW`) statt `PRINT` + `RETURN`; Pre-Flight rollt die Prozedur aus (Parameterprüfung/`RecreateStoredProcedure` beachten)
+- [ ] K5: Orphan-Cleanup legt die ID-Spalte der Temp-Tabelle mit dem Typ der Zielspalte an statt fest `BIGINT`; ein Cleanup-Fehler erscheint im Status/Sanity statt nur in `Info`
+- [ ] Orphan-Cleanup-Ablauf (Temp-Tabelle, Batch-Transfer, `DELETE`) als Modulfunktion aus dem Hauptskript ziehen
+- **DoD:** Unit-Tests mit behavioralem Rot (Typableitung, Fehlerstatus); Integration in der Test-Datenbank: Tabelle mit nicht-numerischer ID und `CleanupOrphans: true`, Zieltabelle ohne ID-Spalte → Status `Fehler`; CI grün; gemeinsame DoD erfüllt
+
+---
 ## Abgeschlossen
 
 - I10c Doku-Konsolidierung: Exit-Codes nur noch in `architecture/ERROR_HANDLING.md` (plus Nutzer-Tabellen der READMEs), S-IDs durch K-IDs/Bedrohungsnummern ersetzt (historische Zuordnung in `THREAT_MODEL.md`), `.github/copilot-instructions.md` an Code und `docs/` angeglichen, `README_alternativ.md` entfernt — [ABGESCHLOSSEN 2026-10-10] (Commit 6d93b9b)
