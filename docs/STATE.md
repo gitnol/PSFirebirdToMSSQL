@@ -3,18 +3,18 @@
 Zuletzt aktualisiert: 2026-10-10
 **Initialisiert mit:** docs_template v26
 **Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
-**Nächster Schritt:** I10d – Modul-Aufräumen, danach I12 – Stille Erfolgsmeldungen
-**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I10d, I12, …; zuletzt 2026-10-10 nach I10c) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
+**Nächster Schritt:** I12 – Stille Erfolgsmeldungen im Merge und Orphan-Cleanup, danach I10d – Modul-Aufräumen
+**Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I12, I10d, …; zuletzt 2026-10-10 nach I10c) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
 **Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
 ## Nächster Schritt
 
-**I10d – Modul-Aufräumen.** `MSSQL.Port` (K9) im Connection-String verwenden oder entfernen, `Protect-SqlString`
-entfernen, Analyzer-Warnungen an `New-*ConnectionString` abbauen. Danach **I12** (K10/K5: Fehler, die als
-„Erfolg" enden). Kandidat danach: Umstieg auf `Microsoft.Data.SqlClient` — Entscheidung nach dem
-Security-Sweep am 2026-10-22.
+**I12 – Stille Erfolgsmeldungen beseitigen (Mittel).** K10: `sp_Merge_Generic` wirft bei fehlender ID-Spalte;
+K5: Orphan-Cleanup mit Zieltyp statt `BIGINT`, Fehler im Status statt nur in `Info`; Orphan-Cleanup als
+Modulfunktion. Danach **I10d** (Niedrig: `MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen). Kandidat
+danach: `Microsoft.Data.SqlClient` — Entscheidung nach dem Security-Sweep am 2026-10-22.
 Template-Backports eingespielt (docs_template, v26 unreleased, Commit 19ba253; kein Tag, Eval-Gate S1–S3 ausstehend, nicht gepusht).
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /

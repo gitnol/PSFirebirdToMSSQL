@@ -35,7 +35,7 @@ Abschnitt „Changelog" von `README.md`.
   `smoke_stacks.sh` Exit 0; Eval S1–S3 (base/-Änderung) ausstehend → **kein Tag**, nicht gepusht.
 - Projekt-Kopien `principles/FAIL_FAST.md` und `principles/EXTERNAL_SOURCE_ADOPTION.md` angeglichen
 - Roadmap (2b): neues **I12** bündelt K10 und K5 (beide melden „Erfolg" trotz Fehler) mit dem Herauslösen des
-  Orphan-Cleanups als Modulfunktion; Reihenfolge I10d → I12; `Microsoft.Data.SqlClient` erst nach dem
+  Orphan-Cleanups als Modulfunktion; Reihenfolge I12 (Mittel, Datenintegrität) → I10d (Niedrig); `Microsoft.Data.SqlClient` erst nach dem
   Security-Sweep 2026-10-22 entscheiden; Reflexions-Marker → nach drei weiteren Inkrementen
 
 ### Lessons Learned
