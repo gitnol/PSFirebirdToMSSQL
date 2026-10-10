@@ -49,7 +49,7 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 ---
 ## Abgeschlossen
 
-- I10a Rollout-Check-Erweiterung und Backup-Hygiene: `-PreDeploy` erkennt Schema-Drift Quelle → Ziel/Staging (ID-/Zeitstempelspalte und Staging `FEHLER`, sonst `WARNUNG`; K6-Erkennung), warnt bei Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1 -KeepBackups` rotiert Backups — [ABGESCHLOSSEN 2026-10-10] (Commit siehe `STATE.md`)
+- I10a Rollout-Check-Erweiterung und Backup-Hygiene: `-PreDeploy` erkennt Schema-Drift Quelle → Ziel/Staging (ID-/Zeitstempelspalte und Staging `FEHLER`, sonst `WARNUNG`; K6-Erkennung), warnt bei Klartext-Passwort und `config*.bak`; `Manage_Config_Tables.ps1 -KeepBackups` rotiert Backups — [ABGESCHLOSSEN 2026-10-10] (Commit 1299c5e)
 - I10b CI auf GitHub: `.github/workflows/ci.yml` (windows-latest; Push auf `main`, PRs, manuell) mit `tests/scriptanalyzer.ps1` (PSScriptAnalyzer 1.25.0, nur Severity `Error` blockiert) und `tests/pester.config.ps1`; Action per SHA gepinnt, `contents: read` — [ABGESCHLOSSEN 2026-10-09] (Commit f7423b3)
 - I8 Wasserzeichen mit Überlappungsfenster: `General.IncrementalOverlapMinutes` (Default 10), Extrakt ab `MAX(ts) − Überlappung` inklusive, Wasserzeichen/Untergrenze/Abfrage als Modulfunktionen; kein stiller Vollabzug mehr (fehlende/leere Zieltabelle mit Hinweis, MAX-Fehler → Retry/Fehler) — [ABGESCHLOSSEN 2026-10-09] (Commit ab1de66)
 - I11 Rollout-Check: `Test-SQLSyncConnections.ps1 -PreDeploy` (rein lesend) prüft Konfigs gegen Schema/Namensregeln, Treiber-Hash, Firebird-Version gegen CVEs, SYSDBA-Anmeldung und `decimal`-Altbestand; Exit 6 bei FEHLER — [ABGESCHLOSSEN 2026-10-09] (Commit 89e4565)
