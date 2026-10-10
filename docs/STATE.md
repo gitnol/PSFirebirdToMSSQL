@@ -46,7 +46,7 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 | I8 | Wasserzeichen mit Überlappungsfenster (`General.IncrementalOverlapMinutes`), Extrakt als Modulfunktionen, kein stiller Vollabzug | 2026-10-09 | ab1de66 |
 | I10b | CI auf GitHub Actions: Pester + PSScriptAnalyzer (nur `Error` blockiert) bei Push auf `main`/PR, Action per SHA gepinnt | 2026-10-09 | f7423b3 |
 | I10a | Rollout-Check-Erweiterung: `-PreDeploy` mit Schema-Drift (K6/K10), Klartext-Passwort- und `.bak`-Warnung; Backup-Rotation in `Manage_Config_Tables.ps1` | 2026-10-10 | 1299c5e |
-| I10c | Doku-Konsolidierung: Exit-Codes mit einziger Quelle, S-IDs aufgelöst, `copilot-instructions.md` angeglichen, `README_alternativ.md` entfernt | 2026-10-10 | wird nachgetragen |
+| I10c | Doku-Konsolidierung: Exit-Codes mit einziger Quelle, S-IDs aufgelöst, `copilot-instructions.md` angeglichen, `README_alternativ.md` entfernt | 2026-10-10 | 6d93b9b |
 
 ---
 
