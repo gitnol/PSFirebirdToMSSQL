@@ -1,0 +1,2 @@
+# Zeilenenden deterministisch auf LF — unabhängig von core.autocrlf und Plattform.
+* text=auto eol=lf
