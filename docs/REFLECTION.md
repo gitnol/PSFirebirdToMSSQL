@@ -22,10 +22,10 @@ zusammenfassen.
 
 ### Selbstkritik — Advocatus Diaboli (läuft zuerst, vor allen strukturellen Checks)
 
-Bevor strukturelle Bereinigung und Backport-Entscheidungen stattfinden, das Inkrement
-aus der Teufelsperspektive begutachten:
+Bevor strukturelle Bereinigung und Backport-Entscheidungen stattfinden, **alle seit der letzten Reflexion
+abgeschlossenen Inkremente** aus der Teufelsperspektive begutachten:
 
-> Analysiere das abgeschlossene Inkrement als Advocatus Diaboli:
+> Analysiere die seit der letzten Reflexion abgeschlossenen Inkremente als Advocatus Diaboli:
 >
 > 1. **Positiv** — was ist solide gelöst, richtig entschieden, erhaltenswert?
 > 2. **Negativ** — was ist über-engineert, zu früh abstrahiert oder weicht vom
@@ -36,6 +36,10 @@ aus der Teufelsperspektive begutachten:
 >
 > Ergebnis: gefilterte Backport-Kandidatenliste — bereinigt um voreilige
 > Verallgemeinerungen und Over-Engineering-Artefakte.
+
+**Belegpflicht** wie im Prinzip `docs/principles/ADVOCATUS_DIABOLI.md`: Jede Aussage zu 1–3 mit Beleg
+(Datei/Zeile, Commit, Befehlsausgabe) — sonst ausdrücklich als Vermutung kennzeichnen. Ein erzählendes
+Urteil ohne Beleg ist eine Meinung, kein Check.
 
 Das Ergebnis fließt direkt in Schritt 3 (Template-Backport) ein: valide Lektionen
 auf die Kandidatenliste, entlarvter Blödsinn fliegt raus.
@@ -57,13 +61,14 @@ das Datum und git/CHANGELOG belegt. Leere Sektionen nach dem Cleanup vollständi
 **Source-of-Truth-Hierarchie (absteigend autoritativ):**
 1. `git log` — maßgeblich für Commit-Hashes, Reihenfolge, tatsächliche Durchführung
 2. `docs/CHANGELOG.md` — narrative Quelle für Umfang und Inhalt jedes Inkrements
-3. `docs/STATE.md` — abgeleitete Sicht: nur Tabelle + Nächster-Schritt; kein
-   Inhalt, der nicht aus git/CHANGELOG ableitbar ist
+3. `docs/STATE.md` — für den Inkrement-Stand abgeleitete Sicht (Tabelle + Nächster Schritt); kein
+   Inkrement-Inhalt, der nicht aus git/CHANGELOG ableitbar ist. Daneben führt STATE.md eigenständig
+   die Kopf-Marker, „Risiken & Blocker" und ggf. „Kennzahlen (gemessen)" (Trigger-Matrix KICKOFF 3a)
 4. `docs/TODO.md` — abgeleitete Sicht: offene Aufgaben und DoD; „Abgeschlossen"
    ist eine Klartext-Kurzliste, kein Duplikat des CHANGELOG
 
 > **Ein-Befehl-Variante:** Falls die Template-Skripte vorliegen, führt
-> `scripts/validate_project_docs.sh docs/` die vier Struktur-Checks (Verletzung 1–4)
+> `<Template-Root>/scripts/validate_project_docs.sh docs/` die vier Struktur-Checks (Verletzung 1–4)
 > plus den Health-Check (Schritt 1) gebündelt aus — statt vier einzelner Greps.
 > Die expliziten Befehle unten bleiben die verbindliche Spezifikation/Fallback.
 
@@ -105,7 +110,8 @@ awk '
 ```
 Treffer auf Verletzung 1/3: Strikethrough um Inkrement-ID entfernen.
 Treffer auf Verletzung 2: Die ID gehört in **genau eine** Sektion. Ist das
-Inkrement abgeschlossen → Zeile aus „Offene Punkte" entfernen; ist es noch
+Inkrement abgeschlossen → Zeile aus „Offene Punkte" entfernen und einen dort genannten offenen Rest nach
+KICKOFF.md Phase 3b Punkt 2 übernehmen (neue ID oder BACKLOG-Eintrag, nicht streichen); ist es noch
 offen → Zeile aus „Abgeschlossene Inkremente" entfernen.
 Treffer auf Verletzung 4: Den betreffenden Abschnitt (`### I#:`) aus der offenen Sektion entfernen und als Klartext-Kurzzeile in „Abgeschlossen" verschieben (drei Schritte laut KICKOFF.md Phase 3b).
 
@@ -115,7 +121,7 @@ Hash = der Haupt-`feat(I#)`-Commit des Inkrements (git ist Source of Truth).
 
 **ZUSÄTZLICH – semantischer Konsistenz-Check (Stichprobe):** Dokumentierte
 Enum-Werte (Status-Codes, Outcome-Typen, Fehler-Taxonomien) mit den echten
-`StrEnum`-Definitionen im Code abgleichen (`grep -rn "class.*StrEnum" src/`).
+Enum-Definitionen im Code abgleichen (z. B. Python `grep -rn "class.*StrEnum" src/`, C#/PowerShell `enum`).
 Abweichung → Docs korrigieren (Code ist Source of Truth).
 
 ### 1. `docs/`-Health-Check
@@ -124,11 +130,14 @@ Suche nach abgeschlossenen Inkrement-IDs, die in anderen Docs noch als offen
 formuliert sind:
 
 ```
-grep -rnE "siehe I[0-9]+|geplant: I[0-9]+|wird in I[0-9]+ behoben|\(Hoch, I[0-9]+\)" docs/
+grep -rnE "siehe I[0-9]+|[Gg]eplant(:| in) I[0-9]+|wird in I[0-9]+ behoben|\(Hoch, I[0-9]+\)|TBD in I[0-9]+|\bab I[0-9]+|\bbis I[0-9]+|in I[0-9]+ (festlegen|festgelegt|befüllen|finalisieren|klären)" docs/
 ```
 
-Treffer auf „mitigiert in I#" / „abgeschlossen in I#" umstellen oder ganz entfernen,
-wenn der Eintrag durch das Inkrement obsolet wurde (z.B. Backlog-Punkte).
+Relevant sind nur Treffer auf **bereits abgeschlossene** IDs (Verweise auf künftige Inkremente sind legitim);
+`validate_project_docs.sh` filtert das automatisch. Treffer auf „mitigiert in I#" / „abgeschlossen in I#"
+umstellen oder ganz entfernen, wenn der Eintrag durch das Inkrement obsolet wurde (z.B. Backlog-Punkte).
+Formulierungen, deren Korrektur Wissen über den Code verlangt („TBD in I2" → was gilt jetzt?), gehören nach
+Schritt 4 auf die Liste für den Prompter.
 
 **Interna-Scan (öffentliches Repo, `CONVENTIONS.md` 6.2):** alle versionierten Dateien gegen die
 lokale Denylist prüfen — Treffer nach `docs/local/` verschieben bzw. durch Rollenbezeichnungen ersetzen:
@@ -155,13 +164,13 @@ Ergebnis: priorisierte Liste der nächsten drei Inkremente mit Begründung je B�
 
 **Queue-Abbau:** Alle Einträge in `docs/LESSONS_LEARNED.md` mit
 `Scope: generisch-*` und `Status: offen` abarbeiten — Backport ins
-`Backport-Ziel` einspielen (Mechanik unten), dann `Status: backported vN` setzen.
+`Backport-Ziel` einspielen (Mechanik unten), dann `Status: backported vN@<commit>` setzen.
 
 **Freigabe-Disziplin:** Ein Backport ist eine ausdrückliche Entscheidung des Prompters.
 Ohne Freigabe — insbesondere in **autonomen Läufen** — generische Lessons
 (`Scope: generisch-*`, `Status: offen`) **nur als Backport-Vorschlag melden, nie selbst
 ins Template committen oder taggen**. `Status: offen` bleibt unverändert, bis die Freigabe
-vorliegt; erst dann Backport einspielen und `Status: backported vN` setzen.
+vorliegt; erst dann Backport einspielen und `Status: backported vN@<commit>` setzen.
 
 Was wurde in den letzten Inkrementen gelernt, das ein generisches Pattern
 darstellt? Typische Kandidaten:
@@ -199,11 +208,14 @@ Den Vorschlag in Schritt 4 mit auf die priorisierte Liste nehmen (als
 > cd /d/GIT/gitnol/docs_template
 > git status --short          # Überblick, welche Dateien geändert wurden
 > git add stacks/powershell-automation/CONVENTIONS.md base/BOOTSTRAP.md   # nur tatsächlich geänderte Template-Dateien
-> echo "27" > VERSION         # VERSION synchron zur neuen Tag-Nummer hochziehen (vN ↔ VERSION=N)
+> cat VERSION                 # steht schon auf N+1 (unreleased)? Dann nicht erneut erhöhen
+> echo "N" > VERSION          # nur bei der ersten Änderung nach dem letzten Tag hochziehen
 > git add VERSION TEMPLATE_CHANGELOG.md
-> git commit -m "template: backport from PSFirebirdToMSSQL (I3-Reflexion)"
+> git commit -m "feat(template): backport from PSFirebirdToMSSQL (I#-Reflexion)"   # bzw. fix/docs
 > ```
-> `TEMPLATE_CHANGELOG.md` erhält den neuen Versionsblock (neueste Version oben).
+> Versionspraxis: `VERSION` wird mit der **ersten** Änderung nach einem Tag auf die nächste Nummer gesetzt; alle
+> weiteren Änderungen bis zum Tag sammeln sich im Block `[vN] … (unreleased)` von `TEMPLATE_CHANGELOG.md`; der
+> Tag folgt erst nach dem Gate (Schritt 3b). Projekte notieren deshalb Version + Commit (`vN@<commit>`).
 > `git tag` wird erst in Schritt 3b gesetzt — **nicht** hier.
 
 ### 3b. Pre-Tag Gate — BLOCKER (**kein `git tag` ohne diesen PASS**)
@@ -214,8 +226,8 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
 
 1. **Struktur-Validator (immer Pflicht, jede Version):**
    ```bash
-   scripts/validate_template.sh   # statisch: MANIFEST ↔ Disk, Encoding, Oberflächen
-   scripts/smoke_stacks.sh        # dynamisch: init_docs.sh je Stack + Pflichtdatei-Check
+   <Template-Root>/scripts/validate_template.sh   # statisch: MANIFEST ↔ Disk, Encoding, Oberflächen
+   <Template-Root>/scripts/smoke_stacks.sh        # dynamisch: init_docs.sh je Stack + Pflichtdatei-Check
    ```
    Beide Exit 0 erforderlich. Bei Fehler: Befund beheben, Commit ergänzen, erneut prüfen.
    Der Smoke deckt die **Nicht-`python-cli`-Stacks** ab, die S1–S3 nicht berühren —
@@ -232,10 +244,10 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
 
    | Geänderte Pfade (seit letztem Tag) | Eval-Gate |
    |---|---|
-   | `base/**`, `scripts/**`, `evals/**`, `KICKOFF.md`, `REFLECTION.md`, oder die Stack-/Overlay-**Listen** in `MANIFEST.yaml` | **S1–S3 = 3/3 PASS** (Prozess wird wirklich getestet) |
-   | `stacks/python-cli/**` | **S1–S3 = 3/3 PASS** — die Szenarien laden genau diesen Stack |
+   | `base/**`, `scripts/**`, `evals/**`, `repo-root/**`, `SKILL.md`, `NEUES_PROJECT_INITIALISIEREN.md`, `ALTES_PROJECT_AKTUALISIEREN.md`, oder die Stack-/Overlay-**Listen** in `MANIFEST.yaml` | **S1–S3 = 2×3/3 PASS** (Prozess wird wirklich getestet — die Agenten lesen und befolgen diese Dateien; immer der volle Lauf, Teilläufe übersehen Wechselwirkungen) |
+   | `stacks/python-cli/**` | **S1–S3 = 2×3/3 PASS** — die Szenarien laden genau diesen Stack |
    | **nur** `stacks/<x>/**` (x ≠ `python-cli`) und/oder `overlays/<y>/**` | **kein S1–S3** — kein Szenario lädt diesen Stack (null Signal); stattdessen Struktur-Validator (oben, inkl. `smoke_stacks.sh --stack <x>` für den geänderten Stack) + manuelles Inhalts-Review |
-   | nur Doku-Surfaces (`README.md`, `SKILL.md`, `NEUES_PROJECT_INITIALISIEREN.md`, `ALTES_PROJECT_AKTUALISIEREN.md`, `TEMPLATE_CHANGELOG.md`) | **kein S1–S3** — Struktur-Validator (inkl. Check 8) genügt |
+   | nur `README.md` und/oder `TEMPLATE_CHANGELOG.md` | **kein S1–S3** — Struktur-Validator (inkl. Check 8) genügt |
 
    > **Sicherheits-Invariante:** S1–S3 nutzen ausschließlich den `python-cli`-Stack
    > (verifiziert in `evals/scenarios/*/SCENARIO.md` + `EXPECTED.md`). Solange das gilt,
@@ -250,14 +262,15 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
    evals/run_eval.sh S2   # → evals/score_eval.sh S2 <arbeitsdir>
    evals/run_eval.sh S3   # → evals/score_eval.sh S3 <arbeitsdir>
    ```
-   Ablauf in `evals/README.md`. **3/3 PASS erforderlich.**
+   Ablauf in `evals/README.md`; ohne Aufsicht: `evals/run_headless.sh --model <id> --effort <stufe>`.
+   **Zwei Durchgänge mit jeweils 3/3 PASS erforderlich** (Agentenläufe streuen; ein PASS ist eine Stichprobe).
    Bei FAIL: **kein Tag** — Befund als Backlog-/Issue-Eintrag erfassen, Kandidat nachbessern.
    `evals/` lebt nur im Template-Repo — für einen Backport arbeitet man ohnehin dort.
 
 4. **Audit-Eintrag im `TEMPLATE_CHANGELOG.md` (immer, ehrlich):** festhalten, *welches*
    Gate gelaufen ist — damit nachvollziehbar bleibt, was tatsächlich geprüft wurde
    (Lehre aus dem veralteten `csharp-desktop`-„ENTWURF"-Kommentar in `MANIFEST.yaml`).
-   - Voller Lauf: `Eval: 3/3 PASS (S1 …, S2 …, S3 …, <modell>)`
+   - Voller Lauf: `Eval: 2×3/3 PASS (S1 …, S2 …, S3 …, <modell>, Effort <stufe>)`
    - Scoped: z. B. `Gate: validate_template.sh + Inhalts-Review (Stack-only: csharp-desktop), S1–S3 n/a (kein Prozess-/python-cli-Change)`
 
 5. **Tag setzen (NUR nach bestandenem Gate laut 1–3):**
@@ -268,15 +281,29 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
 
 ### 4. Bei Treffern
 
-Dem Prompter eine kurze, priorisierte Liste vorlegen (`sinnvoll/wichtig/dringend`),
-Entscheidung einholen, dann separater Commit `docs: I#-reflection refresh`
-(Projekt-Docs) bzw. `docs(template): backport from I#` (Template-Repo, dann Schritt 3b durchlaufen).
-In autonomen Läufen ohne erreichbaren Prompter: Liste nur **vorschlagen**, keinen
+**Direkt umsetzen** (durch den Reflexions-Auftrag gedeckt, ohne Rückfrage): die mechanischen
+Korrekturen aus Schritt 0–2 — Sektions-Invariante, veraltete Verweise auf abgeschlossene
+Inkremente, Cross-Refs — und danach den Marker aus Schritt 5; offene Entscheidungspunkte halten
+den Marker nicht auf. Separater Commit `docs: I#-reflection refresh` (Projekt-Docs).
+
+**Vorlegen und Entscheidung einholen:** was Code-Wissen, Inhalt oder Roadmap betrifft (z. B.
+widersprüchliche Angaben, die nur der Code klärt) sowie Template-Backports — als kurze,
+priorisierte Liste (`sinnvoll/wichtig/dringend`). Backport nach Freigabe:
+`<feat|fix|docs>(template): backport from <projekt> (I#-Reflexion)` (Template-Repo, dann Schritt 3b durchlaufen).
+In autonomen Läufen ohne erreichbaren Prompter: diese Liste nur **vorschlagen**, keinen
 Template-Commit/Tag setzen (siehe Freigabe-Disziplin in Schritt 3).
 
 ### 5. Nach Abschluss der Reflexion
 
 In `STATE.md` den „Nächste Reflexion bei I#"-Marker um 3 erhöhen (z.B. I6 → I9).
+
+### 5a. Rotation großer Dateien (`docs/principles/CONTEXT_DISCIPLINE.md`, Regel c)
+
+- `CHANGELOG.md` über ~500 Zeilen: ältere Einträge in eine datierte Archivdatei unter `docs/changelog/` verschieben
+  (Name z. B. `ARCHIVE-I01-I20.md`); die aktive Datei behält die letzten Inkremente und einen Verweis aufs Archiv.
+- `LESSONS_LEARNED.md`: nur Einträge mit Endzustand (`backported …`, `verworfen …`, `projekt-intern`) archivieren —
+  Einträge mit `Status: offen` bleiben stehen, bis Schritt 3 sie abgebaut hat.
+- Eigener Commit `docs: rotate changelog/lessons (I#)`; Git und Archiv bleiben die volle Wahrheit.
 
 ---
 
