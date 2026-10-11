@@ -118,7 +118,7 @@ Example_Sync_Start.ps1             → Beispiel für zwei aufeinanderfolgende L�
 
 ---
 
-## Datenmodell (Kern-Entities)
+## Persistenz-Schema (Tabellen)
 
 Das Werkzeug hat kein eigenes fachliches Datenmodell; es verwaltet pro Quelltabelle drei Objekte:
 

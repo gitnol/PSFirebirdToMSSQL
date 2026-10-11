@@ -167,6 +167,10 @@ finally {
   (`DbConnectionStringBuilder` maskiert `; = ' "`), nie per String-Konkatenation.
   *Bestand weicht ab:* der Integrated-Security-Zweig von `New-MSSQLConnectionString` konkateniert noch.
 - `CommandTimeout = GlobalTimeout` an jedem SQL-Server-Command setzen.
+- **SQL Server: `AddWithValue` mit `[DateTime]` ist `datetime`, nicht `datetime2`:** Der Parameter hat dann
+  3,33 ms Auflösung; ein Gleichheitsvergleich gegen eine `datetime2`-Spalte findet den Wert nicht (…39.912
+  wird zu …39.913), Bereichsabfragen verschieben sich. Vergleiche in SQL selbst formulieren (Unterabfrage)
+  oder den Parameter explizit als `[System.Data.SqlDbType]::DateTime2` anlegen (`LESSONS_LEARNED.md` L9).
 
 ### 2.8 JSON
 
@@ -283,13 +287,6 @@ Commit-Messages — ist öffentlich.** Secrets stehen ohnehin nie im Repo (Absch
 
 ---
 
-## 10. REST API Clients / HATEOAS
-
-Trifft nicht zu — das Projekt spricht keine REST-APIs an. Einzige HTTP-Verbindung ist der einmalige NuGet-Download
-des Firebird-Treibers (siehe `docs/architecture/DEPENDENCIES.md`).
-
----
-
 ## 7. Autonomes Arbeiten & Fehlerbehebung
 
 - Bei Fehlern: nicht sofort abbrechen. `$Error[0]`, `$_.Exception.Message` und `$_.ScriptStackTrace` lesen.
@@ -342,3 +339,10 @@ Testumgebung liefert Exit-Code 0 (kein `FEHLER`; rein lesend).
 
 Gate 2 (Formatter) und Gate 3 (statische Typanalyse) haben in PowerShell kein eigenständiges Standard-Werkzeug;
 PSScriptAnalyzer-Regeln decken Stilfragen mit ab.
+
+---
+
+## 10. REST API Clients / HATEOAS
+
+Trifft nicht zu — das Projekt spricht keine REST-APIs an. Einzige HTTP-Verbindung ist der einmalige NuGet-Download
+des Firebird-Treibers (siehe `docs/architecture/DEPENDENCIES.md`).

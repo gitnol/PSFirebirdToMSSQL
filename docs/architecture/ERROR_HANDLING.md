@@ -159,6 +159,42 @@ Inkrement I2 hat nur die Sync-Codes `10`/`11` ergänzt; eine Vereinheitlichung �
 
 ---
 
+## Feindliche Eingaben — kein Absturz an Systemgrenzen
+
+Alles, was von außen kommt, ist feindlich: Dateien und Fremdformate, CLI-Parameter,
+Konfiguration, API- und DB-Antworten, Aufrufe durch Agenten/Tools. Ergebnis ist **immer
+ein behandelbarer Fehler** (projektspezifische Exception → Boundary-Konvertierung), nie
+ein Prozessabsturz, ein hängender Prozess oder verlorene Nutzerdaten.
+
+> Abgrenzung zu [[FAIL_FAST]]: Fail Fast bricht die **Operation** früh und laut ab.
+> Diese Regel sorgt dafür, dass dabei nicht der **Prozess** oder die Arbeit des Nutzers
+> mitgerissen wird. Abgrenzung zu [[UNTRUSTED_DOCUMENT_CONTENT]]: dort geht es um fremden
+> Inhalt im LLM-Prompt (Injection/Fälschung), hier um die Robustheit des Prozesses.
+
+- **Eingabe-abgeleitete Zahlen prüfen:** Indizes und Längen vor dem Zugriff, Größen vor
+  der Allokation begrenzen, Division durch null und NaN/Unendlich abfangen, Überläufe
+  vermeiden.
+- **Rekursion und Schleifen begrenzen** (Tiefenlimit oder Besucht-Menge) — Eingaben
+  können tief verschachtelt oder zyklisch sein.
+- **Schreiben atomar:** in eine Temp-Datei **im selben Verzeichnis** schreiben, dann
+  umbenennen (`os.replace` / `File.Replace` / `Move-Item -Force`). Scheitert der
+  Schreibvorgang, bleibt die Originaldatei unverändert.
+- **Letztes Sicherheitsnetz** an der äußersten Boundary (Befehls-Dispatch, Import/Export):
+  fängt einen entkommenen Fehler, loggt ihn mit Stacktrace, meldet ihn verständlich und
+  erhält den Arbeitsstand. Ein Netz, kein Freibrief für unbehandelte Fehlerpfade.
+- **Jeder Crash-Fix bringt einen kleinen synthetischen Regressionstest mit**, der vor dem
+  Fix nachweislich abgestürzt ist (behaviorales Rot, `KICKOFF.md` Phase 2).
+- **Robustheitstest über alle Einstiegspunkte**, sobald es eine zentrale Eingangsschicht
+  gibt (CLI-Befehle, Endpunkte, exportierte Cmdlets): jeden Einstiegspunkt mit feindlichen
+  Parametern aufrufen (leer, falscher Typ, außerhalb des Bereichs, riesig) und nur einen
+  Fehler — keinen Absturz, keinen Hänger (Timeout) — akzeptieren. Die Liste der
+  Einstiegspunkte wird **automatisch ermittelt** (Registry, Reflection, Modul-Export),
+  damit neue Einstiegspunkte ohne Zutun mitgeprüft werden.
+
+**Stand in diesem Projekt (Template-Update 2026-10-11, nicht neu geprüft):** Konfiguration (Schema + Namens-Whitelist, Exit 2) und Firebird-Metadaten (`Assert-SqlIdentifier`, `]`-Escaping) werden an der Grenze geprüft; ein Tabellenfehler bricht nur die Tabelle ab, nicht den Lauf (Exit 10). Nicht atomar: `Manage_Config_Tables.ps1` schreibt die Konfig per `Set-Content` direkt (vorher Sicherungskopie `*.bak`). Ein Robustheitstest über alle exportierten Modulfunktionen existiert nicht.
+
+---
+
 ## Bekannte Schwächen (verschluckte oder abgeschwächte Fehler)
 
 | Stelle | Verhalten | Folge | Inkrement |

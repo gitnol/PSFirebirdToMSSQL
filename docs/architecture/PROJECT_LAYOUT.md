@@ -108,6 +108,30 @@ Nicht vorhanden: `src/`, Build-Output, Modul-Manifest.
 
 ---
 
+## Schichtregel als ausführbarer Check
+
+Ein Schichten-Diagramm, das niemand prüft, driftet — besonders, wenn Agenten Code
+schreiben. Sobald das Projekt mehr als eine Schicht oder mehrere Pakete/Module hat, wird
+die Abhängigkeitsregel als **Test bzw. Gate** formuliert:
+
+- **Werkzeug je Stack** (Beispiele): Python `import-linter` (Contracts in
+  `pyproject.toml`), .NET `NetArchTest`/`ArchUnitNET` als Unit-Test, PowerShell ein
+  Pester-Test über den AST (`Import-Module`/Dot-Sourcing nur nach unten), Rust ein
+  Check über `cargo metadata`. Eine konkrete Umsetzung liefert bisher nur rust-cli
+  (`architecture/RUST_PROJECT.md`); sonst wählt das Projekt das Werkzeug und trägt es hier ein.
+- **Registrierungspflicht:** Jedes Modul/Paket ist einer Schicht zugeordnet; ein
+  unbekanntes Modul lässt den Check scheitern, statt durchzurutschen.
+- **Der Check hat eigene Tests** (eine erlaubte und eine verbotene Beispielkante), sonst
+  prüft er womöglich nichts.
+- **Teil der Quality Gates** (`CONVENTIONS_COMMON.md` Abschnitt 5: läuft im selben Gate-Lauf mit, als Test in Gate 4
+  oder eigener Befehl) — lokal und, falls vorhanden, in CI.
+
+**Stand in diesem Projekt:** kein Check eingerichtet. Die Regel „Skripte importieren `SQLSyncCommon.psm1`, das
+Modul importiert nichts aus den Skripten" (oben) ist bisher nur per Review gesichert; ein Pester-Test über den AST
+wäre der passende Check (offener Punkt aus dem Template-Update 2026-10-11).
+
+---
+
 ## Anti-Pattern
 
 - **Fachlogik doppelt pflegen:** Logik, die im Modul existiert, nicht im Skript nachbauen — auch nicht im

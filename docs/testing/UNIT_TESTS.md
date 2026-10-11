@@ -456,6 +456,9 @@ In **Module-Source** (`Public/*.ps1`, `Private/*.ps1`) ist die *bessere* Lösung
 **bei ASCII bleiben** (em-dash → `--`, Umlaute vermeiden). BOM-Pflicht verkompliziert
 Tools/Heredocs/Datei-Vergleiche und sollte sich auf Test-Files mit echten
 Lokalisierungs-Strings beschränken.
+Dieses Projekt nutzt die Ausnahme von `CONVENTIONS_COMMON.md` §2 nicht: Skripte, Modul und Testdateien sind
+UTF-8 ohne BOM (die Testdateien mit deutschen `It`-Texten), Laufzeit ist nur PowerShell 7, und
+`tests/scriptanalyzer.ps1` blockiert nur Severity `Error` (Stand 2026-10-11).
 
 ### 7.7 PSGallery braucht TLS 1.2 — Windows PowerShell 5.1 startet mit TLS 1.0
 Vor jedem `Install-Module` / `Find-Module` auf Desktop in CI-Schritten:
@@ -528,9 +531,10 @@ auftaucht, wird daraus eine Interpolation und das Attribut wird invalid.
 
 ## 8. TDD-Disziplin (Iterations-Log + Gate-Reihenfolge)
 
-Konkretisierung der TDD-Startregel aus `KICKOFF.md` Phase 2 für diesen Stack
-(PowerShell-Modul/-Script + Pester 5). Verwandte Prinzipien: `principles/ADVOCATUS_DIABOLI.md`,
-`principles/CETERIS_PARIBUS.md`, `principles/VERIFY_BEFORE_CITE.md`, `principles/YAGNI.md`.
+Pester-Idiome zur TDD-Disziplin aus `KICKOFF.md` Phase 2 #2 (Rot/Grün, Iterations-Log, Einsatzgrenze) und zur
+Gate-Reihenfolge aus `CONVENTIONS_COMMON.md` §5 (PowerShell-Modul/-Script + Pester 5). Verwandte Prinzipien:
+`principles/ADVOCATUS_DIABOLI.md`, `principles/CETERIS_PARIBUS.md`, `principles/VERIFY_BEFORE_CITE.md`,
+`principles/YAGNI.md`.
 
 ### 8.1 Behaviorales Rot ist Pflicht (realen Pester-Output einfangen)
 
@@ -551,7 +555,8 @@ Exakt prüfen (`Count -eq 1`, erwarteter Typ/Wert), nicht „irgendetwas kam zur
 
 ### 8.3 Gate-Reihenfolge pro Code-Inkrement (Definition of Done)
 
-In dieser Reihenfolge, jede Stufe grün, bevor committet wird:
+Reihenfolge nach `CONVENTIONS_COMMON.md` §5 (Gate 2 und 3 entfallen in diesem Stack), jede Stufe grün, bevor
+committet wird:
 
 1. **Gate 1 — Linter:** `Invoke-ScriptAnalyzer -Path <geänderte Dateien> -Severity Warning`.
    Projektweit bewusst akzeptierte Findings (dokumentieren, z.B. Ressourcen-Plurale bei
@@ -560,9 +565,14 @@ In dieser Reihenfolge, jede Stufe grün, bevor committet wird:
 3. **Integrationstests (nicht-destruktiv):** falls vorhanden, gegen echte Instanz → Exit 0;
    **kein `-EnableWriteTests`** ohne ausdrückliche Freigabe (siehe `INTEGRATION_TESTS.md`).
 
+Zuordnung zur Marker-Kernmenge (`principles/VERTICAL_SLICE_FIRST.md`): Das Pester-Tag `Integration` steht in diesem
+Stack für alles, was eine echte Instanz braucht — Kernmarker `integration` und `live` zusammen. Gate 4 schließt es aus;
+ein eigenes Tag `Live` ist nicht nötig.
+
 ### 8.4 Iterations-Log
 
-Pro TDD-Zyklus im `CHANGELOG.md`-Eintrag kurz festhalten: **Rot** (welche Assertion, realer
+Format: `KICKOFF.md` Phase 2 #2; Gate-Zeile z. B. `Gate: PSScriptAnalyzer ✓  Pester 42 passed ✓`. In diesem
+Stack steht pro TDD-Zyklus zusätzlich eine Kurzform im `CHANGELOG.md`-Eintrag: **Rot** (welche Assertion, realer
 Output) → **Grün** (minimale Implementierung) → **Refactor**. Kausale Aussagen
 („Fix X behebt Fehler Y") nur unter **Ceteris Paribus** (eine Variable pro Lauf), sonst trägt
 das Ergebnis keine Einzelursachen-Aussage.
@@ -607,3 +617,19 @@ Testlücke, kein zusätzlicher Test.
 
 Angewendet in I9 auf `Setup-ScheduledTasks.ps1` mit 8 Mutationen (in einer Kopie, nie im
 Arbeitsstand), alle erkannt. Ein echter Registrierungslauf mit Adminrechten ersetzt das nicht.
+
+### 8.7 Mutationsprüfung in PowerShell sicher ausführen
+
+Für Charakterisierungs- und Negativtests (sofort grün) ist die Mutationsprüfung der Diskriminierungsnachweis
+(`KICKOFF.md` TDD-Startregel). PowerShell-spezifische Fallen:
+
+- **`Invoke-Pester` nie im Prozess des Mutationsskripts:** Ein Skript hielt das Original in `$orig`, schrieb
+  Mutanten nach `$p` und stellte im `finally` mit `WriteAllText($p, $orig)` wieder her — nach dem
+  In-Prozess-Lauf zeigte `$p` auf die `Pester.ps1` der installierten Pester-Version, die damit überschrieben
+  wurde (Pester für alle Projekte kaputt), und Mutanten blieben im Modul stehen. Pro Mutant
+  `pwsh -NoProfile -File <runner.ps1>` starten; das Original mit `Copy-Item`/`cp` sichern und nach jedem
+  Mutanten per `cmp`/Hash gegen die Kopie zurückprüfen.
+- **`-WhatIf`-Mutanten sind oft äquivalent:** Ersetzt man `if ($PSCmdlet.ShouldProcess(...))` durch
+  `if ($true)`, löscht `Remove-Item` trotzdem nichts, weil es `-WhatIf` über `$WhatIfPreference` erbt. Den
+  Mutanten als äquivalent ausweisen; nur wo .NET-Methoden statt Cmdlets schreiben, ist die eigene Abfrage
+  per Test absicherbar.
