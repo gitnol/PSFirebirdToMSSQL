@@ -163,14 +163,15 @@ Wenn diese Checks erst nach Wochen zufällig auffallen, sind die jeweils
 zugehörigen lokalen Patches schwer rückverfolgbar. **Sofort nach jedem
 Spec-Edit ausführen.**
 
-## Verweise
+## Verwandt
 
-- Beispiel-Anwendung (REST-API-Client-Projekt, nicht dieses Repo): `docs/architecture/openapi.yaml`,
-  `docs/architecture/REST_API_SCHEMA.md`, `Tools/Validate-Fixture.py`,
+- Beispiel-Anwendung (REST-API-Client-Projekt, Pfade im eigenen Projekt entsprechend ersetzen): unter
+  `docs/architecture/` die Dateien `openapi.yaml` und `REST_API_SCHEMA.md`, dazu `Tools/Validate-Fixture.py` und
   `Tests/unit/FixturesAgainstSchema.Tests.ps1`.
 - Verbindet sich mit [[VERIFY_BEFORE_CITE]] (jede Behauptung in der externen
   Quelle wird gegen Realität geprüft) und [[FAIL_FAST]] (Drift bricht den
   CI-Lauf sofort).
+- [[ORACLE_AND_RATCHET]], [[SECURITY_CURRENCY]], [[UNTRUSTED_DOCUMENT_CONTENT]] (verweisen hierher)
 
 ## Projektspezifisch
 

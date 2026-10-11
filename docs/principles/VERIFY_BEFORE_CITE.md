@@ -6,17 +6,17 @@ Bevor ein Dateipfad, eine Funktion, eine Zeilennummer, ein Symbol oder eine
 Konfigurations-Option im Chat, Commit-Text oder Doku-Eintrag zitiert wird,
 muss sie in einer **aktuellen** Lese- oder Such-Operation nachweisbar sein.
 
-Halluzination ist der haeufigste LLM-Projektfehler. Diese Regel ist die
-strukturelle Gegenmassnahme.
+Halluzination ist der häufigste LLM-Projektfehler. Diese Regel ist die
+strukturelle Gegenmaßnahme.
 
 ## Konkrete Vorgaben
 
-- Dateipfad zitieren → vorher Read/Glob bestaetigen, dass die Datei existiert.
-- Funktion / Methode / Klasse zitieren → vorher Grep bestaetigen, dass der
+- Dateipfad zitieren → vorher Read/Glob bestätigen, dass die Datei existiert.
+- Funktion / Methode / Klasse zitieren → vorher Grep bestätigen, dass der
   Name genau so vorkommt.
-- Zeilennummer zitieren → aus aktuell gelesener Datei mit Zeilen-Praefix,
-  nicht aus dem Gedaechtnis.
-- Konfig-Schluessel oder Env-Variable zitieren → aus aktueller Konfig- oder
+- Zeilennummer zitieren → aus aktuell gelesener Datei mit Zeilen-Präfix,
+  nicht aus dem Gedächtnis.
+- Konfig-Schlüssel oder Env-Variable zitieren → aus aktueller Konfig- oder
   Code-Lese-Operation.
 - Externe API-Endpunkte zitieren → aus aktueller Doku-/Code-Lese-Operation,
   nicht aus Vortrainings-Wissen.
@@ -24,23 +24,23 @@ strukturelle Gegenmassnahme.
 ## Anti-Pattern
 
 - "Wahrscheinlich existiert die Funktion `do_x()` in `module_y.py`" — verboten
-  ohne vorherige Pruefung.
-- "Wie ueblich liegt die Konfig in `config.yaml`" — verboten ohne Glob.
-- Pfade aus dem Gedaechtnis aus frueheren Sessions wiederverwenden — verboten;
+  ohne vorherige Prüfung.
+- "Wie üblich liegt die Konfig in `config.yaml`" — verboten ohne Glob.
+- Pfade aus dem Gedächtnis aus früheren Sessions wiederverwenden — verboten;
   der Status kann veraltet sein.
-- Aus Code-Patterns auf Funktionsnamen schliessen ("muesste hier `validate_input`
+- Aus Code-Patterns auf Funktionsnamen schliessen ("müsste hier `validate_input`
   geben") — Vermutung, nicht Beleg.
 
-## Prueffrage
+## Prüffrage
 
-"Wenn der Nutzer diesen Pfad / diese Funktion / diese Zeile JETZT pruefen
-wuerde — finde ich die Beweisspur in meinem Tool-Verlauf der letzten paar
+"Wenn der Nutzer diesen Pfad / diese Funktion / diese Zeile JETZT prüfen
+würde — finde ich die Beweisspur in meinem Tool-Verlauf der letzten paar
 Schritte?"
-→ Wenn NEIN: nicht zitieren. Erst pruefen.
+→ Wenn NEIN: nicht zitieren. Erst prüfen.
 
 ## Eskalation bei Unsicherheit
 
-Wenn die Pruefung nicht moeglich ist (Datei nicht zugreifbar, externe Quelle
+Wenn die Prüfung nicht möglich ist (Datei nicht zugreifbar, externe Quelle
 nicht abrufbar): den Zweifel explizit benennen ("ich vermute, habe aber nicht
 verifiziert") statt eine sichere Aussage zu formulieren.
 
@@ -48,7 +48,7 @@ verifiziert") statt eine sichere Aussage zu formulieren.
 
 - [[CONTEXT_DISCIPLINE]] — gezieltes Laden statt blindes Vermuten
 - [[EXPLICIT_OVER_IMPLICIT]] — explizite Belege statt implizites Wissen
-- [[FAIL_FAST]] — lieber fruehzeitig anhalten und nachpruefen, als spaeter falsch sein
+- [[FAIL_FAST]] — lieber frühzeitig anhalten und nachprüfen, als später falsch sein
 
 ## Projektspezifisch
 

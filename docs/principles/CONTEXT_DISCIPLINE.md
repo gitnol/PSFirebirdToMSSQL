@@ -2,15 +2,15 @@
 
 ## Regel
 
-Lade nur die Dateien, die du fuer die aktuelle Aufgabe nachweislich brauchst.
+Lade nur die Dateien, die du für die aktuelle Aufgabe nachweislich brauchst.
 Mehr Kontext bedeutet mehr Halluzinationsrisiko, langsamere Iterationen und
-hoeheren Token-Verbrauch.
+höheren Token-Verbrauch.
 
 ## Konkrete Vorgaben
 
 - Vor dem Laden einer Datei: nenne den konkreten Grund ("brauche ich, weil...").
 - Lade nicht "auf Verdacht" — wenn unklar ist, ob eine Datei relevant ist,
-  erst per Grep/Glob zielgerichtet pruefen.
+  erst per Grep/Glob zielgerichtet prüfen.
 - Wenn eine Datei sehr gross ist (Richtwert > 500 Zeilen): nur den relevanten
   Bereich lesen (`offset` + `limit`), nicht die ganze Datei.
 - Verweise auf Dateien in Doku oder Antworten NIEMALS aus Erinnerung, sondern
@@ -18,16 +18,16 @@ hoeheren Token-Verbrauch.
 - Wenn der Inkrement-Scope klein ist: max. 3–5 Dateien aktiv im Kontext halten.
 - `principles/INDEX.md` zeigt, welche Prinzipien zu laden sind — nicht alle.
 
-## Prueffragen
+## Prüffragen
 
 - "Wenn ich diese Datei nicht lade — fehlt mir Information, die ich aus
   `STATE.md`, `architecture/OVERVIEW.md` oder dem Inkrement-Beschrieb nicht
   ableiten kann?"
   → Wenn NEIN: nicht laden.
 
-- "Habe ich diese Datei in der letzten ~5 Schritten tatsaechlich gelesen,
+- "Habe ich diese Datei in der letzten ~5 Schritten tatsächlich gelesen,
   oder erinnere ich mich nur an sie?"
-  → Wenn nur Erinnerung: pruefen, dass sie noch existiert und unveraendert ist.
+  → Wenn nur Erinnerung: prüfen, dass sie noch existiert und unverändert ist.
 
 ## Wachsende Append-Docs
 
@@ -40,20 +40,20 @@ Sie kosten bei Full-Load überproportional Token ohne Nutzen für das laufende I
   dann neuen Eintrag oben voranstellen (prepend) — nie die gesamte Datei laden.
 - **(c) Rotation an Reflexions-Kadenz:** An der 3-Inkremente-Reflexion wächst älterer
   Inhalt in datierte Archivdateien (z. B. `docs/changelog/ARCHIVE-I01-I20.md`).
-  Git + Archiv = volle Wahrheit; aktive Datei bleibt token-gebunden.
+  Git + Archiv = volle Wahrheit; aktive Datei bleibt token-gebunden. Ablauf: `REFLECTION.md` Schritt 5a.
 
 ## Anti-Pattern
 
 - "Sicherheitshalber lade ich noch X.py" — verboten ohne konkreten Grund.
 - "Ich lese die ganze Datei, um den Kontext zu verstehen" bei einer Datei,
   von der nur eine Funktion relevant ist — verboten; gezielt lesen.
-- Mehrere Dateien parallel laden, ohne im Anschluss zu erklaeren, warum jede
-  davon noetig war.
+- Mehrere Dateien parallel laden, ohne im Anschluss zu erklären, warum jede
+  davon nötig war.
 
 ## Verwandt
 
 - [[VERIFY_BEFORE_CITE]] — Disziplin beim Zitieren, nicht nur beim Laden
-- [[YAGNI]] — Vorausschauendes Laden ist YAGNI fuer Kontext
+- [[YAGNI]] — Vorausschauendes Laden ist YAGNI für Kontext
 - [[EXPLICIT_OVER_IMPLICIT]] — expliziter Lade-Grund statt implizites Vermuten
 
 ## Projektspezifisch

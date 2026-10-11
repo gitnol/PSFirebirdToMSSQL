@@ -85,7 +85,7 @@ Befund landet in `security/THREAT_MODEL.md` (neue konkrete Bedrohung) bzw.
 - Abgeleitete Maßnahme oder bewusst dokumentiertes Restrisiko.
 
 Eine offene, nicht abschließend bewertete Fundstelle gehört in den
-**Confidence-Block** des CHANGELOG-Eintrags (KICKOFF Phase 3b.5).
+**Confidence-Block** des CHANGELOG-Eintrags (KICKOFF Phase 3b Punkt 4).
 
 ## Anti-Patterns
 
@@ -94,7 +94,7 @@ Eine offene, nicht abschließend bewertete Fundstelle gehört in den
 - **Suche ohne Bestandsaufnahme** — wer nicht weiß, welche Version real verbaut
   ist, recherchiert die falsche oder eine generische Lage.
 - **Generische OWASP-Top-10-Liste ohne Versions-/Code-Bezug** — keine Recherche,
-  nur Ritual (vgl. THREAT_MODEL-Leitfaden: „keine generischen OWASP-Listings
+  nur Ritual (vgl. `security/THREAT_MODEL_GUIDE.md`: „keine generischen OWASP-Listings
   ohne Projektbezug").
 - **Fundstelle ungeprüft als Maßnahme übernehmen** — verletzt
   `VERIFY_BEFORE_CITE` und `UNTRUSTED_DOCUMENT_CONTENT`.

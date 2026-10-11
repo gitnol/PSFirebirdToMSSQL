@@ -3,19 +3,25 @@
 ## Regel
 
 Logs sind das einzige Fenster in den Systemzustand eines laufenden Prozesses.
-Jeder Log-Eintrag muss ohne Kontextwissen verstaendlich und filterbar sein.
+Jeder Log-Eintrag muss ohne Kontextwissen verständlich und filterbar sein.
 
 ## Konkrete Vorgaben
 
 - **Level DEBUG:** Detaillierter Datenfluss (z.B. "Datei X gelesen, Hash: Y")
 - **Level INFO:** Fachliche Meilensteine (z.B. "Dokument X erfolgreich verarbeitet")
 - **Level WARNING:** Erwartete, aber behandelte Probleme (z.B. "Service Timeout, Versuch 1/3")
-- **Level ERROR:** Unerwartete Fehler – muss zwingend den Stacktrace enthalten (`exc_info=True`)
+- **Level ERROR:** Unerwartete Fehler – muss zwingend den Stacktrace enthalten (z. B. Python `exc_info=True`,
+  .NET `LogError(ex, …)`)
 - **Kontext:** Jeder Eintrag muss IDs, Dateinamen oder Bezeichner enthalten.
   "Verarbeitung fehlgeschlagen" ist verboten.
-  "Verarbeitung fuer Datei 'X.pdf' fehlgeschlagen" ist korrekt.
-- Konsolenausgaben ueber `print()` sind fuer interaktive CLI-Tools akzeptabel.
+  "Verarbeitung für Datei 'X.pdf' fehlgeschlagen" ist korrekt.
+- Konsolenausgaben über `print()` sind für interaktive CLI-Tools akzeptabel.
   Bei automatisiertem Betrieb (Scheduler, Service) muss das Logging-Framework verwendet werden.
+
+## Verwandt
+
+- [[FAIL_FAST]]
+- [[UNTRUSTED_DOCUMENT_CONTENT]]
 
 ## Projektspezifisch
 

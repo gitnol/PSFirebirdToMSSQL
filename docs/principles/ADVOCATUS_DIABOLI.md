@@ -3,13 +3,13 @@
 ## Regel
 
 **Vor jedem Commit** — nicht nur in der Reflexions-Phase — greift der Agent die
-eigene Arbeit **adversarial** an: Welche meiner Aussagen/Annahmen koennten falsch sein?
-**Jede pruefbare Behauptung wird mit einem echten Daten-/Code-Check belegt oder
+eigene Arbeit **adversarial** an: Welche meiner Aussagen/Annahmen könnten falsch sein?
+**Jede prüfbare Behauptung wird mit einem echten Daten-/Code-Check belegt oder
 fallengelassen.** Keine narrativen "Befunde".
 
-Das ist die strukturelle Gegenmassnahme gegen die zwei haeufigsten Agenten-Fehler:
-Hypothesen als Befunde tarnen und ueber den belegten Bedarf hinaus bauen. Sie ergaenzt
-[Verify before Cite](VERIFY_BEFORE_CITE.md) (Zitate) um eine Pflichtpruefung der
+Das ist die strukturelle Gegenmaßnahme gegen die zwei häufigsten Agenten-Fehler:
+Hypothesen als Befunde tarnen und über den belegten Bedarf hinaus bauen. Sie ergänzt
+[Verify before Cite](VERIFY_BEFORE_CITE.md) (Zitate) um eine Pflichtprüfung der
 eigenen *Schlussfolgerungen* und des *Scopes*.
 
 ## Die drei Standardfragen (vor jedem Commit)
@@ -18,65 +18,70 @@ eigenen *Schlussfolgerungen* und des *Scopes*.
   eine plausible Annahme ist? → Mit Lese-/Such-/Lauf-Operation belegen oder als Annahme kennzeichnen.
 - **(b) Feature ohne End-to-End-Konsument gebaut?** Gibt es mindestens einen realen
   Pfad/Lauf, der das Neue benutzt? Wenn nein, ist der Nutzen unbelegt.
-- **(c) Ueber belegten Bedarf hinaus gebaut?** Fundament nur so weit, wie die Daten
-  den Bedarf zeigen (vgl. YAGNI, `YAGNI.md`).
+- **(c) Über belegten Bedarf hinaus gebaut?** Fundament nur so weit, wie die Daten
+  den Bedarf zeigen (vgl. [[YAGNI]]).
 
-**Tarnformulierungen, die automatisch einen Check ausloesen:** „Das Feld wird nicht
-benutzt." · „Die Aenderung ist rueckwaertskompatibel." · „Der neue Pfad wird im realen
-Lauf genutzt." · „Tests gruen." (ohne Laufnachweis) · „Keine Regression." (ohne
+**Tarnformulierungen, die automatisch einen Check auslösen:** „Das Feld wird nicht
+benutzt." · „Die Änderung ist rückwärtskompatibel." · „Der neue Pfad wird im realen
+Lauf genutzt." · „Tests grün." (ohne Laufnachweis) · „Keine Regression." (ohne
 kontrollierten Vergleich — siehe [Ceteris Paribus](CETERIS_PARIBUS.md)).
 
 ## Was ein echter Check ist
 
-Ein gueltiger Check besteht aus drei Teilen:
-**Kommando** (ausgefuehrte Operation) → **Ergebnis** (was sie zurueckgab) →
-**Interpretation** (was das fuer die Behauptung bedeutet).
+Ein gültiger Check besteht aus drei Teilen:
+**Kommando** (ausgeführte Operation) → **Ergebnis** (was sie zurückgab) →
+**Interpretation** (was das für die Behauptung bedeutet).
 
-- **Gueltig:** Symbol-/Feldsuche im Code, Testlauf mit Ausgabe, Build/Lint-Lauf,
-  CLI-/Pipeline-Lauf mit Ergebnis, Git-Diff gegen Baseline, Schema-/Config-Pruefung,
-  Lauf-Trace. Bei Datei-Caches/Mounts die verlaessliche Shell nutzen (Stack-Konventionen).
-- **Kausale Aussage → in der Primaerquelle pruefen, nicht im Downstream-Artefakt.** Eine
-  Behauptung ueber eine *Eingabe* (warum verhaelt sich X so?) wird in **dieser Eingabe** belegt
+- **Gültig:** Symbol-/Feldsuche im Code, Testlauf mit Ausgabe, Build/Lint-Lauf,
+  CLI-/Pipeline-Lauf mit Ergebnis, Git-Diff gegen Baseline, Schema-/Config-Prüfung,
+  Lauf-Trace. Bei Datei-Caches/Mounts die verlässliche Shell nutzen (Stack-Konventionen).
+- **Kausale Aussage → in der Primärquelle prüfen, nicht im Downstream-Artefakt.** Eine
+  Behauptung über eine *Eingabe* (warum verhält sich X so?) wird in **dieser Eingabe** belegt
   (Rohtext/-datei), nicht in einem nachgelagerten Artefakt, das die Eingabe bereits interpretiert
   hat (LLM-Output, extrahiertes JSON, Bericht). Downstream-Artefakte taugen als *Symptom*, nie als
   *Ursachenbeleg*. Konkreter Check: das behauptete Signal direkt im Rohtext suchen (`grep`).
-- **Ungueltig (Meinung, kein Check):** „sieht so aus", „wahrscheinlich", „sollte
-  funktionieren", „ich habe analysiert" — reine Plausibilitaet ohne ausgefuehrte Operation.
+- **Ungültig (Meinung, kein Check):** „sieht so aus", „wahrscheinlich", „sollte
+  funktionieren", „ich habe analysiert" — reine Plausibilität ohne ausgeführte Operation.
 
 ## Konkrete Vorgaben
 
 - **Belegen oder fallenlassen:** Beispiel-Checks — kommt das Feld/Symbol real vor?
-  benutzt ein realer Lauf das Feature? stimmt die Annahme ueber den Datenbestand?
+  benutzt ein realer Lauf das Feature? stimmt die Annahme über den Datenbestand?
 - **Blockierende Befunde VOR dem Commit beheben.** Nicht-blockierende explizit in den
   Confidence-Block des `CHANGELOG.md`-Eintrags.
 - **Generische Erkenntnis** → als neues `L<N>` in `LESSONS_LEARNED.md` ablegen.
 
-**Blockierend (vor Commit beheben):** Test/Build schlaegt fehl · behaupteter Datenbefund
+**Blockierend (vor Commit beheben):** Test/Build schlägt fehl · behaupteter Datenbefund
 nicht belegbar · neue Logik ohne realen Aufrufer · Changelog mit unbelegten Aussagen ·
 Scope-Erweiterung ohne Bedarf · toter Code · produktiver Schreibzugriff, obwohl nur
-Scratch erlaubt · Gate-Report fehlt/unvollstaendig.
+Scratch erlaubt · Gate-Report fehlt/unvollständig.
 **Nicht-blockierend (→ Confidence-Block):** Randbeobachtung ohne Einfluss aufs
 Commit-Ziel · theoretische Optimierung · bewusst dokumentierte Annahme · Folgeidee
-ausserhalb des Scopes. Einen Blocker nicht zum Nicht-Blocker umdeklarieren, ohne den
+außerhalb des Scopes. Einen Blocker nicht zum Nicht-Blocker umdeklarieren, ohne den
 Befund zu beheben.
 
 ## Gate-Report (vor jedem Commit; fehlt er oder hat er offene Blocker: kein Commit)
 
+Ablage: im Chat, unmittelbar vor dem Commit. Eine Report-Datei nur bei harter Durchsetzung (Stufe 2, unten),
+weil der Hook dort ihr Vorhandensein prüft.
+
 ```text
 ADVOCATUS-DIABOLI-GATE
 Commit-Ziel:        [ein Satz]
-Gepruefte Behauptungen:
+Geprüfte Behauptungen:
   1. Behauptung: …  Kommando: …  Ergebnis: …  Bewertung: belegt | fallengelassen | Annahme
-End-to-End-Konsument: Nachweis: …  Bewertung: vorhanden | fehlt → nicht committen | nicht relevant (Begruendung)
-Scope-Pruefung:     Bedarf: …  Gebaute Aenderung: …  Bewertung: passend | zu breit → was wird zurueckgestellt
+End-to-End-Konsument: Nachweis: …  Bewertung: vorhanden | fehlt → nicht committen | nicht relevant (Begründung)
+Scope-Prüfung:     Bedarf: …  Gebaute Änderung: …  Bewertung: passend | zu breit → was wird zurückgestellt
 Blocker:            [keiner] | [konkrete Blocker]
 ```
 
-## Automatische Durchsetzung (empfohlen): PreToolUse-Hook
+## Automatische Durchsetzung (Pflicht unter Claude Code): PreToolUse-Hook
 
 Damit das Gate nicht vergessen wird, blendet ein `PreToolUse`-Hook in
 `.claude/settings.json` die Erinnerung vor jedem `git commit` ein (nicht-blockierend,
-nur Kontext). Matcher auf die Shell-Tools, Filter auf `git commit`:
+nur Kontext). Unter Claude Code ist der Hook Pflicht (`KICKOFF.md` Phase 1 Punkt 7);
+andere Agenten haben keinen gleichwertigen Mechanismus und führen das Gate vor jedem
+Commit von Hand aus (`KICKOFF.md` Phase 3b Punkt 5). Matcher auf die Shell-Tools, Filter auf `git commit`:
 
 ```json
 {
@@ -101,15 +106,15 @@ nur Kontext). Matcher auf die Shell-Tools, Filter auf `git commit`:
 
 > Auf POSIX-only-Umgebungen den `shell`-Wert und den Matcher an die genutzten
 > Tool-Namen anpassen; der Filter `git commit` bleibt gleich. Nach dem Einrichten
-> ist ein `/hooks`-Reload (bzw. Session-Neustart) noetig, damit der Hook greift.
+> ist ein `/hooks`-Reload (bzw. Session-Neustart) nötig, damit der Hook greift.
 
-> **Robustere Variante:** Inline-PowerShell mit verschachteltem JSON ist anfaellig fuer
+> **Robustere Variante:** Inline-PowerShell mit verschachteltem JSON ist anfällig für
 > Quote-/Escaping-Fehler. Stabiler ist ein externes Skript
 > (`.claude/hooks/advocatus-diaboli-precommit.ps1`, auf POSIX `.sh`), das per `-File`
 > aufgerufen wird und den `additionalContext` als JSON ausgibt. Optionale **Stufe 2**
-> (harte Durchsetzung): ein separater Hook gibt `permissionDecision: "deny"` zurueck,
+> (harte Durchsetzung): ein separater Hook gibt `permissionDecision: "deny"` zurück,
 > wenn keine Gate-Report-Datei vorliegt — erst aktivieren, wenn die nicht-blockierende
-> Stufe stabil laeuft, sonst entstehen unnoetige Agent-Schleifen.
+> Stufe stabil läuft, sonst entstehen unnötige Agent-Schleifen.
 
 ## Anti-Pattern
 
@@ -126,19 +131,19 @@ IMMER vor einem Commit. Greift zusammen mit der Reflexions-Selbstkritik
 ## Verwandt
 
 - [[VERIFY_BEFORE_CITE]] — verifiziert die *Fakten* (Pfade, Symbole, Zeilen); das Gate
-  verifiziert zusaetzlich die *Schlussfolgerungen* und den *Scope*.
-- [[CETERIS_PARIBUS]] — eine „keine Regression"/„Tests gruen"-Behauptung ist nur belegt,
+  verifiziert zusätzlich die *Schlussfolgerungen* und den *Scope*.
+- [[CETERIS_PARIBUS]] — eine „keine Regression"/„Tests grün"-Behauptung ist nur belegt,
   wenn der zugrunde liegende Vergleich kontrolliert war (genau eine Variable).
-- [[YAGNI]] — Standardfrage (c): nicht ueber den belegten Bedarf hinaus bauen.
+- [[YAGNI]] — Standardfrage (c): nicht über den belegten Bedarf hinaus bauen.
 
 ## Projektspezifisch
 
 <!-- Projekt-adaptierte Beispiele (typische Tarnformulierungen aus echten Befunden,
-     stack-spezifische Check-Kommandos, Pfad der Hook-Skripte) hier einfuegen.
-     Massgeblich fuer die Update-Klassifizierung ist der Vergleich gegen die alte
+     stack-spezifische Check-Kommandos, Pfad der Hook-Skripte) hier einfügen.
+     Maßgeblich für die Update-Klassifizierung ist der Vergleich gegen die alte
      Template-Version (ALTES_PROJECT_AKTUALISIEREN.md, Schritt 2c/3): Solange diese
      Datei byte-identisch zum Template ist, gilt sie als Kategorie A (sicher
-     ueberschreibbar). Jede lokale Anpassung — hier oder im Fliesstext oben — macht
+     überschreibbar). Jede lokale Anpassung — hier oder im Fliesstext oben — macht
      sie zu Kategorie C: nur Drei-Wege-Merge, kein Blanket-Overwrite. -->
 
 **Typische Tarnformulierungen in diesem Projekt und der passende Check:**

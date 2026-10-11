@@ -1,29 +1,35 @@
 # Fail Fast
 
 ## Regel
-Fehler muessen so frueh, so laut und so nah an der Fehlerquelle wie moeglich auftreten.
+Fehler müssen so früh, so laut und so nah an der Fehlerquelle wie möglich auftreten.
 Stilles Scheitern ist verboten.
 
 ## Sprach-agnostische Vorgaben
 
 - Validiere alle Eingaben vor der Business-Logik
-- Wirf spezifische, aussagekraeftige Exceptions/Errors
-- Nutze findOrFail-Aequivalente statt stiller null-Rueckgaben
+- Wirf spezifische, aussagekräftige Exceptions/Errors
+- Nutze findOrFail-Äquivalente statt stiller null-Rückgaben
 - Kein leeres catch/except ohne Re-Raise oder Logging
 
-## Prueffrage
+## Prüffrage
 
-"Wenn hier ein ungueltiger Wert uebergeben wird – wann und wie deutlich wird das gemeldet?"
+"Wenn hier ein ungültiger Wert übergeben wird – wann und wie deutlich wird das gemeldet?"
 → Sofort und explizit, nicht irgendwann und still.
 
-## Einfuehrung neuer Pruefungen
+## Einführung neuer Prüfungen
 
-Eine neue harte Pruefung (Namens-Whitelist, Schema-Validierung) bricht jeden Lauf ab, dessen Daten sie
-nicht erfuellen — auch produktive, die bisher funktionierten. Vor dem Scharfschalten alle erreichbaren
-Bestandsdaten gegen die neue Regel pruefen (ohne Inhalte auszugeben), das Ergebnis im CHANGELOG
-festhalten und fuer nicht erreichbare Installationen einen Pruefbefehl fuer das Deployment dokumentieren.
-Dabei fallen oft Widersprueche zwischen zwei Regelwerken auf (z. B. Schema erlaubt nur Grossbuchstaben,
+Eine neue harte Prüfung (Namens-Whitelist, Schema-Validierung) bricht jeden Lauf ab, dessen Daten sie
+nicht erfüllen — auch produktive, die bisher funktionierten. Vor dem Scharfschalten alle erreichbaren
+Bestandsdaten gegen die neue Regel prüfen (ohne Inhalte auszugeben), das Ergebnis im CHANGELOG
+festhalten und für nicht erreichbare Installationen einen Prüfbefehl für das Deployment dokumentieren.
+Dabei fallen oft Widersprüche zwischen zwei Regelwerken auf (z. B. Schema erlaubt nur Großbuchstaben,
 Whitelist auch Kleinbuchstaben). (L6, aus I4/I6 dieses Projekts)
+
+## Verwandt
+
+- `architecture/ERROR_HANDLING.md` — konkrete Regeln (Fehler-Hierarchie, Boundary-Konvertierung, Retry) und
+  „Feindliche Eingaben": Fail Fast bricht die *Operation* ab, nicht den *Prozess*.
+- [[CONTRACTS]] — Preconditions am Funktionsanfang. [[LOGGING]] — wer den Fehler loggt.
 
 ## Projektspezifisch
 

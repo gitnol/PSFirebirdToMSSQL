@@ -3,46 +3,46 @@
 ## Regel
 
 Jede Schicht hat genau eine Verantwortung und kennt nur die Schicht direkt
-unter ihr. Praesentation kennt keine Datenbank; Persistenz kennt keine HTTP-Codes.
+unter ihr. Präsentation kennt keine Datenbank; Persistenz kennt keine HTTP-Codes.
 
 ## Sprach-agnostische Vorgaben
 
-- Schichten als gerichteter Graph — keine zyklischen Abhaengigkeiten zwischen Schichten
-- Geschaeftsregeln leben in der Domaenen-/Service-Schicht, nicht in Controllern,
+- Schichten als gerichteter Graph — keine zyklischen Abhängigkeiten zwischen Schichten
+- Geschäftsregeln leben in der Domänen-/Service-Schicht, nicht in Controllern,
   Views oder Repositories
 - Persistenz-Details (SQL-Eigenheiten, ORM-Spezifika) bleiben in Repositories —
-  die Service-Schicht arbeitet auf Domaenenobjekten, nicht auf ORM-Entities
-- UI/View-Code (Jinja-Templates, Razor-Views, Streamlit-Layout) enthaelt KEINE
-  Business-Logik — nur Praesentation
-- Externe Services (HTTP-Clients, LLM-APIs) werden ueber eine Adapterschicht
-  gekapselt — Domaene arbeitet gegen ein Interface, nicht gegen ein konkretes SDK
+  die Service-Schicht arbeitet auf Domänenobjekten, nicht auf ORM-Entities
+- UI/View-Code (Jinja-Templates, Razor-Views, Streamlit-Layout) enthält KEINE
+  Business-Logik — nur Präsentation
+- Externe Services (HTTP-Clients, LLM-APIs) werden über eine Adapterschicht
+  gekapselt — Domäne arbeitet gegen ein Interface, nicht gegen ein konkretes SDK
 
 ## Typische Schichten
 
 | Schicht | Verantwortung | Darf kennen |
 |---|---|---|
-| Praesentation | Eingabe entgegennehmen, Ausgabe formatieren | Anwendung |
-| Anwendung (Services) | Use Cases orchestrieren, Transaktionsgrenzen | Domaene, Adapter |
-| Domaene | Geschaeftsregeln, Invarianten | (nichts ausserhalb der Domaene) |
-| Infrastruktur (Adapter, Repositories) | Externe Welt anbinden, persistieren | Domaene |
+| Präsentation | Eingabe entgegennehmen, Ausgabe formatieren | Anwendung |
+| Anwendung (Services) | Use Cases orchestrieren, Transaktionsgrenzen | Domäne, Adapter |
+| Domäne | Geschäftsregeln, Invarianten | (nichts außerhalb der Domäne) |
+| Infrastruktur (Adapter, Repositories) | Externe Welt anbinden, persistieren | Domäne |
 
-## Prueffragen
+## Prüffragen
 
 - "Wenn ich die Datenbank austausche, welche Module muss ich anfassen?"
-  → Nur Persistenzschicht. Domaene + Anwendungsschicht bleiben unveraendert.
+  → Nur Persistenzschicht. Domäne + Anwendungsschicht bleiben unverändert.
 
 - "Wenn ich von CLI auf Web-UI wechsle, welche Module muss ich anfassen?"
-  → Nur die Praesentation. Anwendungs- und Domaenenschicht bleiben unveraendert.
+  → Nur die Präsentation. Anwendungs- und Domänenschicht bleiben unverändert.
 
-- "Wenn ich diese Geschaeftsregel aendere, muss ich sie an mehreren Stellen anpassen?"
-  → Wenn JA: die Regel lebt nicht in der Domaene, sondern dupliziert in UI + API.
+- "Wenn ich diese Geschäftsregel ändere, muss ich sie an mehreren Stellen anpassen?"
+  → Wenn JA: die Regel lebt nicht in der Domäne, sondern dupliziert in UI + API.
     Refaktorieren.
 
 ## Verwandt
 
 - [[ORTHOGONALITY]] — gleiche Stossrichtung auf Modulebene, eine Ebene granularer
-- [[DRY]] — Schichtung verhindert duplizierte Geschaeftslogik in UI und API
-- [[YAGNI]] — nicht zu viele Schichten einfuehren, wenn 2 reichen
+- [[DRY]] — Schichtung verhindert duplizierte Geschäftslogik in UI und API
+- [[YAGNI]] — nicht zu viele Schichten einführen, wenn 2 reichen
 
 ## Projektspezifisch
 
