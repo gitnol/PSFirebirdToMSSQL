@@ -41,7 +41,7 @@ flowchart TD
 
 ```
 PSFirebirdToMSSQL/
-├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Haupt-Einstiegspunkt (Param -ConfigFile), Version 2.10
+├── Sync_Firebird_MSSQL_AutoSchema.ps1   # Haupt-Einstiegspunkt (Param -ConfigFile), Version 2.18
 ├── SQLSyncCommon.psm1                   # Gemeinsames Modul v1.0.0 (explizite Export-Liste, kein .psd1)
 ├── sql_server_setup.sql                 # CREATE OR ALTER PROCEDURE dbo.sp_Merge_Generic
 ├── Setup_Credentials.ps1                # Credential-Manager-Einträge anlegen (interaktiv)

@@ -19,7 +19,7 @@ Inkrementplan (`docs/TODO.md`) eingeplant.
 - `git add` nur für explizit bearbeitete Dateien – niemals `git add .`
   (im Root liegen lokal `config.json` und `config.json.*.bak`, die Klartext-Passwörter enthalten können; sie sind per `.gitignore` ausgeschlossen).
 - Inkremente enden mit Commit, sofern Git verfügbar ist und der Prompter Commits nicht ausdrücklich untersagt hat.
-- Versionsangaben stehen im Comment-based Help (`.NOTES Version: 2.10` im Sync-Skript, `Version: 1.0.0` im Modul)
+- Versionsangaben stehen im Comment-based Help (`.NOTES Version: 2.18` im Sync-Skript, `Version: 1.0.0` im Modul)
   und werden bei funktionalen Änderungen mitgezogen.
 
 ## 2. PowerShell Code-Richtlinien

@@ -69,7 +69,7 @@ Sie kosten bei Full-Load überproportional Token ohne Nutzen für das laufende I
 
 | Aufgabe | Laden | Nicht laden |
 |---|---|---|
-| Sync-Ablauf, Strategien, Retry | `Sync_Firebird_MSSQL_AutoSchema.ps1` (743 Z. → gezielt per `offset`/`limit`) | READMEs (teils veraltet) |
+| Sync-Ablauf, Strategien, Retry | `Sync_Firebird_MSSQL_AutoSchema.ps1` (744 Z. → gezielt per `offset`/`limit`) | READMEs (teils veraltet) |
 | Config, Credentials, Connection-Strings, Treiber, Typmapping | `SQLSyncCommon.psm1` (932 Z. → relevante Region) | — |
 | MERGE-Logik | `sql_server_setup.sql` | — |
 | Konfigschlüssel | `config.sample.json`, `config.schema.json`, `architecture/CONFIGURATION.md` | **`config.json`, `config.json.*.bak` — nie lesen** (können Klartext-Passwörter enthalten) |

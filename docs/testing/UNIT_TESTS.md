@@ -40,7 +40,7 @@ Import-Module Pester -RequiredVersion $req.Pester.RequiredVersion -Force
   ├── pester.config.ps1                # vorhanden: Lauf mit Coverage, Exit 1 bei Rot/Coverage < Ziel
   ├── coverage.xml                     # erzeugt von pester.config.ps1, gitignored
   ├── Unit/
-  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 144 Tests, alle exportierten Modulfunktionen
+  │   ├── SQLSyncCommon.Tests.ps1      # vorhanden: 179 Tests, alle exportierten Modulfunktionen
   │   └── Setup-ScheduledTasks.Tests.ps1  # vorhanden: 13 Tests, nur -WhatIf
   ├── Integration/                     # noch nicht vorhanden, siehe INTEGRATION_TESTS.md
   └── helpers/
