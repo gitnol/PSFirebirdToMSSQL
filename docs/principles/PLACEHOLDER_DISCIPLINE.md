@@ -44,11 +44,15 @@ class CannedAdapter:
         return {"invoice_number": "RE-2024-001", "total": 100.0}
 ```
 
-## Opt-in-Regel für echte Adapter (B4)
+## Opt-in-Regel für echte Adapter
 
 Der Offline-/Demo-Adapter ist **immer** der sichere Default. Der echte Adapter
 (LLM-Aufruf, externe API, GPU-Inferenz) wird ausschließlich über expliziten
-Opt-in aktiviert — niemals als Default.
+Opt-in aktiviert — aber der Demo-Modus läuft **nie stillschweigend** ([[FAIL_FAST]]):
+
+- beim Start eine `WARNING` im Log („Demo-Adapter aktiv, keine echten Ergebnisse");
+- Ausgaben des Demo-Adapters sind als DEMO erkennbar (Feld, Präfix oder Kennzeichen im Ergebnis);
+- ein Produktivprofil (z. B. `ENV=production`) ohne ausdrückliche Adapter-Wahl bricht beim Start ab.
 
 **Konvention:**
 
@@ -67,8 +71,8 @@ return CannedAdapter(demo_result)                      # Default, kein Netzwerk
 **Warum Default = Offline:**
 - Verhindert unbeabsichtigte externe Aufrufe (API-Kosten, Datenlecks, DSGVO-Risiko)
   in neuen Deployments, CI-Runs oder Test-Setups ohne explizite Konfiguration.
-- Deployment ohne Env-Var → Offline-Modus, keine stillen Fehler durch fehlendes
-  LLM-Backend.
+- Deployment ohne Env-Var → Offline-Modus mit sichtbarer Warnung statt stiller Fehler durch
+  fehlendes LLM-Backend; im Produktivprofil Abbruch statt Demo-Betrieb.
 - Opt-in-Flag macht die Absicht sichtbar und dokumentierbar (`.env.example`,
   `CONFIGURATION.md`).
 
@@ -82,6 +86,10 @@ Ein Scaffold, der nicht erkennbar als Scaffold markiert ist, führt zu:
 - falschen Vertrauensurteilen in Demo und Review
 - Tests, die grün sind, obwohl kein echter Pfad geprüft wird
 - Known Limitations, die nie in die Docs finden, weil der Platzhalter „ja läuft"
+
+## Verwandt
+
+- [[FAIL_FAST]]
 
 ## Projektspezifisch
 

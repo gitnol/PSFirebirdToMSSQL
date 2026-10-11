@@ -1,13 +1,13 @@
 # Immutability
 
 ## Regel
-Zustaende und Daten sind standardmaessig unveraenderlich.
+Zustände und Daten sind standardmäßig unveränderlich.
 Mutation ist die Ausnahme und muss explizit sein.
 
 ## Sprach-agnostische Vorgaben
 
 - Funktionen mutieren ihre Eingabeparameter nicht – arbeite auf Kopien
-- Globaler State wird nur durch definierte Mutations-Mechanismen veraendert
+- Globaler State wird nur durch definierte Mutations-Mechanismen verändert
 - Mutierende Funktionen kennzeichnen: update_, set_, mutate_
 
 ## Projektspezifisch

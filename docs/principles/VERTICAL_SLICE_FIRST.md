@@ -8,7 +8,7 @@ nicht als Reihe von Unit-Tests auf isolierten Schichten.
 
 ## Vorgehen
 
-1. **E2E-Spec zuerst:** Der erste Inkrement nach dem Skeleton baut den durchgängigen
+1. **E2E-Spec zuerst:** Das erste Inkrement nach dem Skeleton baut den durchgängigen
    Slice. Alle Zwischenschichten dürfen Stubs/Test-Doubles sein, aber der Datenfluss
    endet in einem echten, verifizierbaren Ausgabe-Artefakt.
 
@@ -17,10 +17,23 @@ nicht als Reihe von Unit-Tests auf isolierten Schichten.
    Test-Double ersetzt (`Canned*`, `Stub*`, `Mock*`). Das Double gibt ein
    vorkonfiguriertes, gültiges Ergebnis zurück — kein LLM-Aufruf, kein Netz.
 
-3. **Echte Engine hinter `@slow` / `@live`:** Die Integration echter Engines
-   (GPU, externe API, Modell-Download) erfolgt in separaten Tests, die mit
-   `@slow`, `@gpu` oder `@live` markiert sind. Diese Tests laufen nicht im
-   Standard-`pytest -m unit`-Lauf.
+3. **Echte Engine hinter Markern:** Die Integration echter Engines
+   (GPU, externe API, Modell-Download) erfolgt in separaten Tests mit Markern aus der
+   **Kernmenge** (bzw. dem Stack-Äquivalent, z. B. Pester-Tags, xUnit-Traits):
+
+   | Marker | Bedeutung |
+   |---|---|
+   | `unit` | ohne Netz, DB, GPU und echte Engine; Tests ohne Kernmarker gelten als Unit-Tests |
+   | `integration` | echte lokale Infrastruktur (Datenbank, Container); ein Slice mit Test-Doubles (Punkt 2) bleibt im Unit-Pfad |
+   | `slow` | lange Laufzeit (über ca. 5 s) |
+   | `gpu` | benötigt eine lokale GPU |
+   | `live` | echte Engine oder echter Dienst statt Test-Double (externe API, Modell, OCR-Engine, externes Werkzeug), Credentials, Kosten oder geschützte Daten; nur manuell oder in einem eigenen Job |
+
+   Ein Test darf mehrere Marker tragen. Alles außer `unit` läuft nicht im Standard-Unit-Lauf
+   (Gate 4, `CONVENTIONS_COMMON.md` §5): Der Stack registriert die Marker, die er nutzt, und schließt
+   sie in Gate 4 aus. Overlays definieren keine eigene Kernmenge, nur **Zusatzmarker** für ihre
+   Domäne (z. B. `llm`, `golden`); ein Zusatzmarker impliziert `live` (der Test trägt beide) und wird
+   im Stack registriert.
 
 4. **Schichten danach vertiefen:** Erst wenn der Slice grün ist, werden einzelne
    Schichten (Normalisierung, Validierung, Extraktion, …) iterativ durch echte
@@ -45,6 +58,11 @@ Schicht 1 (OCR) vollständig → dann Schicht 2 (Extraktion) → dann Schicht 3 
 Dieses Prinzip gilt für Pipelines, Workflows und mehrschichtige Verarbeitung.
 Für reine CRUD-APIs ohne Transformationspipeline ist der erste Endpunkt der
 „Slice" — dasselbe Prinzip, kleinere Skala.
+
+## Verwandt
+
+- [[ORACLE_AND_RATCHET]]
+- [[YAGNI]]
 
 ## Projektspezifisch
 

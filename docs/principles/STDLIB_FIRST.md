@@ -15,7 +15,9 @@ oben nach unten durch und steig aus, sobald eine Stufe greift:
    (z. B. Browser-`fetch`, PowerShell-Cmdlets, .NET-LINQ, Shell-Pipes)
 3. **Bereits installierte Dependency kann es?** → Dependency nutzen
 4. **Geht es in einer Zeile?** → eine Zeile schreiben
-5. **Erst dann:** das Minimum schreiben, das tatsächlich funktioniert
+5. **Sicherheit, Krypto, Parser/Protokolle, Datenformate?** → etablierte **neue** Dependency statt Eigenbau
+   (in `docs/architecture/DEPENDENCIES.md` eintragen, Lage nach [[SECURITY_CURRENCY]] prüfen, bei Tragweite ADR)
+6. **Erst dann:** das Minimum schreiben, das tatsächlich funktioniert
 
 ## Konkrete Vorgaben
 
@@ -33,11 +35,16 @@ oben nach unten durch und steig aus, sobald eine Stufe greift:
 | Soll diese Anforderung überhaupt implementiert werden? | YAGNI |
 | Wie minimal implementiere ich sie, wenn ja? | Stdlib First |
 
-## Prueffrage
+## Prüffrage
 
-„Habe ich die 5-Stufen-Leiter von oben nach unten durchlaufen,
+„Habe ich die 6-Stufen-Leiter von oben nach unten durchlaufen,
 bevor ich angefangen habe zu tippen?"
 → Wenn NEIN: zurück auf Stufe 1.
+
+## Verwandt
+
+- [[YAGNI]]
+- [[SECURITY_CURRENCY]]
 
 ## Projektspezifisch
 

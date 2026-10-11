@@ -1,12 +1,16 @@
 # Orthogonality
 
 ## Regel
-Eine Aenderung in Komponente A erzwingt keine Aenderung in Komponente B.
+Eine Änderung in Komponente A erzwingt keine Änderung in Komponente B.
 
-## Prueffrage
+## Prüffrage
 
-"Wenn ich dieses Modul vollstaendig austausche, welche anderen Module muessen angepasst werden?"
+"Wenn ich dieses Modul vollständig austausche, welche anderen Module müssen angepasst werden?"
 → Wenn mehr als die direkten Aufrufer: Kopplung reduzieren.
+
+## Verwandt
+
+- [[SEPARATION_OF_CONCERNS]]
 
 ## Projektspezifisch
 

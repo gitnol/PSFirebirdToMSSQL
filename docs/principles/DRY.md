@@ -1,7 +1,7 @@
 # DRY – Don't Repeat Yourself
 
 ## Regel
-Jedes Stueck Wissen hat genau eine autoritative Repraesentation.
+Jedes Stück Wissen hat genau eine autoritative Repräsentation.
 
 ## Konkrete Vorgaben
 
@@ -9,10 +9,14 @@ Jedes Stueck Wissen hat genau eine autoritative Repraesentation.
 - Wiederholte Logik in Hilfsfunktionen/Services extrahieren
 - Gleiche Queries in Repository/Service kapseln
 
-## Prueffrage
+## Prüffrage
 
-"Wenn sich diese Anforderung aendert, muss ich es an mehr als einer Stelle anpassen?"
+"Wenn sich diese Anforderung ändert, muss ich es an mehr als einer Stelle anpassen?"
 → Wenn JA: Refaktoriere zuerst.
+
+## Verwandt
+
+- [[SEPARATION_OF_CONCERNS]]
 
 ## Projektspezifisch
 

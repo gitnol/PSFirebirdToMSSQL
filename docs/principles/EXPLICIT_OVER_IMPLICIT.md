@@ -5,31 +5,36 @@ Alles was das System tut, muss ohne Kontextwissen lesbar sein.
 
 ## Sprach-agnostische Vorgaben
 
-- Vollstaendige Typ-Annotationen (Parameter + Rueckgabe)
+- Vollständige Typ-Annotationen (Parameter + Rückgabe)
 - Keine Magic Strings – Konstanten oder Enums
 - Seiteneffekte (DB schreiben, Datei speichern) im Funktionsnamen kennzeichnen
 
 ## Konfigurierbare Parameter als Default-Argumente
 
 Funktionen lesen konfigurierbare Werte **nicht** direkt aus dem globalen Scope.
-Stattdessen: Config-Konstante als Default-Argument → Aufrufer kann ueberschreiben.
+Stattdessen: Config-Konstante als Default-Argument → Aufrufer kann überschreiben.
 
 **Falsch (implizit, schwer testbar):**
 ```python
 def process(account, data):
-    start = now() - timedelta(days=SOME_CONFIG_VALUE)  # versteckte Abhaengigkeit
+    start = now() - timedelta(days=SOME_CONFIG_VALUE)  # versteckte Abhängigkeit
 ```
 
 **Richtig (explizit, testbar):**
 ```python
 def process(account, data, days: int = SOME_CONFIG_VALUE):
-    start = now() - timedelta(days=days)  # Abhaengigkeit sichtbar im Funktionskopf
+    start = now() - timedelta(days=days)  # Abhängigkeit sichtbar im Funktionskopf
 ```
 
 Ausnahmen (direkte Nutzung globaler Konstanten ist akzeptabel):
-- Technische Compile-Zeit-Konstanten (z.B. Buffer-Groessen, Protokoll-Konstanten)
+- Technische Compile-Zeit-Konstanten (z.B. Buffer-Größen, Protokoll-Konstanten)
 - Flags die das gesamte Programm betreffen (`DEBUG`)
-- Credentials – kommen ausschliesslich via Secrets-Manager, nie als Parameter
+- Credentials – kommen ausschließlich via Secrets-Manager, nie als Parameter
+
+## Verwandt
+
+- [[CONTEXT_DISCIPLINE]]
+- [[VERIFY_BEFORE_CITE]]
 
 ## Projektspezifisch
 

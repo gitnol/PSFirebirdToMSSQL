@@ -6,15 +6,15 @@ Jede Funktion hat ein explizites Versprechen:
 
 - **Precondition:** Was sie als Input erwartet (und ablehnt)
 - **Postcondition:** Was sie als Output garantiert
-- **Invariant:** Was sich durch den Aufruf niemals veraendern darf
+- **Invariant:** Was sich durch den Aufruf niemals verändern darf
 
 ## Konkrete Vorgaben
 
-- Schreibe fuer jede nicht-triviale Funktion einen Docstring mit `Args:`, `Returns:`,
+- Schreibe für jede nicht-triviale Funktion einen Docstring mit `Args:`, `Returns:`,
   `Raises:`, optional `Invariant:`.
 - Validiere Preconditions am Funktionsanfang mit `raise` (kombiniert mit Fail Fast).
-- `assert`-Statements dienen ausschliesslich dem Pruefen von Invarianten und Postconditions
-  in Dev/Test-Umgebungen (`__debug__`). Sie duerfen **niemals** fuer Eingabevalidierung
+- `assert`-Statements dienen ausschließlich dem Prüfen von Invarianten und Postconditions
+  in Dev/Test-Umgebungen (`__debug__`). Sie dürfen **niemals** für Eingabevalidierung
   oder Produktions-Kontrollfluss genutzt werden – `assert` kann mit `-O` deaktiviert werden.
 
 ## Template
@@ -28,19 +28,28 @@ def beispiel_funktion(param: str) -> str:
         param: [Beschreibung. Darf None sein / darf nicht None sein.]
 
     Returns:
-        [Beschreibung des Rueckgabewerts. Garantien.]
+        [Beschreibung des Rückgabewerts. Garantien.]
 
     Raises:
         ValueError: [Wann wird dieser Fehler geworfen?]
 
     Invariant:
-        [Was veraendert sich durch diesen Aufruf NICHT?]
+        [Was verändert sich durch diesen Aufruf NICHT?]
     """
     if not param:
         raise ValueError("param darf nicht leer sein")
     # ...
     return result
 ```
+
+Eingebaute Exceptions (`ValueError`, `ArgumentException`, …) sind für **interne** Vorbedingungen gedacht, also
+Programmierfehler im eigenen Code. Eingaben, die von außen kommen (CLI, HTTP, Dateien), führen zu `ValidationError`
+aus der projektspezifischen Hierarchie — nur dann greift die Konvertierungstabelle in
+`docs/architecture/ERROR_HANDLING.md` (Exit-Code 2 / HTTP 400) statt des Sicherheitsnetzes.
+
+## Verwandt
+
+- [[FAIL_FAST]]
 
 ## Projektspezifisch
 
