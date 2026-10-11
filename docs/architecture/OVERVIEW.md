@@ -193,5 +193,8 @@ Fehler in einem Schritt führen zum nächsten Versuch der Retry-Schleife; nach d
    [Entscheidung ADR-001: Staging + MERGE statt direktem Upsert](ADR/ADR-001-staging-merge-statt-direktem-upsert.md).
 7. `features/firebird-mssql-sync.md` — Fachlogik des Syncs; `operations/TASK_SCHEDULER.md` — Betrieb.
 
+Konventionen: `docs/CONVENTIONS_COMMON.md` (stack-übergreifend) + `docs/CONVENTIONS.md` (PowerShell).
+Bedrohungsmodell: `docs/security/THREAT_MODEL.md` (Leitfragen: `docs/security/THREAT_MODEL_GUIDE.md`).
+Prinzipien (u. a. `docs/principles/ORACLE_AND_RATCHET.md`): `docs/principles/INDEX.md`.
 Begriffe und Geschäftssprache: `docs/GLOSSARY.md`.
 Bekannte Einschränkungen und Probleme: `docs/KNOWN_ISSUES.md`.
