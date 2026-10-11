@@ -4,6 +4,10 @@ Stack: PowerShell 7.0+ (`#Requires -Version 7.0`) | keine PowerShell-Galerie-Mod
 `FirebirdSql.Data.FirebirdClient` 10.3.4 + `System.Data.SqlClient` (in PS 7 enthalten) | Windows
 (Credential Manager, Task Scheduler; keine Mindestversion im Code festgelegt)
 
+> Gilt **zusammen mit** `docs/CONVENTIONS_COMMON.md` (stack-übergreifend: Commit-Format, Encoding,
+> öffentliche Repos/Interna, Quality Gates, parallele Agenten). Diese Datei regelt die
+> Stack-Spezifika und hat dort Vorrang.
+
 Diese Datei beschreibt die Konventionen, die **im Code tatsächlich gelebt werden**, plus die Regeln
 für neuen Code. Abweichungen des Bestands sind ausdrücklich markiert („Bestand weicht ab") und im
 Inkrementplan (`docs/TODO.md`) eingeplant.

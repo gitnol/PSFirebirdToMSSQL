@@ -1,7 +1,8 @@
 # Aktueller Projektstatus – PSFirebirdToMSSQL
 
-Zuletzt aktualisiert: 2026-10-10
-**Initialisiert mit:** docs_template v26
+Zuletzt aktualisiert: 2026-10-11
+**Initialisiert mit:** docs_template v27@5ce0f84 (Template-Update 2026-10-11) ← v26 (Init 2026-10-08, ohne Commit-Stempel)
+**Stack / Overlays:** powershell-automation / keine
 **Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
 **Nächster Schritt:** I12 – Stille Erfolgsmeldungen im Merge und Orphan-Cleanup, danach I10d – Modul-Aufräumen
 **Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I12, I10d, …; zuletzt 2026-10-10 nach I10c) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
@@ -56,6 +57,19 @@ Coverage-Gate 80 %); CI auf GitHub Actions (Pester + PSScriptAnalyzer, seit I10b
 |---|-------------|-----------|
 | I10d | Modul-Aufräumen (`MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen der Connection-String-Builder) | Niedrig |
 | I12 | Stille Erfolgsmeldungen im Merge (K10) und Orphan-Cleanup (K5) beseitigen | Mittel |
+
+---
+
+## Kennzahlen (gemessen)
+
+Referenzmaßstab: die Firebird-Quelle (DB → DB-Synchronisation, `principles/ORACLE_AND_RATCHET.md`). Nur gemessene
+Werte; Floor = Wert, unter den der automatische Check nicht fallen darf (nur anheben, Senken nur mit Begründung/ADR).
+
+| Kennzahl | Wert | Floor | Gemessen am | Messbefehl / Check |
+|---|---|---|---|---|
+| Unit-Tests grün (`tests/Unit/`) | 192 / 192 | alle grün | 2026-10-11 | `pwsh -NoProfile -File ./tests/pester.config.ps1` |
+| Coverage `SQLSyncCommon.psm1` | 96,23 % | 80 % (`CoveragePercentTarget` in `tests/pester.config.ps1`) | 2026-10-11 | wie oben |
+| Sanity Firebird vs. Ziel (`COUNT(*)` je Tabelle) | nicht gemessen (braucht Testumgebung) | kein `FEHLER` (sonst Exit 11) | — | Sync-Lauf mit `General.RunSanityCheck`, Logzeile `ERGEBNIS:` |
 
 ---
 
