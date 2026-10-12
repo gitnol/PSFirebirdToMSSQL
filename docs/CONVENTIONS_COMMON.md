@@ -79,11 +79,14 @@ Commits) und **Add-Granularität** — nicht, *ob* committet wird.
     `architecture/ADR/ADR-000-template.md`, `prompts/PROMPT-template.md`), und Benennungsmuster
     (z. B. `feature/[name]`, `[Projekt]-[Funktion]`) stehen in gemischter Schreibweise — sie werden nicht gemeldet.
   - **Literale in Großbuchstaben** mit eckigen Klammern, die im Text stehen bleiben sollen (z. B. Log-Präfixe),
-    zeilenweise in `docs/.placeholder-ignore` eintragen.
+    zeilenweise in `docs/.placeholder-ignore` eintragen; eine Zeile `pfad:literal` (Pfad relativ zu `docs/`)
+    gilt nur für diese Datei — so bleibt dasselbe Literal anderswo als Ausfüllstelle erkennbar.
 
 ### 3.1 Öffentliche Repositories — Interna trennen
 
-Gilt, sobald das Repository öffentlich ist oder werden kann (GitHub/GitLab public, Open-Source-Export).
+Gilt, sobald das Repository öffentlich ist oder werden kann (GitHub/GitLab public, Open-Source-Export). Als
+potenziell öffentlich gilt es auch, wenn kein Remote erreichbar ist, aber eine Open-Source-Lizenz vorliegt oder ein
+öffentlicher Vorgänger gleichen Namens existiert; im Zweifel wie öffentlich behandeln.
 Alles Committete — Code, `docs/`, READMEs **und Commit-Messages** — ist dann öffentlich. Secrets
 stehen ohnehin nie im Repo; zusätzlich:
 
@@ -99,7 +102,9 @@ stehen ohnehin nie im Repo; zusätzlich:
   Zeilen, Dateinamen und die Commit-Message gegen eine gitignored Denylist (`.internal-terms`, ein
   Begriff pro Zeile, case-insensitive) prüft und bei Treffer abbricht. Hook-Skripte versioniert
   ablegen (`tools/git-hooks/`, Vorlagen im Template unter `repo-root/`) und pro Klon mit `git config core.hooksPath tools/git-hooks`
-  aktivieren; fehlt die Denylist, nur warnen. Optional ergänzend `gitleaks` für echte Secrets.
+  aktivieren; fehlt die Denylist, nur warnen. Optional ergänzend `gitleaks` für echte Secrets. Hat das Projekt
+  bereits einen gleichwertigen Hook (eigenes Verzeichnis, eigene lokale Denylist), bleibt er; fehlende Prüfungen
+  (Commit-Message, Dateinamen) werden dort ergänzt, statt einen zweiten Hook einzuführen.
   Mit gesetztem `core.hooksPath` ignoriert Git `.git/hooks/`: projekt-eigene pre-commit-Prüfungen (z. B. die
   Quality Gates aus §5) gehören nach `tools/git-hooks/pre-commit.local` — der Interna-Hook ruft sie nach seiner
   Prüfung auf.
