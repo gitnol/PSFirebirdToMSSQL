@@ -231,23 +231,8 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
 
 ## INKREMENTPLAN (Priorisierte Aufgaben)
 
-| # | Titel | Priorität | Begründung |
-|---|-------|-----------|------------|
-| I1 | docs/ initialisiert | — | Abgeschlossen |
-| I2 | Fehlschläge sichtbar machen (Exit-Codes) | Abgeschlossen (Hoch) | Sync endet immer mit Exit 0, auch bei fehlgeschlagenen Tabellen → Task Scheduler meldet Erfolg, veraltete Zieldaten bleiben unbemerkt (K1) |
-| I3 | Pester-Testharness + Unit-Tests Modul | Abgeschlossen (Hoch) | Keine Tests vorhanden; Voraussetzung für sichere Refactorings I4–I6 |
-| I4 | SQL-Identifier härten | Abgeschlossen (Hoch) | Tabellen-/Spaltennamen aus Konfig und Firebird-Metadaten werden ungeprüft in SQL interpoliert (teilweise ohne Quoting) |
-| I5 | Typmapping-Datentreue + Modulfunktionen nutzen | Abgeschlossen (Hoch) | `DECIMAL(18,4)` fest → stiller Präzisionsverlust (K2); doppelte Mapping-/Strategielogik |
-| I6 | Config-Schema-Validierung + gemeinsame Configpfad-Auflösung | Abgeschlossen (Mittel) | `config.schema.json` wird nie geprüft (K7); Hilfsskripte fest auf `config.json` (K8) |
-| I7 | Treiber-Integrität für vorhandene DLL | Abgeschlossen (Mittel) | SHA-256 nur beim Download geprüft; vorhandene/konfigurierte DLL wird ungeprüft per `Add-Type` geladen |
-| I8 | Wasserzeichen mit Überlappungsfenster | Abgeschlossen (Mittel) | Striktes `> MAX(ts)` kann Datensätze bis zum Full-Lauf überspringen (K3) |
-| I9 | Scheduled-Task-Setup parametrisieren, interne Namen entfernen | Abgeschlossen (Mittel) | Hart codierte Pfade/Konfignamen, Task als interaktiver Benutzer, realistisch wirkende Beispielwerte im öffentlichen Repo |
-| I10a | Rollout-Check-Erweiterung und Backup-Hygiene | Abgeschlossen (Mittel) | Fehlende Zielspalten (Zeitstempel → Exit 10, K6) und Klartext-Passwörter/`.bak`-Kopien vor dem Deployment unbemerkt |
-| I10b | CI auf GitHub | Abgeschlossen (Mittel) | Integration ohne PR (lokaler Merge) → einziges automatisches Prüftor bei Push auf `main` |
-| I10c | Doku-Konsolidierung | Abgeschlossen (Niedrig) | Exit-Code-Tabelle an 5 Stellen, drei ID-Systeme, `copilot-instructions.md` veraltet |
-| I10d | Modul-Aufräumen | Niedrig | Ungenutztes `MSSQL.Port`/`Protect-SqlString`; Analyzer-Warnungen an den Connection-String-Buildern |
-| I11 | Rollout-Check (`-PreDeploy`) | Abgeschlossen (Hoch) | Stand auf `main`, aber nicht deployt; Konfig-, Treiber-, Altbestands- und Firebird-Risiken in einem lesenden Lauf prüfen (vor I8 einzuplanen) |
-| I12 | Stille Erfolgsmeldungen im Merge und Orphan-Cleanup | Mittel | `sp_Merge_Generic` ohne ID-Spalte (K10) und Orphan-Cleanup mit nicht-numerischer ID (K5) melden „Erfolg" trotz Fehler |
+Der Inkrementplan steht **ausschließlich** in `docs/TODO.md` (Aufgaben, Priorität, DoD); `docs/STATE.md`
+„Offene Punkte" führt nur die IDs für die Struktur-Checks. Hier nicht duplizieren — eine zweite Kopie veraltet.
 
 ---
 

@@ -82,8 +82,7 @@ anstoßen (Schweregrad High → innerhalb des aktuellen Inkrements klären).
 | Vor jedem Release / Tag | Ja |
 | Bei Änderung der Treiber-Version (`Version`, `DownloadUrl` und `KnownSha256` in `$script:FirebirdDriver`) oder bei Nutzung von `Firebird.DllSha256` | Ja, inkl. neuer Hashes aus offizieller Quelle |
 | Nach Sicherheitsmeldung (CVE/Advisory) für PowerShell, .NET, SqlClient, FirebirdClient, Firebird- oder SQL-Server | Ja, sofort |
-| Web-Advisory-/Best-Practice-Sweep für Base+Stack | Auf Zeit-Kadenz (Default 14 Tage, Marker im `STATE.md`-Kopf; nächster: 2026-10-22) + Pflicht vor Release — `principles/SECURITY_CURRENCY.md` |
-| Regelmäßiger Sweep | Empfohlen: monatlich |
+| Kadenz-Sweep (Scanner **und** Web-Advisory-/Best-Practice-Recherche für Base+Stack) | Default 14 Tage, Marker `**Nächster Security-Sweep:**` im `STATE.md`-Kopf — `principles/SECURITY_CURRENCY.md` |
 
 ---
 

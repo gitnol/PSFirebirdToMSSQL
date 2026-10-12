@@ -1,6 +1,6 @@
 # Threat Model & Mitigationen – PSFirebirdToMSSQL
 
-Leitfragen zum Finden weiterer Bedrohungen: `security/THREAT_MODEL_GUIDE.md`.
+Leitfragen zum Finden von Bedrohungen: `security/THREAT_MODEL_GUIDE.md` (vom Template gepflegt).
 
 Stand: 2026-10-10 (I10a, Rollout-Check-Erweiterung; I7, Rollout-Check `-PreDeploy`; Initialisierung 2026-10-08, Code-Stand 721d5e0). Abgeleitet ausschließlich aus dem
 tatsächlichen Code im Projekt-Root (`Sync_Firebird_MSSQL_AutoSchema.ps1`, `SQLSyncCommon.psm1`,

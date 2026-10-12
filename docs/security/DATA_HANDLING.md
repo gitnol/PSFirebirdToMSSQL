@@ -12,6 +12,20 @@ Konfigurationsdatei) liegt beim Betreiber.
 
 ---
 
+## Datenklassen (kanonisch)
+
+Alle Overlays (`llm-integration`, `document-intelligence`, `compliance-tisax`) verwenden diese vier Klassen und
+ergänzen nur ihre Erlaubnis-Matrix bzw. das TISAX-Mapping.
+
+| Klasse | EN | Beispiele | An externe Dienste / Cloud-Modelle |
+|---|---|---|---|
+| Öffentlich | public | veröffentlichte Texte, Demo-Daten | erlaubt |
+| Intern | internal | allgemeine Geschäftskommunikation, interne Prozessdokumente | nach Prüfung des Dienstes (Checkliste unten) |
+| Vertraulich | confidential | Kunden- und Lieferantendaten, Verträge, Preise, Strategie | **nur mit dokumentierter Freigabe und Auftragsverarbeitungsvertrag (AVV)** |
+| Streng vertraulich | restricted | Personalakten, besondere Kategorien personenbezogener Daten, Konstruktions-/Tarifgeheimnisse | **nein** — nur lokal/On-Prem; Ausnahme nur mit ausdrücklichem DSGVO-/TISAX-Sign-off |
+
+---
+
 ## 1. Lokale Verarbeitung / Datenisolation
 
 - Verarbeitung ausschließlich im internen Netz: Firebird-Server (Port 3050) → Windows-Host mit
