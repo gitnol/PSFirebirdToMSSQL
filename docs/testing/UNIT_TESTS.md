@@ -563,7 +563,7 @@ committet wird:
    `PSUseSingularNouns`) sind kein Stopp; neue Findings zuerst beheben.
 2. **Gate 4 — Unit-Tests:** `pwsh -NoProfile -File .\tests\pester.config.ps1` → Exit 0 (0 Failed, Coverage ≥ Ziel).
 3. **Integrationstests (nicht-destruktiv):** falls vorhanden, gegen echte Instanz → Exit 0;
-   **kein `-EnableWriteTests`** ohne ausdrückliche Freigabe (siehe `INTEGRATION_TESTS.md`).
+   **kein `-EnableWriteTests`** ohne ausdrückliche Freigabe (siehe `testing/INTEGRATION_TESTS.md`, falls vorhanden).
 
 Zuordnung zur Marker-Kernmenge (`principles/VERTICAL_SLICE_FIRST.md`): Das Pester-Tag `Integration` steht in diesem
 Stack für alles, was eine echte Instanz braucht — Kernmarker `integration` und `live` zusammen. Gate 4 schließt es aus;

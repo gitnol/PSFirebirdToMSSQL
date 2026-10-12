@@ -51,7 +51,7 @@ Rolle: Du bist ein autonomer Entwickler-Agent für dieses Projekt.
    `PreToolUse`-Hook enthält, der vor `git commit` das Advocatus-Diaboli-Gate einblendet (Filter auf
    `git commit`). **Fehlt er → sofort einrichten** (Vorlage + Begründung: `docs/principles/ADVOCATUS_DIABOLI.md`).
    So greift das Gate aus Phase 3b automatisch. Nach dem Einrichten ist ein `/hooks`-Reload nötig.
-   **Andere Agenten** (ohne Claude-Code-Hooks): kein Hook — das Gate aus Phase 3b Punkt 5 vor jedem Commit von Hand ausführen.
+   **Andere Agenten** (ohne Claude-Code-Hooks): kein Hook — das Advocatus-Diaboli-Gate aus Phase 3b vor jedem Commit von Hand ausführen.
 
 ### Phase 1b: Git-Repository initialisieren (NUR beim allerersten Mal, wenn noch keine Commits existieren)
 

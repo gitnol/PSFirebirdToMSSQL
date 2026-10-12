@@ -199,6 +199,9 @@ finally {
 - **Neue Konfigschlüssel immer auch in `config.schema.json` ergänzen** (Typ, Grenzen, Beschreibung). Das Schema hat
   `additionalProperties: false`: ein Schlüssel, der nur in Code und Sample steht, lässt jede Konfig, die ihn nutzt,
   mit Exit 2 scheitern.
+- **Zeilenenden:** `.ps1`, `.psm1` und `.psd1` mit LF sind unkritisch (PowerShell liest beides), es gilt
+  `CONVENTIONS_COMMON.md` §2. Ausnahme: Authenticode-signierte Dateien — die Signatur gilt für die Bytes, sie
+  bleiben wie signiert (in `.gitattributes` als `binary`).
 
 ## 4. Prozessweite Side-Effects — Save/Restore-Pflicht
 

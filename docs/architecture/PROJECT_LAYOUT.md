@@ -118,7 +118,7 @@ die Abhängigkeitsregel als **Test bzw. Gate** formuliert:
   `pyproject.toml`), .NET `NetArchTest`/`ArchUnitNET` als Unit-Test, PowerShell ein
   Pester-Test über den AST (`Import-Module`/Dot-Sourcing nur nach unten), Rust ein
   Check über `cargo metadata`. Eine konkrete Umsetzung liefert bisher nur rust-cli
-  (`architecture/RUST_PROJECT.md`); sonst wählt das Projekt das Werkzeug und trägt es hier ein.
+  (`architecture/RUST_PROJECT.md`, falls vorhanden); sonst wählt das Projekt das Werkzeug und trägt es hier ein.
 - **Registrierungspflicht:** Jedes Modul/Paket ist einer Schicht zugeordnet; ein
   unbekanntes Modul lässt den Check scheitern, statt durchzurutschen.
 - **Der Check hat eigene Tests** (eine erlaubte und eine verbotene Beispielkante), sonst

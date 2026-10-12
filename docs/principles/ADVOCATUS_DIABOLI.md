@@ -81,7 +81,7 @@ Damit das Gate nicht vergessen wird, blendet ein `PreToolUse`-Hook in
 `.claude/settings.json` die Erinnerung vor jedem `git commit` ein (nicht-blockierend,
 nur Kontext). Unter Claude Code ist der Hook Pflicht (`KICKOFF.md` Phase 1 Punkt 7);
 andere Agenten haben keinen gleichwertigen Mechanismus und führen das Gate vor jedem
-Commit von Hand aus (`KICKOFF.md` Phase 3b Punkt 5). Matcher auf die Shell-Tools, Filter auf `git commit`:
+Commit von Hand aus (`KICKOFF.md` Phase 3b, „Advocatus-Diaboli-Gate"). Matcher auf die Shell-Tools, Filter auf `git commit`:
 
 ```json
 {

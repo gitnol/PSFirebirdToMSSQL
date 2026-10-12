@@ -72,6 +72,9 @@ erforderlich — dieses Prinzip ist *nicht* „immer gültig".
   MSRC-Abgleich) und Websuche **ergänzen** sich: der Scanner findet bekannte CVEs
   der direkten/transitiven Deps, die Websuche findet Härtungs-Best-Practices und
   Advisories ohne CVE-Eintrag. Keines ersetzt das andere.
+- **Scanner nicht ausführbar** (keiner für den Stack, oder er braucht Restore/Build/Netz, das im Lauf nicht
+  zulässig ist): die datierte Websuche trotzdem durchführen und ablegen; der Scanner-Lauf wird offener Punkt —
+  im Confidence-Block vermerken und als Aufgabe in `TODO.md` aufnehmen.
 - Ergebnis als **datierten, quellenbelegten** Eintrag sichern (siehe Artefakt).
   Ohne Datum ist die Recherche wertlos, weil neue CVEs ständig erscheinen.
 
@@ -85,7 +88,7 @@ Befund landet in `security/THREAT_MODEL.md` (neue konkrete Bedrohung) bzw.
 - Abgeleitete Maßnahme oder bewusst dokumentiertes Restrisiko.
 
 Eine offene, nicht abschließend bewertete Fundstelle gehört in den
-**Confidence-Block** des CHANGELOG-Eintrags (KICKOFF Phase 3b Punkt 4).
+**Confidence-Block** des CHANGELOG-Eintrags (KICKOFF Phase 3b, „Confidence-Block").
 
 ## Anti-Patterns
 

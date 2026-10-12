@@ -56,13 +56,18 @@ zeigen
 
 **`.gitattributes` (Pflicht):** mindestens `* text=auto eol=lf` — Text-Dateien landen mit LF im Repo
 (`CONVENTIONS_COMMON.md` §2), unabhängig von `core.autocrlf`; Hook-Skripte (`sh`) brechen sonst mit CRLF.
+Bringt ein Bestandsrepo eine eigene `.gitattributes` mit, die per `* text=auto` LF im Repo schon sicherstellt und
+für einzelne Typen bewusst CRLF im Arbeitsbaum festlegt (`eol=crlf`), bleibt sie; ergänzt wird nur, was fehlt.
 
 **Öffentliches oder potenziell öffentliches Repository** (siehe `CONVENTIONS_COMMON.md` 3.1): zusätzlich
 `/docs/local/` (interne Umgebungsdoku) und `/.internal-terms` (Denylist für den Interna-Hook)
 in die `.gitignore` aufnehmen und den Hook vor dem ersten Commit aktivieren: Vorlagen aus
 `<Template-Root>/repo-root/tools/git-hooks/` nach `tools/git-hooks/` kopieren, `.internal-terms` aus
 `<Template-Root>/repo-root/.internal-terms.example` anlegen und befüllen, dann
-`git config core.hooksPath tools/git-hooks`. Die Hook-Skripte gehören in Commit 2 (Schritt 3).
+`git config core.hooksPath tools/git-hooks`. Die Hook-Skripte gehören in Commit 2 (Schritt 3) und werden mit
+Ausführbit gestagt (`git add --chmod=+x tools/git-hooks/pre-commit tools/git-hooks/commit-msg`) — unter Windows
+fehlt es sonst, und auf Linux/macOS-Klonen laufen die Hooks still nicht. Hat das Projekt schon einen
+gleichwertigen Hook: `CONVENTIONS_COMMON.md` 3.1.
 
 **Gilt auch für ein reines docs-I1:** Wenn I1 nur die `docs/`-Struktur erzeugt
 und noch keinen produktiven Code enthält, wird die `.gitignore` trotzdem in
@@ -128,11 +133,14 @@ Prompt müssen dieselbe Message verwenden — keine konkurrierenden Varianten.
 git log --oneline
 ```
 
-Erwartung: diese zwei Commits in dieser Reihenfolge, optional gefolgt vom Hash-Nachtrag
+Erwartung (neues Repository): diese zwei Commits in dieser Reihenfolge, optional gefolgt vom Hash-Nachtrag
 `docs: record I1 commit hash` (Schritt 3). Fällt danach noch ein Fehler in der Baseline auf, folgt ein
 weiterer `docs:`-Commit (kein Amend, kein anderer Typ); Code-Änderungen gehören erst in I2:
 
 1. `chore: add .gitignore`
 2. `docs: initialize project documentation baseline (I1)`
+
+Im Bestandsrepo (Bootstrap übersprungen) ist die Folge anders, siehe `NEUES_PROJECT_INITIALISIEREN.md` Schritt 5
+(Template-Repo).
 
 Danach ist das Repository für reguläre Inkrement-Arbeit bereit.

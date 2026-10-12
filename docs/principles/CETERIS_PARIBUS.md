@@ -66,7 +66,7 @@ anderes, das nebenbei mitvariiert hat?"
 > nicht-deterministische LLM-/Agenten-Workflows — Fixture-Zwang, SHA256-Hashes über
 > System-/User-Prompt/Tool-Schema, Seed-Determinismus, Baseline-3×, extended-thinking-
 > Nichtdeterminismus, 8-Punkte-Selbst-Check — lebt im `mlops-evaluation`-Overlay
-> (`architecture/EVALUATION.md`, Abschnitt „Ceteris-Paribus-Protokoll"; Overlay in diesem Projekt nicht kopiert). Es ist eine
+> (`architecture/EVALUATION.md`, falls vorhanden; Abschnitt „Ceteris-Paribus-Protokoll"). Es ist eine
 > Stack-/Domänen-Konkretisierung dieses Prinzips, kein Ersatz.
 
 ## Projektspezifisch

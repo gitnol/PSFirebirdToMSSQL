@@ -111,7 +111,7 @@ awk '
 Treffer auf Verletzung 1/3: Strikethrough um Inkrement-ID entfernen.
 Treffer auf Verletzung 2: Die ID gehört in **genau eine** Sektion. Ist das
 Inkrement abgeschlossen → Zeile aus „Offene Punkte" entfernen und einen dort genannten offenen Rest nach
-KICKOFF.md Phase 3b Punkt 2 übernehmen (neue ID oder BACKLOG-Eintrag, nicht streichen); ist es noch
+KICKOFF.md Phase 3b (TODO-Verschiebung, „Bleibt ein Rest offen") übernehmen (neue ID oder BACKLOG-Eintrag, nicht streichen); ist es noch
 offen → Zeile aus „Abgeschlossene Inkremente" entfernen.
 Treffer auf Verletzung 4: Den betreffenden Abschnitt (`### I#:`) aus der offenen Sektion entfernen und als Klartext-Kurzzeile in „Abgeschlossen" verschieben (drei Schritte laut KICKOFF.md Phase 3b).
 
@@ -247,7 +247,7 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
    | `base/**`, `scripts/**`, `evals/**`, `repo-root/**`, `SKILL.md`, `NEUES_PROJECT_INITIALISIEREN.md`, `ALTES_PROJECT_AKTUALISIEREN.md`, oder die Stack-/Overlay-**Listen** in `MANIFEST.yaml` | **S1–S3 = 2×3/3 PASS** (Prozess wird wirklich getestet — die Agenten lesen und befolgen diese Dateien; immer der volle Lauf, Teilläufe übersehen Wechselwirkungen) |
    | `stacks/python-cli/**` | **S1–S3 = 2×3/3 PASS** — die Szenarien laden genau diesen Stack |
    | **nur** `stacks/<x>/**` (x ≠ `python-cli`) und/oder `overlays/<y>/**` | **kein S1–S3** — kein Szenario lädt diesen Stack (null Signal); stattdessen Struktur-Validator (oben, inkl. `smoke_stacks.sh --stack <x>` für den geänderten Stack) + manuelles Inhalts-Review |
-   | nur `README.md` und/oder `TEMPLATE_CHANGELOG.md` | **kein S1–S3** — Struktur-Validator (inkl. Check 8) genügt |
+   | nur `README.md`, `TEMPLATE_CHANGELOG.md` und/oder `handbuch/**` | **kein S1–S3** — Struktur-Validator (inkl. Check 8) genügt |
 
    > **Sicherheits-Invariante:** S1–S3 nutzen ausschließlich den `python-cli`-Stack
    > (verifiziert in `evals/scenarios/*/SCENARIO.md` + `EXPECTED.md`). Solange das gilt,
@@ -272,6 +272,9 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
    (Lehre aus dem veralteten `csharp-desktop`-„ENTWURF"-Kommentar in `MANIFEST.yaml`).
    - Voller Lauf: `Eval: 2×3/3 PASS (S1 …, S2 …, S3 …, <modell>, Effort <stufe>)`
    - Scoped: z. B. `Gate: validate_template.sh + Inhalts-Review (Stack-only: csharp-desktop), S1–S3 n/a (kein Prozess-/python-cli-Change)`
+
+4a. **Handbuch nachziehen (Template-Repo):** `handbuch/` auf den Stand vN bringen — letzter Commit vor dem Tag,
+   löst kein Eval aus (Tabelle in 2); Ablauf und Ablage der PDF-/PPTX-Fassung in `handbuch/README.md`.
 
 5. **Tag setzen (NUR nach bestandenem Gate laut 1–3):**
    ```bash
