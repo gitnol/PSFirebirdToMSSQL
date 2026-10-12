@@ -6,19 +6,20 @@ als erledigt, wenn alle DoD-Kriterien erfüllt sind.
 Parkplatz für noch unspezifizierte Ideen: `BACKLOG.md`.
 Bekannte Bugs ohne aktiven Fix: `KNOWN_ISSUES.md`.
 
-**Gemeinsame DoD (gilt zusätzlich für jedes Inkrement):**
+## Standard-Definition of Done (gilt für jedes Inkrement — nicht abhaken, sie bleibt stehen)
 
-- [ ] Code-Änderungen abgeschlossen, kein TODO-/FIXME-Kommentar offen
-- [ ] Unit-Tests grün inkl. Coverage-Ziel: `pwsh -NoProfile -File ./tests/pester.config.ps1` (Exit 0); neue Logik mit behavioralem Rot, Charakterisierungstests mit Mutationsprüfung
-- [ ] Integration-Smoke-Test grün, falls DB-Logik betroffen (`.\Test-SQLSyncConnections.ps1` + Ein-Tabellen-Sync gegen Test-DB, siehe `testing/INTEGRATION_TESTS.md`)
-- [ ] Security-Checkliste aus `CONVENTIONS.md` durchgegangen
-- [ ] Trigger-Matrix in `KICKOFF.md` Phase 3a geprüft → alle relevanten Docs aktualisiert
+- Code-Änderungen abgeschlossen, kein TODO-/FIXME-Kommentar offen
+- Unit-Tests grün inkl. Coverage-Ziel: `pwsh -NoProfile -File ./tests/pester.config.ps1` (Exit 0); neue Logik mit behavioralem Rot, Charakterisierungstests mit Mutationsprüfung
+- Integration-Smoke-Test grün, falls DB-Logik betroffen (`.\Test-SQLSyncConnections.ps1` + Ein-Tabellen-Sync gegen Test-DB, siehe `testing/INTEGRATION_TESTS.md`)
+- Security-Checkliste aus `CONVENTIONS.md` durchgegangen
+- Trigger-Matrix in `KICKOFF.md` Phase 3a geprüft → alle relevanten Docs aktualisiert
   (`OVERVIEW.md`, `features/`, `architecture/`, `security/`, `GLOSSARY.md`, `KNOWN_ISSUES.md`, `LESSONS_LEARNED.md`)
-- [ ] `README.md` / `README.de.md` angepasst, falls Nutzerverhalten sich ändert
-- [ ] `STATE.md`: Tabellenzeile + „Nächster Schritt"-Abschnitt aktualisiert
-- [ ] `CHANGELOG.md`: neuer Abschnitt mit Datum + Inkrement-Titel + Sections
-  (Added / Changed / Fixed / Removed / Security / Lessons Learned)
-- [ ] Commit erstellt (`<type>(<scope>): <desc>`); Commit-Hash in `STATE.md` eingetragen
+- `README.md` / `README.de.md` angepasst, falls Nutzerverhalten sich ändert
+- `STATE.md`: Tabellenzeile + „Nächster Schritt"-Abschnitt aktualisiert
+- `CHANGELOG.md`: neuer Abschnitt mit Datum + Inkrement-Titel + Sections
+  (Added / Changed / Fixed / Removed / Security / Confidence / Ungeprüft / Lessons Learned)
+- KICKOFF Phase 3b vollständig (Struktur-Check, TODO-Verschiebung, Advocatus-Diaboli-Gate)
+- Commit erstellt (`<type>(<scope>): <desc>`); Commit-Hash in `STATE.md` eingetragen
 
 ---
 
