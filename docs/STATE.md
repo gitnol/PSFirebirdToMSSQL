@@ -16,7 +16,7 @@ Zuletzt aktualisiert: 2026-10-12
 K5: Orphan-Cleanup mit Zieltyp statt `BIGINT`, Fehler im Status statt nur in `Info`; Orphan-Cleanup als
 Modulfunktion. Danach **I10d** (Niedrig: `MSSQL.Port`, `Protect-SqlString`, Analyzer-Warnungen). Kandidat
 danach: `Microsoft.Data.SqlClient` — Entscheidung nach dem Security-Sweep am 2026-10-22.
-Template-Backports eingespielt (docs_template, v26 unreleased, Commit 19ba253; kein Tag, Eval-Gate S1–S3 ausstehend, nicht gepusht).
+Template-Backports eingespielt (docs_template, Commit 19ba253; enthalten in Tag v26, released 2026-10-11).
 Vor jedem Deployment: `.\Test-SQLSyncConnections.ps1 -ConfigFile <Profil> -PreDeploy` (seit I11).
 Testumgebung für Integrationsläufe: Quelle Firebird-Testserver / Demo-Datenbank, Ziel SQL-Testserver /
 `STAGING_I2TEST` (wird vom Pre-Flight bei Bedarf angelegt), Credential-Eintrag
