@@ -47,6 +47,36 @@ Programmierfehler im eigenen Code. Eingaben, die von außen kommen (CLI, HTTP, D
 aus der projektspezifischen Hierarchie — nur dann greift die Konvertierungstabelle in
 `docs/architecture/ERROR_HANDLING.md` (Exit-Code 2 / HTTP 400) statt des Sicherheitsnetzes.
 
+## An der Grenze umwandeln (Parse, don't validate)
+
+Eingaben von außen (CLI-Argument, HTTP-Body, Datei, DB-Zeile, API-Antwort) werden **einmal** an der Systemgrenze
+in einen Typ umgewandelt, der nur gültige Werte darstellen kann — Wertobjekt
+(`docs/architecture/DOMAIN_MODEL.md`, falls vorhanden), Enum, `frozen`-Dataclass, `record`, PowerShell-Klasse. Die
+Umwandlung prüft alle Vorbedingungen und wirft sonst
+`ValidationError`. Danach arbeitet der Code nur mit dem geprüften Typ:
+
+- Eine Funktion, die den geprüften Typ entgegennimmt, prüft ihn **nicht erneut** — die Vorbedingung steckt im Typ.
+  „Preconditions am Funktionsanfang" (oben) gilt für Funktionen, die Rohwerte annehmen.
+- Kein Rohwert (`str`, `dict`, `[hashtable]`) reist durch mehrere Schichten und wird unterwegs „zur Sicherheit"
+  erneut geprüft — verteilte Prüfungen laufen auseinander.
+- Ungültige Zustände nicht darstellbar machen: Enum statt `status: str` mit Prüfung; zwei Typen statt zweier
+  optionaler Felder, von denen genau eines gesetzt sein muss.
+
+```python
+@dataclass(frozen=True)
+class Belegnummer:
+    wert: str
+
+    def __post_init__(self) -> None:
+        if not BELEGNUMMER_MUSTER.fullmatch(self.wert):
+            raise ValidationError(f"ungültige Belegnummer: {self.wert!r}")
+```
+
+Hintergrund: Statische Typprüfer hätten in einer Studie mindestens rund 15 % der in JavaScript-Projekten committeten
+Fehler gefunden (Gao, Bird & Barr, ICSE 2017). Die Umwandlung an der Grenze überträgt diesen Schutz auf fachliche
+Werte, die der Typprüfer sonst nur als Zeichenkette kennt. Begriffe: „Parse, don't validate" (Alexis King, 2019),
+„Domain Primitives" (Johnsson, Deogun, Sawano: *Secure by Design*, 2019).
+
 ## Verwandt
 
 - [[FAIL_FAST]]

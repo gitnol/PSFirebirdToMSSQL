@@ -57,6 +57,11 @@ Commits) und **Add-Granularität** — nicht, *ob* committet wird.
 - UTF-8 ohne BOM für alle Quellcode- und Doku-Dateien
 - LF-Zeilenenden in Repo (`.gitattributes: * text=auto eol=lf`); Windows-Checkout kann CRLF lokal nutzen
 - Eine abschließende Newline pro Datei
+- Text mit Backslashes (Windows-Pfade, Regex, Shell-Fortsetzungen) mit dem Datei-Werkzeug des Agenten schreiben,
+  nicht über einen Shell-Heredoc oder eine eingebettete Sprache: Jede zusätzliche Escape-Ebene kann aus `\\` ein `\`
+  machen, `\b`, `\v`, `\f` in Steuerzeichen verwandeln oder ein `\` am Zeilenende schlucken – auch mit quotiertem
+  Begrenzer (`<<'EOF'`). Danach auf Steuerzeichen prüfen: `grep -nP '[\x00-\x08\x0B\x0C\x0E-\x1F]' <datei>` muss
+  leer sein. Besser prüft ein Test in der CI alle versionierten Textdateien – die Handprüfung fällt erfahrungsgemäß aus.
 - Stack-begründete Ausnahmen (z. B. ein BOM, das ein Werkzeug verlangt, oder ein Format, das das Betriebssystem
   vorgibt) stehen mit Begründung in der Stack-`CONVENTIONS.md` und gelten nur dort; eine Ausnahme, die nur in einer
   anderen Datei steht, gilt nicht.
@@ -118,6 +123,10 @@ stehen ohnehin nie im Repo; zusätzlich:
   Testumgebung" enthält keinen internen Namen, verrät aber die Betroffenheit eines internen Hosts.
   Testergebnisse mit Host-Bezug öffentlich nur generisch formulieren („erwartete Befunde, Details in
   `docs/local/`"); vor dem Commit bewusst gegenlesen, der Hook findet das nicht.
+- **Kurze Namen brauchen Wortgrenzen:** Hook und Scan vergleichen Teilzeichenketten. Ein interner Name, der Teil
+  gewöhnlicher Wörter ist (etwa ein Kürzel aus drei Buchstaben), lässt sich nicht in die Denylist eintragen, ohne
+  jede Zeile zu sperren — und ein Ersetzen nur in Anführungszeichen übersieht ihn als ganzes Wort. Solche Namen
+  lokal notieren und bei jeder Bereinigung und im Reflexions-Scan zusätzlich mit `git grep -nwi -e <NAME>` suchen.
 - `docs/` **nicht** komplett ignorieren — die Doku ist versioniertes Projektgedächtnis
   (STATE/TODO/CHANGELOG, Commit-Hashes, Reflexion); getrennt wird nur der interne Anteil.
 
