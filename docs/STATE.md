@@ -1,7 +1,7 @@
 # Aktueller Projektstatus – PSFirebirdToMSSQL
 
-Zuletzt aktualisiert: 2026-10-12
-**Initialisiert mit:** docs_template v26 (Init 2026-10-08, ohne Commit-Stempel) → v27@5ce0f84 (2026-10-11, Template-Update) → v27@2268889 (2026-10-12)
+Zuletzt aktualisiert: 2026-10-22
+**Initialisiert mit:** docs_template v26 (Init 2026-10-08, ohne Commit-Stempel) → v27@5ce0f84 (2026-10-11, Template-Update) → v27@2268889 (2026-10-12) → v28@63b85ec (2026-10-22, Delta-Update)
 **Stack / Overlays:** powershell-automation / keine
 **Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
 **Nächster Schritt:** I12 – Stille Erfolgsmeldungen im Merge und Orphan-Cleanup, danach I10d – Modul-Aufräumen

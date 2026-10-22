@@ -48,6 +48,23 @@ Gebündelt mit den PSScriptAnalyzer-Warnungen an denselben Funktionen.
 - [ ] Warnungen an `New-FirebirdConnectionString`/`New-MSSQLConnectionString` abbauen oder begründet unterdrücken (`PSAvoidUsingPlainTextForPassword`, `PSUseShouldProcessForStateChangingFunctions`)
 - **DoD:** Unit-Test mit behavioralem Rot für den Port; exportierte Funktionsnamen unverändert (außer entfernte); CI grün; gemeinsame DoD erfüllt
 
+### I13: Bestand an die v28-Konventionen angleichen
+
+Herkunft: Template-Update auf docs_template v28 (2026-10-22) — neue Regeln in `CONVENTIONS.md` §2.1/§2.3/§4 und
+`testing/UNIT_TESTS.md` 7.11, denen der Code noch nicht folgt (dort als „Bestand weicht ab"/„Offen (I13)" markiert).
+
+- [ ] `Set-StrictMode -Version 3.0` im Modul `SQLSyncCommon.psm1` und in allen Einstiegsskripten; optionale
+      Konfigschlüssel über `PSObject.Properties[...]` prüfen statt still `$null` (zuerst Modul, Tests müssen grün bleiben)
+- [ ] `[OutputType()]` für alle wertrückgebenden Modulfunktionen (heute 5 von 28); `[object]`-Parameter typisieren oder
+      per Kommentar begründen; `[CmdletBinding()]` für `Get-ConfigValue`
+- [ ] `Initialize-FirebirdDriver`: `ServicePointManager.SecurityProtocol` nicht mehr setzen (unter PowerShell 7
+      wirkungslos für `Invoke-WebRequest`); TLS bei Bedarf per `-SslProtocol` am Aufruf; Doku-Stellen nachziehen
+      (`architecture/DEPENDENCIES.md`, `security/THREAT_MODEL.md`, `CONVENTIONS.md` §4)
+- [ ] Fünf bloße `Should -Throw` in `tests/Unit/SQLSyncCommon.Tests.ps1` mit `-ExpectedMessage` versehen
+- **DoD:** Pester und PSScriptAnalyzer grün (keine neuen Warnungen); Strict Mode mit einem Test belegt, der ohne ihn
+  grün und mit ihm rot wäre (z. B. Tippfehler im Eigenschaftsnamen); Integrations-Smoke-Test mit Treiber-Download in
+  der Testumgebung; gemeinsame DoD erfüllt
+
 ---
 ## Abgeschlossen
 
