@@ -65,6 +65,18 @@ Herkunft: Template-Update auf docs_template v28 (2026-10-22) — neue Regeln in 
   grün und mit ihm rot wäre (z. B. Tippfehler im Eigenschaftsnamen); Integrations-Smoke-Test mit Treiber-Download in
   der Testumgebung; gemeinsame DoD erfüllt
 
+### I14: Server-Advisory-Liste und PowerShell-Mindeststand nach dem Sweep vom 2026-10-23
+
+Herkunft: Kadenz-Sweep 2026-10-23 (`security/DEPENDENCY_AUDIT.md`, Sweep-Protokoll).
+
+- [ ] `$script:FirebirdServerAdvisories` um die Firebird-Advisories vom 2026-04-17 ergänzen: CVE-2026-35215, -33337,
+      -28224, -28214, -28212 (Fix zusätzlich 6.0.0) und GHSA-6crx-4g37-7j49 (ohne CVE) — je Eintrag CVSS/Schwere und
+      Fix-Version; Unit-Test je betroffene und behobene Version (Pflege-Regel in `DEPENDENCY_AUDIT.md`); Tabelle dort
+      und `THREAT_MODEL.md` Bedrohung 6 nachziehen
+- [ ] Produktiver Sync-Host: PowerShell-Version erfassen (`docs/local/ENVIRONMENT.md`), ≥ 7.6.7 sicherstellen
+      (CVE-2026-96251, CVE-2026-96303); prüfen, ob `-PreDeploy` die PowerShell-Version mitmelden soll
+- **DoD:** Pester grün inkl. neuer Advisory-Tests; Bestandstabelle aktuell; gemeinsame DoD erfüllt
+
 ---
 ## Abgeschlossen
 

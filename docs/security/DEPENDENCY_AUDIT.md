@@ -10,7 +10,7 @@ Verbindet sich mit `architecture/DEPENDENCIES.md` (Was ist drin?) und
 
 | Abhängigkeit | Version / Fundort | Quelle | Bemerkung |
 |---|---|---|---|
-| PowerShell | ≥ 7.0 (`#Requires -Version 7.0`); auf dem Entwicklungsrechner 7.6.6 gemessen | Microsoft (MSI/winget) | Produktiver Sync-Host: Version dort mit `$PSVersionTable` erfassen (offen) |
+| PowerShell | ≥ 7.0 (`#Requires -Version 7.0`); auf dem Entwicklungsrechner 7.6.7 gemessen (2026-10-23) | Microsoft (MSI/winget) | Produktiver Sync-Host: Version dort mit `$PSVersionTable` erfassen (offen) |
 | .NET Runtime | durch PowerShell 7 mitgeliefert | Microsoft | Treiber nutzt `lib\net8.0` → PowerShell-Version mit .NET ≥ 8 nötig |
 | FirebirdSql.Data.FirebirdClient | 10.3.4; SHA-256 `lib\net8.0` `7DB04371004AE2BAB2EB3BE48454C605FC3171A3D73ED3B80C90DCD7E86CBC05`, `lib\netstandard2.1` `8176C7D5BA053EF1144C61C00CC1FBD4BEFCBEE4589BD18EAD673C97614A323A` | NuGet, Download in `Initialize-FirebirdDriver` (`SQLSyncCommon.psm1`) nach `%ProgramData%\SQLSync\Drivers\FirebirdSql.Data.FirebirdClient.10.3.4\` | Version, URL + beide Hashes fest im Code, zentral in `$script:FirebirdDriver`; seit I7 wird **jede** DLL vor dem Laden geprüft (Download, vorhanden, `DllPath`), Abweichung → Exit 7. Andere Version nur mit `Firebird.DllSha256` |
 | System.Data.SqlClient | in PowerShell 7 enthalten (auf dem Entwicklungsrechner Assembly-Version 4.6.1.6) | Microsoft | **Von Microsoft abgekündigt** zugunsten `Microsoft.Data.SqlClient`; nur noch Sicherheitsfixes, kein Feature-Support. Migration im Backlog |
@@ -49,6 +49,26 @@ letzte Sweep; ein `OK` von `-PreDeploy` ersetzt den Sweep nicht.
 ---
 
 ## Sweep-Protokoll
+
+### 2026-10-23 – Kadenz-Sweep (fällig 2026-10-22)
+
+Quellen als Liste seit dem letzten Sweep (2026-10-09) abgerufen: PowerShell-Advisories als Dateien
+`github.com/PowerShell/Announcements/tree/main/pwsh/2026/10` (die Issue-Liste des Repos enthält die Oktober-Advisories
+nicht), PowerShell-Releases (`gh release list -R PowerShell/PowerShell`), Firebird-Advisories
+(`gh api repos/FirebirdSQL/firebird/security-advisories`), NETProvider-Advisories (keine), NuGet-Versionslisten
+(`api.nuget.org/v3-flatcontainer/…/index.json`); ergänzend Websuche.
+
+| Prüfgegenstand | Ergebnis | Bewertung | Quelle |
+|---|---|---|---|
+| PowerShell 7 | **Neu:** CVE-2026-96251 (RCE, „reliance on untrusted inputs in a security decision") und CVE-2026-96303 (Security Feature Bypass), beide 13.10.2026, behoben in 7.4.21 / 7.5.12 / 7.6.7; aktuell 7.6.8 (22.10.). 7.4 und 7.5 verlieren am 2026-11-10 jeden Support | Entwicklungsrechner 7.6.7 = nicht betroffen. `#Requires -Version 7.0` lässt betroffene Versionen zu → **produktiven Sync-Host prüfen** (Version weiterhin offen, Bestand oben); Maßnahme: Host auf ≥ 7.6.7, besser 7.6.8 | github.com/PowerShell/Announcements/blob/main/pwsh/2026/10/CVE-2026-96251.md, …/CVE-2026-96303.md, github.com/PowerShell/PowerShell/releases |
+| .NET (mit PowerShell 7 geliefert) | Oktober-Servicing 2026-10-13 (.NET 8.0.32 / 10.0.13, zahlreiche CVEs) | Kommt mit dem PowerShell-Update; kein eigener Schritt | support.microsoft.com/…/net-10-0-update-october-13-2026 |
+| FirebirdSql.Data.FirebirdClient 10.3.4 | Weiterhin neueste stabile Version (danach nur 11.0.0-alpha1); keine Advisories im NETProvider-Repo | nicht betroffen, Hashes unverändert gültig | api.nuget.org, github.com/FirebirdSQL/NETProvider/security/advisories |
+| Firebird-Server | Keine neuen Advisories seit 2026-04-17. **Lücke im Bestand:** Vom 17.04. stammen neben CVE-2026-34232/-40342 weitere Server-Advisories mit denselben Fix-Versionen 3.0.14 / 4.0.7 / 5.0.4 — CVE-2026-35215, -33337, -28224, -28214, -28212 (zusätzlich in 6.0.0 behoben) und GHSA-6crx-4g37-7j49 (Pre-Auth-DoS, ohne CVE) — sowie CVE-2025-65104 (Informationsleck im fbclient von Firebird 3) | Server: die `-PreDeploy`-Warnung greift praktisch schon (gleiche Fix-Versionen), die Liste `$script:FirebirdServerAdvisories` ist aber unvollständig → nachziehen (Code + Unit-Test, Pflege-Regel oben; offen). CVE-2025-65104: nicht betroffen, der Treiber ist rein verwaltet und nutzt kein fbclient | github.com/FirebirdSQL/firebird/security/advisories |
+| System.Data.SqlClient | Kein neues Advisory gefunden | unverändert (abgekündigt, nur Sicherheitsfixes) | Websuche „System.Data.SqlClient CVE October 2026" |
+| Microsoft.Data.SqlClient (Kandidat) | Aktuell 7.1.1; offenes Issue dotnet/SqlClient#4843: transitiv anfälliges `System.Security.Cryptography.Pkcs` 9.0.18 (CVE-2026-70162, CVE-2026-84008) | Für die anstehende Umstiegsentscheidung: erst eine Version ohne anfällige Transitive nehmen | github.com/dotnet/SqlClient/issues/4843 |
+
+Offen aus diesem Sweep: PowerShell-Version des produktiven Sync-Hosts erfassen und ≥ 7.6.7 sicherstellen;
+`$script:FirebirdServerAdvisories` um die Advisories vom 2026-04-17 ergänzen (Code-Inkrement mit Unit-Test).
 
 ### 2026-10-09 – Ereignis-Auslöser (I7, Treiber-Integrität)
 

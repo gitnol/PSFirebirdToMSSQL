@@ -6,7 +6,7 @@ Zuletzt aktualisiert: 2026-10-22
 **Letztes abgeschlossenes Inkrement:** I10c – Doku-Konsolidierung (2026-10-10)
 **Nächster Schritt:** I12 – Stille Erfolgsmeldungen im Merge und Orphan-Cleanup, danach I10d – Modul-Aufräumen
 **Nächste Reflexion:** nach drei weiteren abgeschlossenen Inkrementen (I12, I10d, …; zuletzt 2026-10-10 nach I10c) (siehe `KICKOFF.md` Phase 1c → `docs/REFLECTION.md` — `docs/`-Drift prüfen + Template-Backport prüfen; danach Marker um 3 erhöhen)
-**Nächster Security-Sweep:** 2026-10-22 (Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
+**Nächster Security-Sweep:** 2026-11-06 (letzter Sweep 2026-10-23, Befunde in `security/DEPENDENCY_AUDIT.md`; Intervall 14 Tage; siehe `KICKOFF.md` Phase 1 Punkt 4a → `docs/principles/SECURITY_CURRENCY.md` — fällig, sobald heute ≥ diesem Datum; nach dem Sweep Marker = Sweep-Datum + 14 Tage)
 
 ---
 
