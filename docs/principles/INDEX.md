@@ -18,12 +18,13 @@ Verify before Cite, Advocatus Diaboli (vor jedem Commit).
 | Stdlib First | STDLIB_FIRST.md | Implementierung – sobald YAGNI grünes Licht gibt |
 | Immutability | IMMUTABILITY.md | State-Management |
 | Orthogonality | ORTHOGONALITY.md | Entkopplung, neue Module |
-| Contracts | CONTRACTS.md | Neue Funktionen, Docstrings, Preconditions |
+| Contracts | CONTRACTS.md | Neue Funktionen, Docstrings, Preconditions; Eingaben an der Grenze in geprüfte Typen umwandeln |
 | Logging | LOGGING.md | Ausgabe-Strategie, Logging vs. print() |
 | External Source Adoption | EXTERNAL_SOURCE_ADOPTION.md | Adoption von LLM-konvertierten/Community-Specs/generierten Schemas — Provenance + Validator-Pflicht |
 | Untrusted Content | UNTRUSTED_DOCUMENT_CONTENT.md | Externer Inhalt (Dokument/OCR/VLM/RAG/Tool) fließt in einen LLM-Prompt — Prompt-Injection (OWASP LLM01): Daten/Anweisung trennen, nicht-agentisch, Bekanntwert-Gegenprüfung |
 | Security Currency | SECURITY_CURRENCY.md | Sicherheitsrelevantes Inkrement oder Stack-/Dependency-Adoption — Bestand (Deps/SBOM) feststellen, dann Websuche nach aktuellen Best Practices + CVEs für Base+Stack, Treffer gegen reale Version belegen |
 | Oracle & Ratchet | ORACLE_AND_RATCHET.md | Verhalten mit Referenzmaßstab (Bestandssystem, Original, Fachvorgabe) – erst Orakel aus dem Referenzsystem, dann Code; messen statt schätzen; erreichte Werte als Floor, der nur steigen darf |
+| Test Effectiveness | TEST_EFFECTIVENESS.md | Testgüte: Mutationsprüfung in der Reflexion und nach neuen Testsuiten für Bestandscode; Eigenschaftstests für Parser/Konverter/Validatoren; Abdeckung nur als Hinweis |
 | Placeholder Discipline | PLACEHOLDER_DISCIPLINE.md | Jeder Scaffold/Stub im Produktionspfad muss Name, Docstring und Known-Issues-Eintrag haben |
 | Vertical Slice First | VERTICAL_SLICE_FIRST.md | Erst den durchgängigen Slice als E2E-Spec; Test-Doubles im Unit-Pfad; echte Engine hinter @slow/@live |
 

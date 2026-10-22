@@ -21,6 +21,7 @@ Rolle: Du bist ein autonomer Entwickler-Agent für dieses Projekt.
    - Aufrufe kostenpflichtiger Cloud-APIs oberhalb eines definierten Budgets
    - Versenden von Daten an externe Dienste (APIs, E-Mail, Webhooks)
    - Jede Operation auf Dateisystempfaden außerhalb des Repos (z. B. `/etc`, `~/.ssh`, `/mnt/…`)
+   **Ankündigen statt bestätigen lassen:** Bevor auf dem Rechner des Menschen neue Infrastruktur entsteht oder startet (VMs, Container, virtuelle Netze, Tunnel, Dienste), im Chat sagen, was, wo und warum — inkl. ob sie sichtbar oder im Hintergrund läuft — und den Datenfluss Station für Station erklären; dieselbe Erklärung in die Betriebs- bzw. Architektur-Doku übernehmen. Ohne Ankündigung findet der Mensch die Komponente nicht und versteht das Verhalten des Systems nicht.
 
 ---
 
@@ -64,8 +65,10 @@ hier nicht duplizieren.
 
 **Auslöser** — *einer reicht*:
 
-- Das zuletzt abgeschlossene Inkrement in `STATE.md` ist durch 3 teilbar (I3, I6, I9, I12, …).
-- `STATE.md` nennt im Kopf eine „Nächste Reflexion bei I#" und dieses I# ist erreicht.
+- Das zuletzt abgeschlossene Inkrement in `STATE.md` ist durch 3 teilbar (I3, I6, I9, I12, …) — gilt nur für
+  `I#`-IDs.
+- `STATE.md` nennt im Kopf eine „Nächste Reflexion bei I#" und dieses I# ist erreicht. Nummeriert das Projekt
+  anders (Kopfzeile „**ID-Muster:**", z. B. `P-|H`), ist diese Kopfzeile der Auslöser und Pflicht.
 - Roadmap wurde im letzten Inkrement umgegliedert / Inkremente wurden umnummeriert.
 - Der Prompter fragt explizit nach Aktualität der Docs oder Template-Findings.
 
@@ -85,7 +88,7 @@ sparen. Ein-Befehl-Variante: `<Template-Root>/scripts/validate_project_docs.sh d
    - **Erwartungswerte aus dem Orakel:** Gibt es einen Referenzmaßstab außerhalb des eigenen Codes (Bestandssystem, Original-Werkzeug, Fachvorgabe mit bekannten Ergebnissen), kommen die Erwartungswerte der Tests aus dessen Ausgabe — nicht aus eigener Annahme (`docs/principles/ORACLE_AND_RATCHET.md`).
    - **Behaviorales Rot ist Pflicht (realen Runner-Output einfangen):** Ein neuer Test muss als *echter, ausgeführter* Lauf rot sein — und zwar wegen einer **scheiternden Assertion** (das Verhalten fehlt), nicht nur strukturell (fehlender Import / fehlendes Symbol / Kompilierfehler). Strukturelles Rot ist nur Zwischenstand; erst behaviorales Rot beweist, dass der Test *diskriminiert*. Den realen Output zitieren, nie „der Test sollte fehlschlagen" (= `docs/principles/ADVOCATUS_DIABOLI.md`, `docs/principles/VERIFY_BEFORE_CITE.md`).
    - **Erster-Lauf-grün → STOPPEN:** Ist ein neuer Test beim ersten Lauf schon grün, ist er verdächtig (testet nichts ODER das Verhalten existiert bereits) → anhalten und untersuchen, nicht weiterbauen (kein Test-Gerüst ohne Diskriminierung, `docs/principles/YAGNI.md`).
-   - **Charakterisierungstests → Mutationsprüfung statt Rot:** Tests, die *bestehendes* Verhalten festschreiben (Brownfield-Testharness), und Negativtests („meldet nichts …") sind zwangsläufig sofort grün. Ersatznachweis: pro Funktion einen gezielten Fehler einbauen und zeigen, dass mindestens ein Test rot wird. Sicher ausführen: Original **als Datei** sichern und nach jedem Mutanten per Vergleich zurückprüfen, Testrunner **pro Mutant im Kindprozess**, zuerst ein Kontrolllauf ohne Mutation (muss grün sein); „alle Tests rot" ist ein Befund über das Werkzeug. Mutanten ohne Verhaltensänderung als „äquivalent" ausweisen statt den Test zu verbiegen.
+   - **Charakterisierungstests → Mutationsprüfung statt Rot:** Tests, die *bestehendes* Verhalten festschreiben (Brownfield-Testharness), und Negativtests („meldet nichts …") sind zwangsläufig sofort grün. Ersatznachweis: pro Funktion einen gezielten Fehler einbauen und zeigen, dass mindestens ein Test rot wird. Sicher ausführen: Original **als Datei** sichern und nach jedem Mutanten per Vergleich zurückprüfen, Testrunner **pro Mutant im Kindprozess**, zuerst ein Kontrolllauf ohne Mutation (muss grün sein); „alle Tests rot" ist ein Befund über das Werkzeug. Mutanten ohne Verhaltensänderung als „äquivalent" ausweisen statt den Test zu verbiegen. Werkzeuggestützte Mutationsprüfung und Eigenschaftstests (wann, wofür): `docs/principles/TEST_EFFECTIVENESS.md`.
    - **Iterations-Log (eingefangene Realität, knapp)** pro TDD-Zyklus:
      ```
      ITERATION <n> — <Item aus TODO.md>
@@ -97,6 +100,12 @@ sparen. Ein-Befehl-Variante: `<Template-Root>/scripts/validate_project_docs.sh d
      ```
    - **Einsatzgrenze (wichtig — nicht überall TDD-bar):** Diese strenge TDD-Disziplin gilt für die **deterministische Kern-/Logik-Schicht** (reproduzierbare, kostenfreie Geschäfts-/Rechen-/Parsing-Logik). Sie gilt **NICHT** für nicht-deterministische **LLM-/Modell-Schichten** (Ausgaben streuen → Verifikation über Golden Set/Benchmark/Live-Tests, NICHT „erster-Lauf-grün→stoppen"), **externe Services/Netz** (→ Service-/Integrationsbewertung), **OCR-/Modell-Schichten mit Referenz-Fixtures** (→ Benchmark gegen das Orakel mit Toleranz, `docs/principles/ORACLE_AND_RATCHET.md`) und **UI ohne Test-Runner** (→ manuelle/Browser-Verifikation; im Abschluss-Confidence als „Browser-Test offen" markieren). Gate-Reihenfolge: `docs/CONVENTIONS_COMMON.md` §5. Stack-Idiome (strukturelles Rot, Runner-Ausgabe, Gate-Zeile) stehen in `docs/testing/UNIT_TESTS.md` → „TDD-Disziplin" (falls der Stack den Abschnitt liefert).
 3. Code-Änderungen minimal durchführen: Test → Implementierung → Refactoring.
+   - **Refactoring ändert Struktur, nicht Verhalten:** Vorher und nachher ist dieselbe Testauswahl grün; hält kein
+     Test das betroffene Verhalten fest, zuerst einen Charakterisierungstest schreiben (Punkt 2). Eigener Commit
+     `refactor(…)`, nie zusammen mit `feat`/`fix` — sonst ist im Fehlerfall nicht mehr zu trennen, was das Verhalten
+     geändert hat. Ein Umbau, den das aktuelle Inkrement nicht braucht oder der die Inkrement-Größe (Punkt 5)
+     sprengt, wird nicht nebenbei gemacht, sondern als Kandidat in `docs/BACKLOG.md` „Refactoring-Kandidaten" notiert;
+     ausgewählt wird in der Reflexion (`docs/REFLECTION.md` Schritt 1, Hotspots).
    - **Ceteris Paribus** (`docs/principles/CETERIS_PARIBUS.md`): Soll aus einem Test/Benchmark/Bugfix ein kausaler Schluss gezogen werden („X hat geholfen", „Y war die Ursache"), nur **eine Variable** pro Lauf ändern. Bei Mehrfachänderung trägt das Ergebnis keine Einzelursachen-Aussage.
 4. Commits nur für explizit bearbeitete Dateien – niemals `git add .`
 5. **Inkrement-Größe:** Faustformel — bleibt ein Inkrement darunter, braucht es keinen Split:
@@ -165,14 +174,14 @@ ergänzt (z. B. `compliance-tisax`, siehe `BACKLOG.md`), dessen Trigger-Zeilen h
    - Text "Letztes abgeschlossenes Inkrement" aktualisieren
    - **Inkrement in der Tabelle eintragen** (neue Zeile mit Commit-Hash) — nicht nur den Freitext
    - "Nächster Schritt"-Abschnitt aktualisieren
-2. `docs/TODO.md` – drei atomare Schritte, alle zwingend:
-   - Den gesamten Abschnitt (`### I#: …` plus Inhalt) aus der offenen Sektion **entfernen** und als Klartext-Kurzzeile `- I# Titel — [ABGESCHLOSSEN YYYY-MM-DD]` in die Sektion „Abgeschlossen" **verschieben**.
-   - Alle Checkboxen im Abschnitt vor dem Verschieben auf `[x]` setzen.
+2. `docs/TODO.md` – TODO-Bereinigung, alle Schritte zwingend:
+   - Den gesamten Abschnitt (`### I#: …` plus Inhalt) aus der offenen Sektion **entfernen** — keine Kurzzeile, keine
+     Liste „Abgeschlossen": Nachweis ist die STATE-Zeile mit Commit-Hash aus Schritt 1.
    - Leere Sektionen nach dem Cleanup vollständig entfernen.
    - **Bleibt ein Rest offen**, bekommt er eine **neue** Inkrement-ID in `TODO.md` oder einen `BACKLOG.md`-Eintrag (mit
      Herkunft „Rest aus I#"); die abgeschlossene ID erscheint danach nirgends mehr als offen (auch nicht in `STATE.md`
      „Offene Punkte").
-   (Kein `~~` für Inkrement-IDs — Abschluss wird durch Sektion + Datum + git/CHANGELOG belegt.)
+   (Kein `~~` für Inkrement-IDs — Abschluss wird durch STATE-Zeile + Datum + git/CHANGELOG belegt.)
 3. `docs/CHANGELOG.md`: Neuen Abschnitt mit Datum, Scope, geänderten Dateien hinzufügen
 4. **Confidence-Block** in den `docs/CHANGELOG.md`-Eintrag schreiben (`### Confidence / Ungeprüft`):
    (a) was wurde **nicht** getestet, (b) welche Annahmen wurden ungeprüft übernommen,

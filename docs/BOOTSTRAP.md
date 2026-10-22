@@ -54,6 +54,16 @@ Doku-Commit prüfen: `git ls-files --others --ignored --exclude-standard -- docs
 zeigen
 (rekursiv und shell-unabhängig; `git check-ignore -v docs/**/*.md` erfasst ohne `globstar` nur eine Ebene).
 
+**Secret-Muster eng fassen — Endungen und exakte Namen, keine Teilstrings:** `*.secret`, `.env`, `config.ps1`,
+`*.pfx` — **nicht** `*secret*`, `*credential*`, `*password*`. Teilstring-Muster treffen Pflicht-Doku
+(`operations/SECRETS_MANAGEMENT.md`; im Stack `powershell-automation` auch
+`architecture/CREDENTIAL_STRATEGY.md`, falls vorhanden) und Code mit diesem Vokabular im Namen,
+der dann still unversioniert bleibt; `git status` zeigt ignorierte Dateien nicht. Unter Windows
+(`core.ignorecase=true`) greifen sie auch bei abweichender Schreibweise, unter Linux nicht — der Fehler ist
+plattformabhängig. Braucht das Projekt doch Teilstring-Muster, direkt darunter die Doku wieder einschließen
+(`!docs/**/*.md`) und die Prüfung oben nach jedem neuen Ordner wiederholen; einzelne `!`-Ausnahmen je Datei
+reichen nicht (die nächste neue Datei fällt wieder hinein).
+
 **`.gitattributes` (Pflicht):** mindestens `* text=auto eol=lf` — Text-Dateien landen mit LF im Repo
 (`CONVENTIONS_COMMON.md` §2), unabhängig von `core.autocrlf`; Hook-Skripte (`sh`) brechen sonst mit CRLF.
 Bringt ein Bestandsrepo eine eigene `.gitattributes` mit, die per `* text=auto` LF im Repo schon sicherstellt und

@@ -40,6 +40,8 @@ param(
     [string]$ConfigFile
 )
 
+Set-StrictMode -Version 3.0
+
 $ScriptDir  = $PSScriptRoot
 $ModulePath = Join-Path $ScriptDir "SQLSyncCommon.psm1"
 if (-not (Test-Path $ModulePath)) {
@@ -52,6 +54,17 @@ Import-Module $ModulePath -Force
 - `#Requires -Version 7.0` steht in **jedem** Skript (Grund: `ForEach-Object -Parallel`, ternärer Operator `? :`, `Test-Json`).
   Skripte, die Admin brauchen, prüfen die Rechte zur Laufzeit (Exit 1) statt per `#Requires -RunAsAdministrator`,
   damit eine `-WhatIf`-Vorschau ohne Admin möglich bleibt (Vorbild: `Setup-ScheduledTasks.ps1`).
+- **Strict Mode:** `Set-StrictMode -Version 3.0` am Anfang jedes Skripts bzw. der `.psm1` (gilt dann im Modul-Scope,
+  nicht beim Aufrufer). Ohne Strict Mode liefern nicht initialisierte Variablen, Tippfehler in Eigenschaftsnamen und
+  Indizes außerhalb des Arrays still `$null`. Feste Version statt `Latest`: `Latest` wird mit neuen
+  PowerShell-Versionen strenger, ein Skript bricht dann ohne eigene Änderung. Optionale Eigenschaften (z. B. aus
+  `ConvertFrom-Json` bei fehlenden Konfigschlüsseln) gezielt prüfen (`$obj.PSObject.Properties['Name']`), nicht den
+  Strict Mode abschalten.
+  *Bestand weicht ab:* weder die Skripte noch das Modul setzen `Set-StrictMode` (eingeplant in I13).
+- **Änderungserkennung auf Text ordinal vergleichen:** `-eq`/`-ne` auf Strings vergleichen linguistisch
+  (kulturabhängig) — `'…' -ne '...'` kann `$false` liefern, obwohl sich der Text geändert hat. Für „hat sich der
+  Inhalt geändert?" `[string]::Equals($a, $b, [System.StringComparison]::Ordinal)` verwenden (Bestand: keine
+  solche Stelle).
 - Modul-Import immer über `Join-Path $PSScriptRoot` (bzw. `$ScriptDir`), nie relativ zum aktuellen Arbeitsverzeichnis —
   Skripte werden vom Task Scheduler mit beliebigem CWD gestartet.
 - Comment-based Help auf Deutsch, mit `.LINK` auf das GitHub-Repo.
@@ -74,10 +87,26 @@ Import-Module $ModulePath -Force
 ### 2.3 Funktionen im Modul
 
 - **CmdletBinding + Param:** Jede exportierte Funktion mit `[CmdletBinding()]` und `param()`-Block,
-  Pflichtparameter mit `[Parameter(Mandatory)]`.
+  Pflichtparameter mit `[Parameter(Mandatory)]`. Ohne `[CmdletBinding()]` landen unbekannte Parameter still in
+  `$args` — ein Tippfehler oder ein noch nicht gebauter Schalter wirkt dann wie ein erfolgreicher Aufruf
+  (Gegenstück im Test: `testing/UNIT_TESTS.md` 7.11).
   *Bestand weicht ab:* `Get-ConfigValue` und `Protect-SqlString` haben kein `[CmdletBinding()]`.
+- **Typisierte Parameter und Rückgaben:** Jeder Parameter trägt einen Typ (`[string]`, `[int]`, `[datetime]`,
+  `[System.IO.FileInfo]`, eigene Klasse); `[object]` oder untypisiert nur mit Kommentar, warum (z. B. Konfigobjekt aus
+  `ConvertFrom-Json`, Firebird- oder SQL-Server-Verbindung). Funktionen mit Rückgabewert deklarieren
+  `[OutputType([Typ])]` — PowerShell prüft das nicht zur Laufzeit, es ist der Vertrag für Leser,
+  Tab-Vervollständigung und PSScriptAnalyzer (`PSUseOutputTypeCorrectly`). Strukturierte Rückgaben mit festen
+  Feldern (siehe „Rückgabe" unten), nie als Hashtable mit wechselnden Schlüsseln.
+  *Bestand weicht ab:* `[OutputType()]` tragen 5 der 28 Modulfunktionen; die `[object]`-Parameter (u. a.
+  `Get-ConfigValue`, `Resolve-*Credentials -Config`, `-Connection`, `-Precision`/`-Scale`) sind nicht kommentiert
+  (eingeplant in I13).
 - **Export explizit:** `Export-ModuleMember -Function @(...)` am Modulende ist eine **explizite Liste** (kein `'*'`).
-  Es gibt kein Manifest (`.psd1`); kommt eins hinzu, gilt dort `FunctionsToExport` ebenfalls explizit.
+  Es gibt kein Manifest (`.psd1`); kommt eins hinzu, gilt dort `FunctionsToExport` ebenfalls explizit — und die Liste
+  steht dann **nur im Manifest**, das `Export-ModuleMember` in der `.psm1` entfällt: Wirksam ist die Schnittmenge
+  beider, ein Name, der nur im Manifest steht, fehlt nach dem Import ohne Fehlermeldung (gemessen mit
+  PowerShell 7.6). Aufbau, Manifest, Modultests und Verteilung regelt dann eine Modul-Doku unter `docs/architecture/`
+  (Template-Vorlage `MODULE.md`; heute nicht angelegt, weil das Modul nur von den eigenen Skripten per Pfad
+  importiert wird).
   Nicht exportierte Funktionen nur, wenn sie modulintern aufgerufen werden (z. B. `Test-SQLSyncIsAdministrator`);
   ungenutzter Code wird entfernt statt „bewusst nicht exportiert" stehen gelassen (seit 2026-10-09 erledigt für die
   früheren `Invoke-With…Connection`-Helfer – `$using:` funktioniert in normalen ScriptBlocks nicht).
@@ -210,24 +239,30 @@ Bestand in diesem Projekt:
 
 | Stelle | Mutation | Status |
 |---|---|---|
-| `Initialize-FirebirdDriver` | `[Net.ServicePointManager]::SecurityProtocol = Tls12` vor dem NuGet-Download | erfüllt: alter Wert in `$PreviousProtocol` gesichert, im `finally` des Download-Blocks wiederhergestellt (seit I7) |
+| `Initialize-FirebirdDriver` | `[Net.ServicePointManager]::SecurityProtocol = Tls12` vor dem NuGet-Download | Save/Restore erfüllt: alter Wert in `$PreviousProtocol` gesichert, im `finally` des Download-Blocks wiederhergestellt (seit I7). **Offen (I13):** unter PowerShell 7 wirkungslos für `Invoke-WebRequest` (siehe unten) — die Mutation entfällt, TLS bei Bedarf per `-SslProtocol` am Aufruf |
 | `Get-StoredCredential` | `Add-Type` für `CredManager.Util` | durch Typ-Existenz-Check (`'CredManager.Util' -as [type]`) gegen Doppel-Laden geschützt |
 | `Initialize-FirebirdDriver` | `Add-Type -Path <DLL>` | durch Assembly-Check (`[AppDomain]::CurrentDomain.GetAssemblies()`) geschützt; nicht entladbar |
 | Sync-Skript | `Start-Transcript` | muss auf **jedem** Exit-Pfad mit `Stop-Transcript` beendet werden (Bestand: ja, vor jedem `exit`) |
 
-**Pflicht-Pattern für neue Mutationen** (TLS, `$env:`, Registry, `Set-Location`, Preference-Variablen):
+**`SecurityProtocol` unter PowerShell 7:** wirkt nicht auf `Invoke-WebRequest`/`Invoke-RestMethod` (HttpClient;
+TLS-Version bei Bedarf per `-SslProtocol` am Aufruf), nur auf `WebClient`/`HttpWebRequest`, und der Prozess startet
+mit `SystemDefault`. Weil alle Skripte `#Requires -Version 7.0` tragen, setzt neuer Code die Eigenschaft gar nicht —
+Setzen überschreibt nur die Einstellung anderer Skripte der Sitzung. (Unter Windows PowerShell 5.1 wirkt sie: dort
+Save/Restore; betrifft hier nur die Bootstrap-Hinweise in `testing/UNIT_TESTS.md` 7.7.)
+
+**Pflicht-Pattern für neue Mutationen** (`$env:`, Registry, `Set-Location`, Preference-Variablen):
 alten Wert einmalig in einem `$script:`-Slot sichern, im `finally`/Teardown restaurieren, Flag-Guard gegen Mehrfachsicherung.
 
 ```powershell
-if (-not $script:__OldProtocol_saved) {
-    $script:__OldProtocol = [Net.ServicePointManager]::SecurityProtocol
-    $script:__OldProtocol_saved = $true
+if (-not $script:__OldEnvValue_saved) {
+    $script:__OldEnvValue = $env:BEISPIEL_VARIABLE
+    $script:__OldEnvValue_saved = $true
 }
 try { <# Mutation + Arbeit #> }
 finally {
-    if ($script:__OldProtocol_saved) {
-        [Net.ServicePointManager]::SecurityProtocol = $script:__OldProtocol
-        $script:__OldProtocol_saved = $false
+    if ($script:__OldEnvValue_saved) {
+        $env:BEISPIEL_VARIABLE = $script:__OldEnvValue
+        $script:__OldEnvValue_saved = $false
     }
 }
 ```

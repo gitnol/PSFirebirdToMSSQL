@@ -61,6 +61,11 @@ erforderlich — dieses Prinzip ist *nicht* „immer gültig".
 
 ## Durchführung
 
+- **Quellen als Liste seit dem letzten Sweep abrufen, nicht nur suchen:** Advisory-Feeds und Release-Listen mit
+  CVE-Angaben vollständig ab dem letzten Sweep-Datum holen (z. B. `gh issue list -R <org>/<Announcements-Repo>
+  --state all`, `releases.json` mit `cve-list`) und jeden Eintrag einzeln bewerten; die Websuche ergänzt nur.
+  Belegter Fall: Von vier am selben Tag veröffentlichten Advisories fand die Suche eines — ein RCE-Advisory blieb
+  einen Sweep lang unbewertet.
 - Suchanfragen **versionsspezifisch** formulieren: nicht „Flask security",
   sondern „Flask 3.x security best practices 2026" bzw. „<dependency> <version>
   CVE". Generische Treffer ohne Versionsbezug zählen nicht als Beleg.

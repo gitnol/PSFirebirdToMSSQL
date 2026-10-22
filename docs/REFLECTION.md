@@ -47,12 +47,14 @@ auf die Kandidatenliste, entlarvter Blödsinn fliegt raus.
 ### 0. Sektions-Invariante prüfen — STATE.md und TODO.md (strukturell)
 
 **Invariante:** Eine Inkrement-ID erscheint in **genau einer** Sektion:
-- `STATE.md`: entweder „Abgeschlossene Inkremente" oder „Offene Punkte", nie beide.
-- `TODO.md`: entweder „Abgeschlossen" oder einem offenen Abschnitt, nie beide.
+- `STATE.md`: entweder „Abgeschlossene Inkremente" (bzw. rotiert im Archiv `docs/changelog/ARCHIVE-STATE.md`) oder
+  „Offene Punkte", nie beide.
+- `TODO.md` führt nur Offenes: Ein abgeschlossenes Inkrement steht dort nicht mehr.
 
-Erledigte Inkremente werden als Klartext-Kurzzeile mit `[ABGESCHLOSSEN datum]` eingetragen.
-**Kein Strikethrough (`~~`) für Inkrement-IDs** — Abschluss wird durch die Sektion,
-das Datum und git/CHANGELOG belegt. Leere Sektionen nach dem Cleanup vollständig entfernen.
+Erledigte Inkremente stehen als Zeile mit Commit-Hash in `STATE.md` „Abgeschlossene Inkremente" — eine zweite
+Liste in `TODO.md` gibt es nicht (Altformat „Abgeschlossen": Schritt 5a).
+**Kein Strikethrough (`~~`) für Inkrement-IDs** — Abschluss wird durch die STATE-Zeile, das Datum und
+git/CHANGELOG belegt. Leere Sektionen nach dem Cleanup vollständig entfernen.
 
 > Strikethrough für andere Zwecke bleibt erlaubt (z. B. verworfene Einträge in
 > `BACKLOG.md` „Verworfen"). Der Check unten trifft solche Einträge nicht, weil
@@ -61,59 +63,64 @@ das Datum und git/CHANGELOG belegt. Leere Sektionen nach dem Cleanup vollständi
 **Source-of-Truth-Hierarchie (absteigend autoritativ):**
 1. `git log` — maßgeblich für Commit-Hashes, Reihenfolge, tatsächliche Durchführung
 2. `docs/CHANGELOG.md` — narrative Quelle für Umfang und Inhalt jedes Inkrements
-3. `docs/STATE.md` — für den Inkrement-Stand abgeleitete Sicht (Tabelle + Nächster Schritt); kein
-   Inkrement-Inhalt, der nicht aus git/CHANGELOG ableitbar ist. Daneben führt STATE.md eigenständig
-   die Kopf-Marker, „Risiken & Blocker" und ggf. „Kennzahlen (gemessen)" (Trigger-Matrix KICKOFF 3a)
-4. `docs/TODO.md` — abgeleitete Sicht: offene Aufgaben und DoD; „Abgeschlossen"
-   ist eine Klartext-Kurzliste, kein Duplikat des CHANGELOG
+3. `docs/STATE.md` — für den Inkrement-Stand abgeleitete Sicht (Tabelle + Nächster Schritt; ältere Zeilen im
+   Archiv `docs/changelog/ARCHIVE-STATE.md`); kein Inkrement-Inhalt, der nicht aus git/CHANGELOG ableitbar ist.
+   Daneben führt STATE.md eigenständig die Kopf-Marker, „Risiken & Blocker" und ggf. „Kennzahlen (gemessen)"
+   (Trigger-Matrix KICKOFF 3a)
+4. `docs/TODO.md` — abgeleitete Sicht: nur offene Aufgaben und DoD
 
 > **Ein-Befehl-Variante:** Falls die Template-Skripte vorliegen, führt
 > `<Template-Root>/scripts/validate_project_docs.sh docs/` die vier Struktur-Checks (Verletzung 1–4)
 > plus den Health-Check (Schritt 1) gebündelt aus — statt vier einzelner Greps.
 > Die expliziten Befehle unten bleiben die verbindliche Spezifikation/Fallback.
 
+**Andere ID-Schemata:** Die Befehle unten sind für `I#` geschrieben. Nummeriert das Projekt anders (z. B. `P-04a`,
+`H2`), nennt der `STATE.md`-Kopf die Präfixe: `**ID-Muster:** P-|H` (alle verwendeten, mit `|` getrennt; ohne
+Zeile gilt `I`). `validate_project_docs.sh` liest die Zeile; in den Befehlen unten `I` durch `(P-|H)` ersetzen.
+Nach dem Präfix folgen Zahl, optional Buchstabe und Unterpunkte (`P-04a`, `P-03.1.1`, `I49.2`).
+
 **Strukturelle Checks (alle ausführen):**
 ```
 # Verletzung 1 – ~~I# irgendwo in docs/ → muss 0 Treffer ergeben
 grep -rnE "~~I[0-9]+" docs/
 
-# Verletzung 2 – dieselbe Inkrement-ID in ZWEI Sektionen von STATE.md
+# Abgeschlossene Inkremente = STATE.md „Abgeschlossene Inkremente" plus rotiertes Archiv (Schritt 5a);
+#   Verletzung 2 und 4 lesen beides, sonst verlieren archivierte IDs die Abdeckung.
+abgeschlossen() {
+  awk '/^## / { sec = $0 } /^\| I[0-9]+/ && sec ~ /Abgeschlossene/' docs/STATE.md
+  cat docs/changelog/ARCHIVE-STATE*.md 2>/dev/null | grep -E '^\| I[0-9]+'
+}
+
+# Verletzung 2 – dieselbe Inkrement-ID abgeschlossen UND in STATE.md „Offene Punkte"
 #   (sektionssensitiv: „Offene Punkte" enthält by design `| I# |`-Zeilen —
 #    ein simples grep "^\| I[0-9]+" würde diese fälschlich als Treffer melden).
-#   Verletzung = eine ID steht gleichzeitig in „Abgeschlossene Inkremente"
-#   UND in „Offene Punkte". Muss 0 Zeilen ausgeben.
-awk '
+#   Muss 0 Zeilen ausgeben.
+abgeschlossen | awk '
+  FILENAME == "-"     { done[$2] = 1; next }
   /^## /              { sec = $0 }
-  /^\| I[0-9]+/       { id = $2;
-                        if (sec ~ /Abgeschlossene/) done[id] = 1;
-                        else if (sec ~ /Offene/)    open[id] = 1 }
-  END { for (i in done) if (i in open)
-          print "Verletzung 2: " i " steht in beiden Sektionen" }
-' docs/STATE.md
+  /^\| I[0-9]+/ && sec ~ /Offene/ && ($2 in done) {
+                        print "Verletzung 2: " $2 " steht abgeschlossen und in Offene Punkte" }
+' - docs/STATE.md
 
 # Verletzung 3 – ~~I# als Abschnittsüberschrift in TODO.md → muss 0 Treffer ergeben
 grep -nE "^### ~~I[0-9]+" docs/TODO.md
 
-# Verletzung 4 – I# in STATE.md „Abgeschlossene Inkremente" aber noch als offener
+# Verletzung 4 – I# abgeschlossen (STATE.md oder Archiv), aber noch als offener
 #   Abschnitt (### I#:) in TODO.md → muss 0 Zeilen ausgeben.
-awk '
-  FNR == NR {
-    if (/^## /)         sec = $0
-    if (/^\| I[0-9]/ && sec ~ /Abgeschlossene/) done[$2] = 1
-    next
-  }
+abgeschlossen | awk '
+  FILENAME == "-"     { done[$2] = 1; next }
   /^### I[0-9]/ {
     id = $2; sub(/:$/, "", id)
-    if (id in done) print "Verletzung 4: " id " in STATE.md abgeschlossen, aber noch offen in TODO.md"
+    if (id in done) print "Verletzung 4: " id " abgeschlossen, aber noch offen in TODO.md"
   }
-' docs/STATE.md docs/TODO.md
+' - docs/TODO.md
 ```
 Treffer auf Verletzung 1/3: Strikethrough um Inkrement-ID entfernen.
 Treffer auf Verletzung 2: Die ID gehört in **genau eine** Sektion. Ist das
 Inkrement abgeschlossen → Zeile aus „Offene Punkte" entfernen und einen dort genannten offenen Rest nach
-KICKOFF.md Phase 3b (TODO-Verschiebung, „Bleibt ein Rest offen") übernehmen (neue ID oder BACKLOG-Eintrag, nicht streichen); ist es noch
+KICKOFF.md Phase 3b (TODO-Bereinigung, „Bleibt ein Rest offen") übernehmen (neue ID oder BACKLOG-Eintrag, nicht streichen); ist es noch
 offen → Zeile aus „Abgeschlossene Inkremente" entfernen.
-Treffer auf Verletzung 4: Den betreffenden Abschnitt (`### I#:`) aus der offenen Sektion entfernen und als Klartext-Kurzzeile in „Abgeschlossen" verschieben (drei Schritte laut KICKOFF.md Phase 3b).
+Treffer auf Verletzung 4: Den betreffenden Abschnitt (`### I#:`) aus der offenen Sektion entfernen (KICKOFF.md Phase 3b, TODO-Bereinigung).
 
 **Optional – Hash-Backfill:** Fehlende Commit-Hashes (`—`) in STATE.md
 „Abgeschlossene Inkremente" aus `git log --oneline` ergänzen. Autoritativer
@@ -139,6 +146,14 @@ umstellen oder ganz entfernen, wenn der Eintrag durch das Inkrement obsolet wurd
 Formulierungen, deren Korrektur Wissen über den Code verlangt („TBD in I2" → was gilt jetzt?), gehören nach
 Schritt 4 auf die Liste für den Prompter.
 
+**Fakten-Drift in Querschnitts-Docs:** Der Grep oben findet veraltete *Verweise*, nicht veraltete *Aussagen*. Für
+jedes seit der letzten Reflexion geänderte Verhalten (neuer Retry, neue Konfigurationsquelle, anderes Logging,
+geänderte Suchlogik) gezielt nach der **alten Formulierung** in `docs/` suchen — etwa „kein automatisches Retry"
+oder den alten Cmdlet-/Optionsnamen. Die Drift sitzt erfahrungsgemäß in Querschnitts-Docs, die ein Inkrement nur
+indirekt berührt (`architecture/ERROR_HANDLING.md`, `architecture/CONFIGURATION.md`, `operations/RUNBOOK.md`,
+Prinzipien), und besonders nach Inkrementen, die als Bugfix oder Refactoring durchgingen und deshalb keine Zeile
+der Trigger-Matrix auslösten.
+
 **Interna-Scan (öffentliches Repo, `CONVENTIONS.md` 6.2):** alle versionierten Dateien gegen die
 lokale Denylist prüfen — Treffer nach `docs/local/` verschieben bzw. durch Rollenbezeichnungen ersetzen:
 
@@ -147,10 +162,40 @@ grep -v '^#' .internal-terms > /tmp/terms.txt
 git ls-files | xargs grep -HinF -f /tmp/terms.txt
 ```
 
+Die Denylist vergleicht Teilzeichenketten. Kurze interne Namen, die in gewöhnlichen Wörtern vorkommen (etwa ein
+Kürzel aus drei Buchstaben), stehen deshalb nicht darin — sie zusätzlich mit Wortgrenzen suchen:
+`git grep -nwi -e <NAME>` (die Liste solcher Namen lokal in `docs/local/` führen, `CONVENTIONS_COMMON.md` 3.1).
+
+**Pflegerückstand in BACKLOG und KNOWN_ISSUES:** Eingeplante Backlog-Punkte wandern nach `TODO.md` — `~~…~~`
+steht nur unter „Verworfen", nie als „erledigt in I#". `KNOWN_ISSUES.md` „Behobene Probleme" ist eine Spur bis zur
+nächsten Aufräum-Iteration und wird dann geleert (Historie steht in CHANGELOG und Git). `validate_project_docs.sh`
+meldet beides als Hinweis (`~~…~~` außerhalb „Verworfen"; mehr als 10 behobene Einträge) — jetzt aufräumen.
+
+**Refactoring-Kandidaten (Hotspots):** Dateien, die oft geändert werden **und** groß sind, tragen die meisten Fehler
+(relative Änderungsmenge sagt Fehlerdichte voraus, Nagappan & Ball, ICSE 2005; Hotspot-Analyse nach Tornhill).
+Die zehn meistgeänderten Code-Dateien seit der vorherigen Reflexion mit Größe:
+
+```
+git log --since=<Datum der vorherigen Reflexion> --format= --name-only -- . ':(exclude)docs' |
+  grep -v '^$' | sort | uniq -c | sort -rn | head -10 |
+  while read -r n f; do [ -f "$f" ] && printf '%4d Commits  %5d Zeilen  %s\n' "$n" "$(wc -l < "$f")" "$f"; done
+```
+
+Die Zahlen sind ein Hinweis, kein Urteil: Manifeste, Versionsdateien, README und Konfiguration ändern sich mit jedem
+Release und sind keine Kandidaten (bei Bedarf als weitere `':(exclude)…'` anhängen). Für die übrigen Treffer die Datei
+lesen — ist sie schwer zu ändern (lange Funktionen, verschachtelte Bedingungen, wiederholte Logik — `docs/principles/DRY.md`), kommt sie
+mit beiden Zahlen nach `BACKLOG.md` „Refactoring-Kandidaten"; dort stehende Kandidaten werden zugleich gesichtet:
+behoben → löschen, inzwischen schmerzhaft → nach `TODO.md` als Inkrement (Regeln: `KICKOFF.md` Phase 2, Punkt 3).
+
+**Testgüte:** Mutationsprüfung für die seit der vorherigen Reflexion geänderten Dateien der Kern-Schicht nach
+`docs/principles/TEST_EFFECTIVENESS.md` (Werkzeug und Aufruf: `docs/testing/UNIT_TESTS.md`). Überlebende Mutanten
+werden in dieser Reflexion mit Tests geschlossen oder als äquivalent begründet; ist das zu groß, kommt es als
+offener Punkt nach `TODO.md`.
+
 ### 2. Cross-Refs konsistent
 
-Alle I-Nummern in `docs/` zeigen auf existierende Inkremente in `STATE.md`
-(kein Renumbering-Loch).
+Alle I-Nummern in `docs/` zeigen auf existierende Inkremente in `STATE.md` oder im Archiv
+`docs/changelog/ARCHIVE-STATE.md` (kein Renumbering-Loch).
 
 ### 2b. Roadmap-Konsolidierung
 
@@ -198,7 +243,17 @@ Den Vorschlag in Schritt 4 mit auf die priorisierte Liste nehmen (als
 `sinnvoll: <stack-x>, <stack-y> haben Analogon zu <Lehre> — idiomatisch prüfen`).
 
 > **Hinweis (Backport-Mechanik):** Das Template lebt als Git-Repo (Versionen = Git-Tags).
-> Freigegebene Backports einspielen, dann explizit stagen — **kein `git add -A`**, da im
+> **Vor der ersten Änderung** prüfen, ob das lokale Template auf dem Stand seines Remotes ist — andere Projekte
+> spielen ebenfalls Backports ein; wer auf einem veralteten Stand ändert, merkt es erst beim abgelehnten Push und
+> arbeitet in vermeidbare Konflikte:
+> ```bash
+> <Template-Root>/scripts/check_template_current.sh   # git fetch + Vergleich mit dem Upstream
+> ```
+> Exit 0 (aktuell oder nur eigene lokale Commits) → weiter. Exit 1: `ZURUECK` → erst `git pull --ff-only`;
+> `AUSEINANDER` → erst zusammenführen — per **Merge**, sobald ein Projekt schon auf einen lokalen Commit verweist
+> (Stempel `vN@<commit>`), sonst wäre der Verweis nach einem Rebase ungültig; `GEÄNDERT` → fremde Änderungen klären.
+> Exit 2 (offline, ZIP-Export, kein Upstream) → im Bericht vermerken; Backports dann nur lokal und vor dem Push erneut
+> prüfen. Danach Backports einspielen und explizit stagen — **kein `git add -A`**, da im
 > Template-Repo Arbeitskopien, Editor-Artefakte oder Projekt-Exporte liegen können:
 > **Projektspezifisch (PSFirebirdToMSSQL):** Template-Repo liegt unter
 > `D:\GIT\gitnol\docs_template` (Git-Bash: `/d/GIT/gitnol/docs_template`); dieses Projekt
@@ -276,11 +331,18 @@ wenn die für den Änderungsumfang geforderten Prüfungen bestanden sind. **Kein
 4a. **Handbuch nachziehen (Template-Repo):** `handbuch/` auf den Stand vN bringen — letzter Commit vor dem Tag,
    löst kein Eval aus (Tabelle in 2); Ablauf und Ablage der PDF-/PPTX-Fassung in `handbuch/README.md`.
 
-5. **Tag setzen (NUR nach bestandenem Gate laut 1–3):**
+5. **Tag setzen (NUR nach bestandenem Gate laut 1–3):** unmittelbar davor
+   `<Template-Root>/scripts/check_template_current.sh` — Exit 0 nötig, sonst liegt der Tag auf einem Stand ohne die
+   inzwischen gepushten Backports anderer Projekte (dann zusammenführen und Gate 1 wiederholen).
    ```bash
    git tag vN
+   git push && git push origin vN
+   <Template-Root>/scripts/check_template_current.sh --require-pushed   # Exit 0: Branch und Tag sind draußen
    # Optional: git archive --format=zip -o docs_template_vN.zip vN
    ```
+   Nutzt der Skill einen Git-Worktree auf dem letzten Release-Tag (abgekoppelter HEAD), ihn danach auf `vN` ziehen
+   (`git -C <Skill-Verzeichnis> checkout vN`); `check_template_current.sh` im Worktree meldet einen veralteten Tag
+   als `RELEASE-ALT` (Exit 1).
 
 ### 4. Bei Treffern
 
@@ -296,17 +358,52 @@ priorisierte Liste (`sinnvoll/wichtig/dringend`). Backport nach Freigabe:
 In autonomen Läufen ohne erreichbaren Prompter: diese Liste nur **vorschlagen**, keinen
 Template-Commit/Tag setzen (siehe Freigabe-Disziplin in Schritt 3).
 
+**Checks mit Fehlalarmen reparieren, nicht notieren:** Liefert ein Check dieser Reflexion (Grep, Validator,
+projekt-eigener Drift-Check) Treffer, die als „bekannter Fehlalarm" übergangen werden, wird er in derselben
+Reflexion repariert — z. B. Namenssuche statt Zeilenmuster — und mit einem provozierten echten Treffer
+gegengeprüft. Ein Check, dessen Treffer man routinemäßig übergeht, prüft nichts.
+
 ### 5. Nach Abschluss der Reflexion
 
 In `STATE.md` den „Nächste Reflexion bei I#"-Marker um 3 erhöhen (z.B. I6 → I9).
 
 ### 5a. Rotation großer Dateien (`docs/principles/CONTEXT_DISCIPLINE.md`, Regel c)
 
+- `STATE.md` „Abgeschlossene Inkremente" (**bei jeder Reflexion**): Aktiv bleiben die Zeilen der Inkremente, die
+  diese Reflexion begutachtet hat (seit der vorherigen Reflexion abgeschlossen, bei 3er-Kadenz 3–6 Zeilen),
+  mindestens die letzte Zeile. Alle Zeilen darüber unverändert ans Ende von `docs/changelog/ARCHIVE-STATE.md`
+  anhängen — eine Datei, neue Zeilen nur unten, bestehende nie ändern. Fehlt sie, mit diesem Kopf anlegen:
+  ```markdown
+  # Archiv – Abgeschlossene Inkremente aus STATE.md
+
+  Rotiert aus `docs/STATE.md` (`REFLECTION.md` Schritt 5a). Neue Zeilen nur unten anhängen, bestehende nie ändern.
+
+  ## Abgeschlossene Inkremente
+
+  | # | Titel | Datum | Commit |
+  |---|-------|-------|--------|
+  ```
+  `validate_project_docs.sh` liest das Archiv mit (Verletzung 2/4, Health-Check, Commit-Hashes).
+- **Altformat (Projekte vor v28), einmalig:** Hat `TODO.md` noch einen Abschnitt „Abgeschlossen" mit Kurzzeilen,
+  ihn samt Trennlinie entfernen — Nachweis ist die STATE-Zeile mit Hash; vorher prüfen, dass jede dort genannte ID
+  in `STATE.md` oder im Archiv steht (fehlende Zeile nachtragen, Hash aus `git log`). Danach die STATE-Tabelle wie
+  oben rotieren, auch wenn sie dutzende Zeilen hat.
 - `CHANGELOG.md` über ~500 Zeilen: ältere Einträge in eine datierte Archivdatei unter `docs/changelog/` verschieben
   (Name z. B. `ARCHIVE-I01-I20.md`); die aktive Datei behält die letzten Inkremente und einen Verweis aufs Archiv.
 - `LESSONS_LEARNED.md`: nur Einträge mit Endzustand (`backported …`, `verworfen …`, `projekt-intern`) archivieren —
   Einträge mit `Status: offen` bleiben stehen, bis Schritt 3 sie abgebaut hat.
-- Eigener Commit `docs: rotate changelog/lessons (I#)`; Git und Archiv bleiben die volle Wahrheit.
+- Archivierte LESSONS-Einträge nach `docs/changelog/LESSONS_ARCHIVE.md` — der Validator behandelt nur `changelog/`
+  als Verlauf (tote Verweise in alten Einträgen sind dort Geschichte). Bereiche im Archivkopf mit Strich schreiben
+  („I01–I41"), nicht „bis I41" — der Health-Check liest „bis I#" als offenen Verweis.
+- **Erst Interna bereinigen, dann rotieren:** Der Interna-Hook prüft hinzugefügte Zeilen und kann verschobenen Bestand
+  nicht von neuem Text unterscheiden — enthält der alte Teil Denylist-Treffer, blockiert er den Rotations-Commit.
+  `--no-verify` ist keine Option.
+- Wandert eine Fundstelle mit, die `docs/.placeholder-ignore` **dateibezogen** freigibt (Form `CHANGELOG.md:<Literal>`),
+  den Eintrag auf die Archivdatei umstellen — sonst meldet der Validator sie dort als Platzhalter. Projektweite
+  Einträge für historische Fundstellen gleich dateibezogen setzen, damit echte ungefüllte Platzhalter auffallen.
+- Eigener Commit `docs: rotate state/changelog/lessons (I#)`; Git und Archiv bleiben die volle Wahrheit. Gegenprobe:
+  keine nichtleere Zeile verloren (alter Stand gegen aktive Datei plus Archiv vergleichen), danach
+  `validate_project_docs.sh` Exit 0.
 
 ---
 

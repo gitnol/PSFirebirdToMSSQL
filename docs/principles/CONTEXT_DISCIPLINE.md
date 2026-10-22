@@ -31,15 +31,17 @@ höheren Token-Verbrauch.
 
 ## Wachsende Append-Docs
 
-Einige Docs (CHANGELOG, LESSONS_LEARNED) wachsen unbegrenzt durch Anhängen.
-Sie kosten bei Full-Load überproportional Token ohne Nutzen für das laufende Inkrement.
+Einige Docs (CHANGELOG, LESSONS_LEARNED, die Tabelle „Abgeschlossene Inkremente" in STATE) wachsen
+unbegrenzt durch Anhängen. Sie kosten bei Full-Load überproportional Token und verdünnen den aktuellen Stand,
+ohne dem laufenden Inkrement zu nützen.
 
 - **(a) Default-Lesescope ausschließen:** CHANGELOG und LESSONS_LEARNED sind kein
   Pflicht-Lesekontext für normale Inkremente — erst laden, wenn konkret benötigt.
 - **(b) Write-only anhängen:** Nur den Kopf der Datei lesen (Format-Check, max. 20–30 Zeilen),
   dann neuen Eintrag oben voranstellen (prepend) — nie die gesamte Datei laden.
-- **(c) Rotation an Reflexions-Kadenz:** An der 3-Inkremente-Reflexion wächst älterer
-  Inhalt in datierte Archivdateien (z. B. `docs/changelog/ARCHIVE-I01-I20.md`).
+- **(c) Rotation an Reflexions-Kadenz:** An der 3-Inkremente-Reflexion wandert älterer
+  Inhalt in Archivdateien unter `docs/changelog/` (z. B. `ARCHIVE-I01-I20.md` für CHANGELOG,
+  `ARCHIVE-STATE.md` für die STATE-Tabelle — sie behält nur die Inkremente seit der vorherigen Reflexion).
   Git + Archiv = volle Wahrheit; aktive Datei bleibt token-gebunden. Ablauf: `REFLECTION.md` Schritt 5a.
 
 ## Anti-Pattern
